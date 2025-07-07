@@ -1,0 +1,15 @@
+version: v2
+clean: false
+
+managed:
+  enabled: true
+
+  override:
+    - file_option: go_package_prefix
+      value: mizu.example/protogen
+
+plugins:
+  - remote: buf.build/connectrpc/go:v1.18.1
+    out: dist
+  - remote: buf.build/protocolbuffers/go:v1.36.6
+    out: dist

@@ -1,0 +1,45 @@
+#!/bin/bash
+set -e
+
+# Colors for output
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+NC='\033[0m' # No Color
+
+# Get the commit message from the file
+commit_regex='^(feat|fix|docs|style|refactor|perf|test|build|ci|chore|revert)(\(.+\))?: .{1,50}'
+
+commit_message=$(head -n1 "$1")
+
+echo -e "${YELLOW}📝 Validating commit message...${NC}"
+
+if [[ $commit_message =~ $commit_regex ]]; then
+    echo -e "${GREEN}✅ Commit message follows conventional commit format${NC}"
+else
+    echo -e "${RED}❌ Invalid commit message format${NC}"
+    echo -e "${BLUE}Expected format:${NC}"
+    echo -e "${YELLOW}  <type>[optional scope]: <description>${NC}"
+    echo ""
+    echo -e "${BLUE}Valid types:${NC}"
+    echo -e "${YELLOW}  feat:     A new feature${NC}"
+    echo -e "${YELLOW}  fix:      A bug fix${NC}"
+    echo -e "${YELLOW}  docs:     Documentation only changes${NC}"
+    echo -e "${YELLOW}  style:    Changes that do not affect the meaning of the code${NC}"
+    echo -e "${YELLOW}  refactor: A code change that neither fixes a bug nor adds a feature${NC}"
+    echo -e "${YELLOW}  perf:     A code change that improves performance${NC}"
+    echo -e "${YELLOW}  test:     Adding missing tests or correcting existing tests${NC}"
+    echo -e "${YELLOW}  build:    Changes that affect the build system or external dependencies${NC}"
+    echo -e "${YELLOW}  ci:       Changes to our CI configuration files and scripts${NC}"
+    echo -e "${YELLOW}  chore:    Other changes that don't modify src or test files${NC}"
+    echo -e "${YELLOW}  revert:   Reverts a previous commit${NC}"
+    echo ""
+    echo -e "${BLUE}Examples:${NC}"
+    echo -e "${GREEN}  feat: add user authentication${NC}"
+    echo -e "${GREEN}  fix(server): resolve memory leak in middleware${NC}"
+    echo -e "${GREEN}  docs: update README installation instructions${NC}"
+    echo ""
+    echo -e "${RED}Your commit message:${NC} $commit_message"
+    exit 1
+fi

@@ -1,0 +1,41 @@
+#!/bin/bash
+set -e
+
+# Colors for output
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+NC='\033[0m' # No Color
+
+echo -e "${YELLOW}🔍 Running pre-commit checks...${NC}"
+
+# Check if we're in a git repository
+if [ ! -d ".git" ]; then
+    echo -e "${RED}❌ Not in a git repository${NC}"
+    exit 1
+fi
+
+# Check if Makefile exists
+if [ ! -f "Makefile" ]; then
+    echo -e "${RED}❌ Makefile not found${NC}"
+    exit 1
+fi
+
+# Run make format
+echo -e "${YELLOW}🎨 Running make format...${NC}"
+if ! make format; then
+    echo -e "${RED}❌ make format failed${NC}"
+    exit 1
+fi
+
+# Add any changes made by formatting
+echo -e "${YELLOW}📝 Adding formatting changes...${NC}"
+git add -A
+
+# Run make lint
+echo -e "${YELLOW}🔍 Running make lint...${NC}"
+if ! make lint; then
+    echo -e "${RED}❌ make lint failed${NC}"
+    echo -e "${RED}Please fix linting errors before committing${NC}"
+    exit 1
+fi
