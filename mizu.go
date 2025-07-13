@@ -172,15 +172,15 @@ func WithProfilingHandlers() Option {
 		old := *m
 		new := func(s *Server) *Server {
 			s = old(s)
-			s.mux.HandleFunc("/debug/pprof/", pprof.Index)
-			s.mux.HandleFunc("/debug/pprof/trace", pprof.Trace)
-			s.mux.HandleFunc("/debug/pprof/symbol", pprof.Symbol)
-			s.mux.HandleFunc("/debug/pprof/cmdline", pprof.Cmdline)
-			s.mux.HandleFunc("/debug/pprof/profile", pprof.Profile)
-			s.mux.Handle("/debug/pprof/heap", pprof.Handler("heap"))
-			s.mux.Handle("/debug/pprof/block", pprof.Handler("block"))
-			s.mux.Handle("/debug/pprof/goroutine", pprof.Handler("goroutine"))
-			s.mux.Handle("/debug/pprof/threadcreate", pprof.Handler("threadcreate"))
+			s.HandleFunc("/debug/pprof/", pprof.Index)
+			s.HandleFunc("/debug/pprof/trace", pprof.Trace)
+			s.HandleFunc("/debug/pprof/symbol", pprof.Symbol)
+			s.HandleFunc("/debug/pprof/cmdline", pprof.Cmdline)
+			s.HandleFunc("/debug/pprof/profile", pprof.Profile)
+			s.Handle("/debug/pprof/heap", pprof.Handler("heap"))
+			s.Handle("/debug/pprof/block", pprof.Handler("block"))
+			s.Handle("/debug/pprof/goroutine", pprof.Handler("goroutine"))
+			s.Handle("/debug/pprof/threadcreate", pprof.Handler("threadcreate"))
 			return s
 		}
 		*m = new

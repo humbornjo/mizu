@@ -36,6 +36,7 @@ func main() {
 	serviceName := "example-app"
 	server := mizu.NewServer(
 		serviceName,
+		mizu.WithProfilingHandlers(),
 		mizu.WithDisplayRoutesOnStartup(),
 	)
 
