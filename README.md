@@ -40,18 +40,18 @@ import (
 	"github.com/humbornjo/mizu"
 )
 
-func logMiddleware(next http.HandlerFunc) http.HandlerFunc {
+func MiddlewareLog(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		log.Printf("%s %s", r.Method, r.URL.Path)
-		next(w, r)
+		next.ServeHTTP(w, r)
 	})
 }
 
-func authMiddleware(next http.HandlerFunc) http.HandlerFunc {
+func MiddlewareAuth(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Add authentication logic here
 		w.Header().Set("X-Auth", "validated")
-		next(w, r)
+		next.ServeHTTP(w, r)
 	})
 }
 
@@ -60,7 +60,7 @@ func main() {
 	server := mizu.NewServer("my-api")
 
 	// Apply logging middleware to all routes
-	server.Use(logMiddleware)
+	server.Use(MiddlewareLog)
 
 	// Add some routes
 	server.Get("/", func(w http.ResponseWriter, r *http.Request) {
@@ -75,7 +75,7 @@ func main() {
 	})
 
 	// Add authentication middleware to only a specific route
-	server.Use(authMiddleware).
+	server.Use(MiddlewareAuth).
 		Post("/users", func(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusCreated)
 			_, _ = w.Write([]byte("User created"))
