@@ -1,0 +1,4 @@
+#!/bin/bash -e
+
+# This script is used to integrate with buf build
+go tool protoc-gen-connect-openapi

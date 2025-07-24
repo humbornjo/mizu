@@ -14,7 +14,7 @@ import (
 
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 
-	"mizu.example/protogen/greet/v1/greetv1connect"
+	"mizu.example/protogen/app_foo/greet/v1/greetv1connect"
 	"mizu.example/svc"
 )
 
