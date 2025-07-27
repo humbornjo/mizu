@@ -2,29 +2,16 @@ package mizu
 
 import (
 	"net/http"
-)
 
-type Mux interface {
-	Get(pattern string, handler http.HandlerFunc)
-	Post(pattern string, handler http.HandlerFunc)
-	Put(pattern string, handler http.HandlerFunc)
-	Delete(pattern string, handler http.HandlerFunc)
-	Patch(pattern string, handler http.HandlerFunc)
-	Head(pattern string, handler http.HandlerFunc)
-	Trace(pattern string, handler http.HandlerFunc)
-	Options(pattern string, handler http.HandlerFunc)
-	Connect(pattern string, handler http.HandlerFunc)
-	Handle(pattern string, handler http.Handler)
-	HandleFunc(pattern string, handlerFunc http.HandlerFunc)
-	Use(middleware func(http.Handler) http.Handler) Mux
-}
+	"github.com/humbornjo/mizu/internal"
+)
 
 type mux struct {
 	inner  *Server
 	bucket *middlewareBucket
 }
 
-func newMux(server *Server, ms *middlewareBucket) Mux {
+func newMux(server *Server, ms *middlewareBucket) internal.Mux {
 	return &mux{inner: server, bucket: ms}
 }
 
@@ -42,7 +29,7 @@ func drainBucket(handler http.Handler, m *mux) http.Handler {
 	return handler
 }
 
-func (m *mux) Use(middleware func(http.Handler) http.Handler) Mux {
+func (m *mux) Use(middleware func(http.Handler) http.Handler) internal.Mux {
 	m.inner.mu.Lock()
 	defer m.inner.mu.Unlock()
 	if m.bucket == nil {

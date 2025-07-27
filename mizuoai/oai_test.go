@@ -8,6 +8,10 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+
+	"github.com/pb33f/libopenapi"
+	v3 "github.com/pb33f/libopenapi/datamodel/high/v3"
+	"github.com/stretchr/testify/require"
 )
 
 type TestInputSchema struct {
@@ -30,6 +34,20 @@ type TestInputSchema struct {
 	Form struct {
 		Token string `form:"token"`
 	} `mizu:"form"`
+}
+
+func TestMizuOai_Libopenapi(t *testing.T) {
+	doc, err := libopenapi.NewDocument([]byte("openapi: 3.0"))
+	require.NoError(t, err)
+
+	model, errs := doc.BuildV3Model()
+	for _, err := range errs {
+		require.NoError(t, err)
+	}
+
+	model.Model.Paths.PathItems.Set("/users/{id}", &v3.PathItem{})
+
+	t.Log(doc)
 }
 
 func TestMizuOai_Rx_Read(t *testing.T) {

@@ -9,6 +9,8 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/humbornjo/mizu/internal"
 )
 
 // Option configures the mizu server.
@@ -20,7 +22,7 @@ type middlewareBucket struct {
 	Middlewares []func(http.Handler) http.Handler
 }
 
-var _ Mux = (*Server)(nil)
+var _ internal.Mux = (*Server)(nil)
 
 type serverConfig struct {
 	CustomServer          *http.Server
@@ -56,7 +58,7 @@ func (s *Server) Name() string {
 // Use adds a middleware to the server and returns a new Mux
 // scoped to that middleware. Middlewares are applied in the
 // order they are added.
-func (s *Server) Use(middleware func(http.Handler) http.Handler) Mux {
+func (s *Server) Use(middleware func(http.Handler) http.Handler) internal.Mux {
 	ms := middlewareBucket{
 		Middlewares: []func(http.Handler) http.Handler{middleware},
 	}

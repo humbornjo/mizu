@@ -9,50 +9,42 @@ import (
 	"reflect"
 	"strconv"
 	"strings"
+	"text/template"
 
 	"github.com/humbornjo/mizu"
+	"github.com/pb33f/libopenapi/datamodel/high/base"
+	"github.com/pb33f/libopenapi/orderedmap"
 )
 
-type Option func(*config)
+type Scope struct {
+	path   string
+	server *mizu.Server
 
-type config struct {
-	deprecated  bool
-	tags        []string
-	summary     string
-	description string
+	oaiConfig *oaiConfig
 }
 
-func WithDeprecated() Option {
-	return func(c *config) {
-		c.deprecated = true
+// NewScope creates a new scope with the given path and options.
+// openapi.json will be served at /{path}/openapi.json. HTML will
+// be served at /{path}/openapi if enabled.
+func NewScope(server *mizu.Server, path string, opts ...OaiOption) *Scope {
+
+	return &Scope{
+		path:   path,
+		server: server,
 	}
 }
 
-func WithTags(tags ...string) Option {
-	return func(c *config) {
-		c.tags = tags
-	}
-}
-
-func WithSummary(summary string) Option {
-	return func(c *config) {
-		c.summary = summary
-	}
-}
-
-func WithDescription(description string) Option {
-	return func(c *config) {
-		c.description = description
-	}
-}
-
-func Get[I any, O any](s *mizu.Server, pattern string, handlerOai func(Tx[O], Rx[I]), opts ...Option) {
+func Get[I any, O any](s *Scope, pattern string, handlerOai func(Tx[O], Rx[I]), opts ...OaiOption) {
 	middleware, handler := handler[I, O](handlerOai).split()
-	s.Use(middleware).Get(pattern, handler)
+	s.server.Use(middleware).Get(pattern, handler)
 }
 
 type Rx[T any] struct {
 	r *http.Request
+}
+
+func (r Rx[T]) Request() *http.Request {
+	return r.r
 }
 
 func (rx Rx[T]) Read() *T {
@@ -216,3 +208,76 @@ func setField(field reflect.Value, value string) error {
 	}
 	return nil
 }
+
+// goTypeToSchema converts a Go type into a corresponding OpenAPI Schema.
+// It handles basic types (string, int, float, bool), structs, and slices.
+// For structs, it uses the `json` tag to determine property names.
+func goTypeToSchema(typ reflect.Type) *base.SchemaProxy {
+	// Dereference pointer types to get the underlying type.
+	if typ.Kind() == reflect.Ptr {
+		typ = typ.Elem()
+	}
+
+	schema := &base.Schema{}
+	switch typ.Kind() {
+	case reflect.String:
+		schema.Type = []string{"string"}
+	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64,
+		reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
+		schema.Type = []string{"integer"}
+	case reflect.Float32, reflect.Float64:
+		schema.Type = []string{"number"}
+	case reflect.Bool:
+		schema.Type = []string{"boolean"}
+	case reflect.Struct:
+		schema.Type = []string{"object"}
+		schema.Properties = orderedmap.New[string, *base.SchemaProxy]()
+		for i := 0; i < typ.NumField(); i++ {
+			field := typ.Field(i)
+			jsonTag := strings.Split(field.Tag.Get("json"), ",")[0]
+			if jsonTag == "" || jsonTag == "-" {
+				continue // Skip fields without a json tag or explicitly ignored
+			}
+
+			fieldSchema := goTypeToSchema(field.Type)
+			if fieldSchema != nil {
+				schema.Properties.Set(jsonTag, fieldSchema)
+			}
+		}
+	case reflect.Slice:
+		schema.Type = []string{"array"}
+		schema.Items = &base.DynamicValue[*base.SchemaProxy, bool]{
+			A: goTypeToSchema(typ.Elem()),
+		}
+	default:
+		// Unsupported types will result in a nil schema.
+		return nil
+	}
+
+	return base.CreateSchemaProxy(schema)
+}
+
+var _SWAGGER_UI_TEMPLATE = template.Must(template.New("swagger_ui").Parse(_SWAGGER_UI_TEMPLATE_CONTENT))
+
+const _SWAGGER_UI_TEMPLATE_CONTENT = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="description" content="SwaggerUI" />
+  <title>SwaggerUI</title>
+  <link rel="stylesheet" href="https://unpkg.com/swagger-ui-dist@5.11.0/swagger-ui.css" />
+</head>
+<body>
+<div id="swagger-ui"></div>
+<script src="https://unpkg.com/swagger-ui-dist@5.11.0/swagger-ui-bundle.js" crossorigin></script>
+<script>
+  window.onload = () => {
+    window.ui = SwaggerUIBundle({
+      url: '{{ .Path }}',
+      dom_id: '#swagger-ui',
+    });
+  };
+</script>
+</body>
+</html>`
