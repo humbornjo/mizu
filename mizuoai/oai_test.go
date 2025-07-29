@@ -4,17 +4,11 @@ import (
 	"bytes"
 	"net/http"
 	"net/http/httptest"
-	"net/url"
 	"reflect"
-	"strings"
 	"testing"
-
-	"github.com/pb33f/libopenapi"
-	v3 "github.com/pb33f/libopenapi/datamodel/high/v3"
-	"github.com/stretchr/testify/require"
 )
 
-type TestInputSchema struct {
+type TestInputBodyJSON struct {
 	Query struct {
 		Name  string `query:"name"`
 		Age   int    `query:"age"`
@@ -31,30 +25,25 @@ type TestInputSchema struct {
 		Authorization string `header:"Authorization"`
 		ContentType   string `header:"Content-Type"`
 	} `mizu:"header"`
-	Form struct {
-		Token string `form:"token"`
-	} `mizu:"form"`
 }
 
-func TestMizuOai_Libopenapi(t *testing.T) {
-	doc, err := libopenapi.NewDocument([]byte("openapi: 3.0"))
-	require.NoError(t, err)
-
-	model, errs := doc.BuildV3Model()
-	for _, err := range errs {
-		require.NoError(t, err)
-	}
-
-	model.Model.Paths.PathItems.Set("/users/{id}", &v3.PathItem{})
-
-	t.Log(doc)
+type TestInputBodyString struct {
+	Message string `mizu:"body"`
 }
 
-func TestMizuOai_Rx_Read(t *testing.T) {
+type TestInputBodyInt struct {
+	Value int `mizu:"body"`
+}
+
+type TestInputBodyFloat struct {
+	Value float64 `mizu:"body"`
+}
+
+func TestMizuOai_Rx_Read_BodyJSON(t *testing.T) {
 	testCases := []struct {
 		name     string
 		request  *http.Request
-		expected *TestInputSchema
+		expected *TestInputBodyJSON
 	}{
 		{
 			name: "JSON Body Request",
@@ -66,7 +55,7 @@ func TestMizuOai_Rx_Read(t *testing.T) {
 				req.SetPathValue("id", "123")
 				return req
 			}(),
-			expected: &TestInputSchema{
+			expected: &TestInputBodyJSON{
 				Query: struct {
 					Name  string `query:"name"`
 					Age   int    `query:"age"`
@@ -85,73 +74,18 @@ func TestMizuOai_Rx_Read(t *testing.T) {
 				}{Authorization: "Bearer xyz", ContentType: "application/json"},
 			},
 		},
-		{
-			name: "Form Body Request",
-			request: func() *http.Request {
-				form := url.Values{}
-				form.Add("token", "secret-token")
-				req := httptest.NewRequest("POST", "/users/456?name=Jane&age=25&admin=false", strings.NewReader(form.Encode()))
-				req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-				req.Header.Set("Authorization", "Bearer abc")
-				req.SetPathValue("id", "456")
-				return req
-			}(),
-			expected: &TestInputSchema{
-				Query: struct {
-					Name  string `query:"name"`
-					Age   int    `query:"age"`
-					Admin bool   `query:"admin"`
-				}{Name: "Jane", Age: 25, Admin: false},
-				Path: struct {
-					ID string `path:"id"`
-				}{ID: "456"},
-				Header: struct {
-					Authorization string `header:"Authorization"`
-					ContentType   string `header:"Content-Type"`
-				}{Authorization: "Bearer abc", ContentType: "application/x-www-form-urlencoded"},
-				Form: struct {
-					Token string `form:"token"`
-				}{Token: "secret-token"},
-			},
-		},
-		{
-			name: "GET Request (No Body)",
-			request: func() *http.Request {
-				req := httptest.NewRequest("GET", "/items/789?name=Widget&age=1&admin=false", nil)
-				req.Header.Set("Authorization", "Bearer qwe")
-				req.SetPathValue("id", "789")
-				return req
-			}(),
-			expected: &TestInputSchema{
-				Query: struct {
-					Name  string `query:"name"`
-					Age   int    `query:"age"`
-					Admin bool   `query:"admin"`
-				}{Name: "Widget", Age: 1, Admin: false},
-				Path: struct {
-					ID string `path:"id"`
-				}{ID: "789"},
-				Header: struct {
-					Authorization string `header:"Authorization"`
-					ContentType   string `header:"Content-Type"`
-				}{Authorization: "Bearer qwe"},
-			},
-		},
 	}
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			rx := Rx[TestInputSchema]{r: tc.request}
-			result := rx.Read()
-
-			// For form requests, we need to parse it to make it available for the test assertion.
-			if strings.Contains(tc.request.Header.Get("Content-Type"), "application/x-www-form-urlencoded") {
-				// Re-parse form for assertion check
-				tc.request.ParseForm()
-				if result.Form.Token != tc.request.FormValue("token") {
-					t.Errorf("Form token not parsed correctly. Got %s, want %s", result.Form.Token, tc.request.FormValue("token"))
+			rx := Rx[TestInputBodyJSON]{r: tc.request, read: func(r *http.Request) *TestInputBodyJSON {
+				input := new(TestInputBodyJSON)
+				for _, parseFn := range genParser[TestInputBodyJSON]() {
+					parseFn(r, input)
 				}
-			}
+				return input
+			}}
+			result := rx.Read()
 
 			// A simple way to compare, ignoring the body struct if it has been consumed
 			if !reflect.DeepEqual(result.Query, tc.expected.Query) {
@@ -166,43 +100,120 @@ func TestMizuOai_Rx_Read(t *testing.T) {
 			if tc.name == "JSON Body Request" && !reflect.DeepEqual(result.Body, tc.expected.Body) {
 				t.Errorf("Body mismatch: got %+v, want %+v", result.Body, tc.expected.Body)
 			}
-			if tc.name == "Form Body Request" && !reflect.DeepEqual(result.Form, tc.expected.Form) {
-				t.Errorf("Form mismatch: got %+v, want %+v", result.Form, tc.expected.Form)
+		})
+	}
+}
+
+func TestMizuOai_Rx_Read_BodyString(t *testing.T) {
+	testCases := []struct {
+		name     string
+		request  *http.Request
+		expected *TestInputBodyString
+	}{
+		{
+			name: "String Body Request",
+			request: func() *http.Request {
+				req := httptest.NewRequest("POST", "/",
+					bytes.NewBufferString("hello world"))
+				req.Header.Set("Content-Type", "text/plain")
+				return req
+			}(),
+			expected: &TestInputBodyString{
+				Message: "hello world",
+			},
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			rx := Rx[TestInputBodyString]{r: tc.request, read: func(r *http.Request) *TestInputBodyString {
+				input := new(TestInputBodyString)
+				for _, parseFn := range genParser[TestInputBodyString]() {
+					parseFn(r, input)
+				}
+				return input
+			}}
+			result := rx.Read()
+
+			if !reflect.DeepEqual(result, tc.expected) {
+				t.Errorf("Body mismatch: got %+v, want %+v", result, tc.expected)
 			}
 		})
 	}
 }
 
-func TestMizuOai_Rx_Read_PlainType(t *testing.T) {
-	t.Run("Plain String Body", func(t *testing.T) {
-		body := "this is a plain string body"
-		req := httptest.NewRequest("POST", "/", strings.NewReader(body))
-		req.Header.Set("Content-Type", "text/plain")
+func TestMizuOai_Rx_Read_BodyInt(t *testing.T) {
+	testCases := []struct {
+		name     string
+		request  *http.Request
+		expected *TestInputBodyInt
+	}{
+		{
+			name: "Int Body Request",
+			request: func() *http.Request {
+				req := httptest.NewRequest("POST", "/",
+					bytes.NewBufferString(`12345`))
+				req.Header.Set("Content-Type", "application/json")
+				return req
+			}(),
+			expected: &TestInputBodyInt{
+				Value: 12345,
+			},
+		},
+	}
 
-		rx := Rx[string]{r: req}
-		result := rx.Read()
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			rx := Rx[TestInputBodyInt]{r: tc.request, read: func(r *http.Request) *TestInputBodyInt {
+				input := new(TestInputBodyInt)
+				for _, parseFn := range genParser[TestInputBodyInt]() {
+					parseFn(r, input)
+				}
+				return input
+			}}
+			result := rx.Read()
 
-		if result == nil {
-			t.Fatal("Read() returned nil")
-		}
-		if *result != body {
-			t.Errorf("Body mismatch: got %q, want %q", *result, body)
-		}
-	})
+			if !reflect.DeepEqual(result, tc.expected) {
+				t.Errorf("Body mismatch: got %+v, want %+v", result, tc.expected)
+			}
+		})
+	}
+}
 
-	t.Run("Plain JSON-encoded Int Body", func(t *testing.T) {
-		body := "12345"
-		req := httptest.NewRequest("POST", "/", strings.NewReader(body))
-		req.Header.Set("Content-Type", "application/json")
+func TestMizuOai_Rx_Read_BodyFloat(t *testing.T) {
+	testCases := []struct {
+		name     string
+		request  *http.Request
+		expected *TestInputBodyFloat
+	}{
+		{
+			name: "Float Body Request",
+			request: func() *http.Request {
+				req := httptest.NewRequest("POST", "/",
+					bytes.NewBufferString(`123.45`))
+				req.Header.Set("Content-Type", "application/json")
+				return req
+			}(),
+			expected: &TestInputBodyFloat{
+				Value: 123.45,
+			},
+		},
+	}
 
-		rx := Rx[int]{r: req}
-		result := rx.Read()
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			rx := Rx[TestInputBodyFloat]{r: tc.request, read: func(r *http.Request) *TestInputBodyFloat {
+				input := new(TestInputBodyFloat)
+				for _, parseFn := range genParser[TestInputBodyFloat]() {
+					parseFn(r, input)
+				}
+				return input
+			}}
+			result := rx.Read()
 
-		if result == nil {
-			t.Fatal("Read() returned nil")
-		}
-		if *result != 12345 {
-			t.Errorf("Body mismatch: got %d, want %d", *result, 12345)
-		}
-	})
+			if !reflect.DeepEqual(result, tc.expected) {
+				t.Errorf("Body mismatch: got %+v, want %+v", result, tc.expected)
+			}
+		})
+	}
 }

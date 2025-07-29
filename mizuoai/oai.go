@@ -20,6 +20,7 @@ type Scope struct {
 	path   string
 	server *mizu.Server
 
+	// TODO: This config is not yet used.
 	oaiConfig *oaiConfig
 }
 
@@ -27,182 +28,298 @@ type Scope struct {
 // openapi.json will be served at /{path}/openapi.json. HTML will
 // be served at /{path}/openapi if enabled.
 func NewScope(server *mizu.Server, path string, opts ...OaiOption) *Scope {
-
+	// TODO: oaiConfig is not initialized from opts.
 	return &Scope{
 		path:   path,
 		server: server,
 	}
 }
 
-func Get[I any, O any](s *Scope, pattern string, handlerOai func(Tx[O], Rx[I]), opts ...OaiOption) {
-	middleware, handler := handler[I, O](handlerOai).split()
-	s.server.Use(middleware).Get(pattern, handler)
+// Get registers a generic handler for GET requests. It uses
+// reflection to parse request data into the input type `I` and
+// generate OpenAPI documentation.
+func Get[I any, O any](s *Scope, pattern string, oaiHandler func(Tx[O], Rx[I]), opts ...OaiOption) {
+	input := new(I)
+	valInput := reflect.ValueOf(input).Elem()
+	typInput := valInput.Type()
+	if typInput.Kind() != reflect.Struct {
+		panic("input type must be a struct")
+	}
+
+	// TODO: handler-specific OaiOption are not used.
+	s.server.Get(pattern, handler[I, O](oaiHandler).genHandler())
 }
 
+// Rx represents the request side of an API endpoint. It provides
+// access to the parsed request data and the original request
+// context.
 type Rx[T any] struct {
-	r *http.Request
+	r    *http.Request
+	read func(*http.Request) *T
 }
 
-func (r Rx[T]) Request() *http.Request {
-	return r.r
-}
-
+// Read returns the parsed input from the request. The parsing
+// logic is generated based on the struct tags of the input type.
 func (rx Rx[T]) Read() *T {
-	input := new(T)
-	val := reflect.ValueOf(input).Elem()
-	typ := val.Type()
-
-	if typ.Kind() != reflect.Struct {
-		if rx.r.Body != nil && rx.r.Body != http.NoBody {
-			if typ.Kind() == reflect.String {
-				bodyBytes, err := io.ReadAll(rx.r.Body)
-				if err == nil {
-					val.SetString(string(bodyBytes))
-				}
-			} else {
-				json.NewDecoder(rx.r.Body).Decode(input)
-			}
-		}
-		return input
-	}
-
-	contentType := rx.r.Header.Get("Content-Type")
-	isJSONBody := strings.Contains(contentType, "application/json")
-	isForm := strings.Contains(contentType, "application/x-www-form-urlencoded") ||
-		strings.Contains(contentType, "multipart/form-data")
-
-	if isForm {
-		rx.r.ParseForm()
-	}
-
-	for i := 0; i < typ.NumField(); i++ {
-		fieldTyp := typ.Field(i)
-		fieldVal := val.Field(i)
-
-		if mizuTag, ok := fieldTyp.Tag.Lookup("mizu"); ok {
-			if fieldVal.Kind() != reflect.Struct {
-				continue
-			}
-
-			switch mizuTag {
-			case "query":
-				parseRequest(fieldVal, "query", func(key string) string {
-					return rx.r.URL.Query().Get(key)
-				})
-			case "header":
-				parseRequest(fieldVal, "header", func(key string) string {
-					return rx.r.Header.Get(key)
-				})
-			case "form":
-				if isForm {
-					parseRequest(fieldVal, "form", func(key string) string {
-						return rx.r.FormValue(key)
-					})
-				}
-			case "path":
-				parseRequest(fieldVal, "path", func(key string) string {
-					return rx.r.PathValue(key)
-				})
-			case "body":
-				if isJSONBody && rx.r.Body != nil && rx.r.Body != http.NoBody {
-					if fieldVal.CanAddr() {
-						json.NewDecoder(rx.r.Body).Decode(fieldVal.Addr().Interface())
-					}
-				}
-			}
-		}
-	}
-
-	return input
+	return rx.read(rx.r)
 }
 
+// Context returns the context of the original request.
 func (rx Rx[T]) Context() context.Context {
 	return rx.r.Context()
 }
 
+// Request returns the original http.Request.
+func (r Rx[T]) Request() *http.Request {
+	return r.r
+}
+
+// Tx represents the response side of an API endpoint. It
+// provides methods to write the response.
 type Tx[T any] struct {
 	w http.ResponseWriter
 }
 
+// Write writes the JSON-encoded output to the response writer.
+// It also sets the Content-Type header to "application/json;
+// charset=utf-8".
 func (tx Tx[T]) Write(data *T) error {
-	return json.NewEncoder(tx.w).Encode(nil)
+	tx.w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	return json.NewEncoder(tx.w).Encode(data)
 }
 
-type ctxKey int
+// ResponseWriter returns the original http.ResponseWriter.
+func (tx Tx[T]) ResponseWriter() http.ResponseWriter {
+	return tx.w
+}
+
+// tag represents the source of request data (e.g., path, body).
+type tag string
+
+func (t tag) String() string {
+	return string(t)
+}
 
 const (
-	_CTXKEY_RX ctxKey = iota
-	_CTXKEY_TX
+	_TAG_PATH   tag = "path"
+	_TAG_QUERY  tag = "query"
+	_TAG_HEADER tag = "header"
+	_TAG_BODY   tag = "body"
+	_TAG_FORM   tag = "form"
 )
 
-type handler[I any, O any] func(Tx[O], Rx[I])
-
-func (h handler[I, O]) split() (func(http.Handler) http.Handler, http.HandlerFunc) {
-	handler := func(w http.ResponseWriter, r *http.Request) {
-		rx, tx := r.Context().Value(_CTXKEY_RX).(Rx[I]), r.Context().Value(_CTXKEY_TX).(Tx[O])
-		h(tx, rx)
-	}
-
-	// The middleware should read the data from request into r.Context as T, and write the data to the response as O
-	middleware := func(next http.Handler) http.Handler {
-		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			ctx := r.Context()
-			rx, tx := Rx[I]{r}, Tx[O]{w}
-			ctx = context.WithValue(ctx, _CTXKEY_RX, rx)
-			ctx = context.WithValue(ctx, _CTXKEY_TX, tx)
-			rr := r.WithContext(ctx)
-
-			next.ServeHTTP(w, rr)
-		})
-	}
-
-	return middleware, handler
+// notion holds metadata about a struct field to be parsed from a
+// request.
+type notion struct {
+	fieldNumber int
+	identifier  string
 }
 
-func parseRequest(fieldVal reflect.Value, tagName string, getter func(string) string) {
-	structType := fieldVal.Type()
-	for i := 0; i < fieldVal.NumField(); i++ {
-		field := structType.Field(i)
-		if tag, ok := field.Tag.Lookup(tagName); ok {
-			value := getter(tag)
-			if value != "" {
-				setField(fieldVal.Field(i), value)
+// genNotions extracts metadata for fields within a struct that
+// are tagged with a specific data source tag as notion.
+func genNotions(val reflect.Value, typ tag) []notion {
+	notions := []notion{}
+	for i := range val.Type().NumField() {
+		field := val.Type().Field(i)
+		tagVal := field.Tag.Get(typ.String())
+		if tagVal == "" {
+			tagVal = field.Name
+		}
+		notions = append(notions, notion{fieldNumber: i, identifier: tagVal})
+	}
+	return notions
+}
+
+// parser is a collection of functions that perform parsing of an
+// http.Request into a target struct.
+type parser[T any] []func(r *http.Request, val *T) []error
+
+// genParser creates a parser for a given generic type T. It uses
+// reflection to inspect the fields and tags of T to build a set
+// of parsing functions for different parts of the request.
+func genParser[T any]() parser[T] {
+	input := new(T)
+	val := reflect.ValueOf(input).Elem()
+	typ := val.Type()
+
+	hasBody := false
+	hasForm := false
+	p := parser[T]{}
+	for i := range typ.NumField() {
+		fieldTyp := typ.Field(i)
+		if mizuTag, ok := fieldTyp.Tag.Lookup("mizu"); ok {
+			switch tag(mizuTag) {
+			case _TAG_PATH:
+				if fieldTyp.Type.Kind() != reflect.Struct {
+					panic("path must be a struct")
+				}
+				structPath := val.FieldByName(fieldTyp.Name)
+				metaPath := genNotions(structPath, _TAG_PATH)
+				if len(metaPath) == 0 {
+					continue
+				}
+				p = append(p, func(r *http.Request, input *T) []error {
+					errs := []error{}
+					st := reflect.ValueOf(input).Elem().FieldByName(fieldTyp.Name)
+					for _, meta := range metaPath {
+						if val := r.PathValue(meta.identifier); val != "" {
+							if err := setField(st.Field(meta.fieldNumber), strings.NewReader(val)); err != nil {
+								errs = append(errs, fmt.Errorf("path param '%s': %w", meta.identifier, err))
+							}
+						}
+					}
+					return errs
+				})
+			case _TAG_QUERY:
+				if fieldTyp.Type.Kind() != reflect.Struct {
+					panic("query must be a struct")
+				}
+				structQuery := val.FieldByName(fieldTyp.Name)
+				metaQuery := genNotions(structQuery, _TAG_QUERY)
+				if len(metaQuery) == 0 {
+					continue
+				}
+				p = append(p, func(r *http.Request, val *T) []error {
+					errs := []error{}
+					st := reflect.ValueOf(val).Elem().FieldByName(fieldTyp.Name)
+					for _, meta := range metaQuery {
+						if val := r.URL.Query().Get(meta.identifier); val != "" {
+							if err := setField(st.Field(meta.fieldNumber), strings.NewReader(val)); err != nil {
+								errs = append(errs, fmt.Errorf("query param '%s': %w", meta.identifier, err))
+							}
+						}
+					}
+					return errs
+				})
+			case _TAG_HEADER:
+				if fieldTyp.Type.Kind() != reflect.Struct {
+					panic("header must be a struct")
+				}
+				structHeader := val.FieldByName(fieldTyp.Name)
+				metaHeader := genNotions(structHeader, _TAG_HEADER)
+				if len(metaHeader) == 0 {
+					continue
+				}
+				p = append(p, func(r *http.Request, val *T) []error {
+					errs := []error{}
+					st := reflect.ValueOf(val).Elem().FieldByName(fieldTyp.Name)
+					for _, meta := range metaHeader {
+						if val := r.Header.Get(meta.identifier); val != "" {
+							if err := setField(st.Field(meta.fieldNumber), strings.NewReader(val)); err != nil {
+								errs = append(errs, fmt.Errorf("header '%s': %w", meta.identifier, err))
+							}
+						}
+					}
+					return errs
+				})
+			case _TAG_FORM:
+				if hasBody {
+					panic("cannot use both form and body")
+				}
+				if hasForm {
+					panic("cannot use multiple form")
+				}
+				hasForm = true
+				// TODO: Implement form parsing.
+			case _TAG_BODY:
+				if hasForm {
+					panic("cannot use both form and body")
+				}
+				if hasBody {
+					panic("cannot use multiple body")
+				}
+				hasBody = true
+				p = append(p, func(r *http.Request, val *T) []error {
+					if err := setField(reflect.ValueOf(val).Elem().FieldByName(fieldTyp.Name), r.Body); err != nil {
+						return []error{fmt.Errorf("body: %w", err)}
+					}
+					return nil
+				})
 			}
 		}
 	}
+	return p
 }
 
-func setField(field reflect.Value, value string) error {
+// handler is a generic type for user-provided API logic.
+type handler[I any, O any] func(Tx[O], Rx[I])
+
+// genHandler wraps the user-provided handler with request
+// parsing logic.
+func (h handler[I, O]) genHandler() http.HandlerFunc {
+	// Pre-compile the parser for efficiency. This is safe to do once as the type I is known at compile time.
+	parser := genParser[I]()
+
+	// Return the actual http.HandlerFunc.
+	return func(w http.ResponseWriter, r *http.Request) {
+		// Lazily parse the request data.
+		rx := Rx[I]{r: r, read: func(r *http.Request) *I {
+			input := new(I)
+			for _, p := range parser {
+				p(r, input)
+			}
+			return input
+		}}
+		// The response object (tx) wraps the original http.ResponseWriter.
+		tx := Tx[O]{w: w}
+
+		h(tx, rx)
+	}
+}
+
+// setField populates a reflect.Value from an io.Reader. It
+// handles primitive types by parsing them from strings, and
+// struct types by using a JSON decoder.
+func setField(field reflect.Value, reader io.Reader) error {
 	if !field.CanSet() {
 		return fmt.Errorf("cannot set field")
 	}
-	switch field.Kind() {
+
+	typ := field.Type()
+	// For struct types, assume JSON body and decode into a new instance.
+	if typ.Kind() == reflect.Struct {
+		obj := reflect.New(typ).Interface()
+		if err := json.NewDecoder(reader).Decode(&obj); err != nil {
+			return err
+		}
+		field.Set(reflect.ValueOf(obj).Elem())
+		return nil
+	}
+
+	// For primitive types, read the value as a string and parse it.
+	valueb, err := io.ReadAll(reader)
+	if err != nil {
+		return err
+	}
+	value := string(valueb)
+
+	switch typ.Kind() {
 	case reflect.String:
 		field.SetString(value)
 	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
-		if intVal, err := strconv.ParseInt(value, 10, 64); err == nil {
-			field.SetInt(intVal)
-		} else {
-			return err
+		intVal, err := strconv.ParseInt(value, 10, 64)
+		if err != nil {
+			return fmt.Errorf("invalid integer: %w", err)
 		}
+		field.SetInt(intVal)
 	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
-		if uintVal, err := strconv.ParseUint(value, 10, 64); err == nil {
-			field.SetUint(uintVal)
-		} else {
-			return err
+		uintVal, err := strconv.ParseUint(value, 10, 64)
+		if err != nil {
+			return fmt.Errorf("invalid unsigned integer: %w", err)
 		}
+		field.SetUint(uintVal)
 	case reflect.Bool:
-		if boolVal, err := strconv.ParseBool(value); err == nil {
-			field.SetBool(boolVal)
-		} else {
-			return err
+		boolVal, err := strconv.ParseBool(value)
+		if err != nil {
+			return fmt.Errorf("invalid boolean: %w", err)
 		}
+		field.SetBool(boolVal)
 	case reflect.Float32, reflect.Float64:
-		if floatVal, err := strconv.ParseFloat(value, 64); err == nil {
-			field.SetFloat(floatVal)
-		} else {
-			return err
+		floatVal, err := strconv.ParseFloat(value, 64)
+		if err != nil {
+			return fmt.Errorf("invalid float: %w", err)
 		}
+		field.SetFloat(floatVal)
 	default:
 		return fmt.Errorf("unsupported field type %s", field.Type())
 	}
@@ -281,3 +398,4 @@ const _SWAGGER_UI_TEMPLATE_CONTENT = `<!DOCTYPE html>
 </script>
 </body>
 </html>`
+
