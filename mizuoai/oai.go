@@ -22,7 +22,6 @@ type Scope struct {
 	path   string
 	server *mizu.Server
 
-	// TODO: This config is not yet used.
 	oaiConfig *oaiConfig
 }
 
@@ -126,7 +125,7 @@ func (rx Rx[T]) Context() context.Context {
 	return rx.r.Context()
 }
 
-// Context returns the context of the original request.
+// WithContext sets the context of the original request.
 func (rx Rx[T]) WithContext(ctx context.Context) {
 	_ = rx.r.WithContext(ctx)
 }
@@ -230,17 +229,17 @@ func genParser[T any]() parser[T] {
 					panic("path must be a struct")
 				}
 				structPath := val.FieldByName(fieldTyp.Name)
-				metaPath := genNotions(structPath, _TAG_PATH)
-				if len(metaPath) == 0 {
+				notionPath := genNotions(structPath, _TAG_PATH)
+				if len(notionPath) == 0 {
 					continue
 				}
 				p.append(func(r *http.Request, val *T) []error {
 					errs := []error{}
 					st := reflect.ValueOf(val).Elem().Field(i)
-					for _, meta := range metaPath {
-						if v := r.PathValue(meta.identifier); v != "" {
-							if err := setField(st.Field(meta.fieldNumber), strings.NewReader(v)); err != nil {
-								errs = append(errs, fmt.Errorf("path param '%s': %w", meta.identifier, err))
+					for _, notion := range notionPath {
+						if v := r.PathValue(notion.identifier); v != "" {
+							if err := setField(st.Field(notion.fieldNumber), strings.NewReader(v)); err != nil {
+								errs = append(errs, fmt.Errorf("path param '%s': %w", notion.identifier, err))
 							}
 						}
 					}
@@ -251,17 +250,17 @@ func genParser[T any]() parser[T] {
 					panic("query must be a struct")
 				}
 				structQuery := val.FieldByName(fieldTyp.Name)
-				metaQuery := genNotions(structQuery, _TAG_QUERY)
-				if len(metaQuery) == 0 {
+				notionQuery := genNotions(structQuery, _TAG_QUERY)
+				if len(notionQuery) == 0 {
 					continue
 				}
 				p.append(func(r *http.Request, val *T) []error {
 					errs := []error{}
 					st := reflect.ValueOf(val).Elem().Field(i)
-					for _, meta := range metaQuery {
-						if v := r.URL.Query().Get(meta.identifier); v != "" {
-							if err := setField(st.Field(meta.fieldNumber), strings.NewReader(v)); err != nil {
-								errs = append(errs, fmt.Errorf("query param '%s': %w", meta.identifier, err))
+					for _, notion := range notionQuery {
+						if v := r.URL.Query().Get(notion.identifier); v != "" {
+							if err := setField(st.Field(notion.fieldNumber), strings.NewReader(v)); err != nil {
+								errs = append(errs, fmt.Errorf("query param '%s': %w", notion.identifier, err))
 							}
 						}
 					}
@@ -272,17 +271,17 @@ func genParser[T any]() parser[T] {
 					panic("header must be a struct")
 				}
 				structHeader := val.FieldByName(fieldTyp.Name)
-				metaHeader := genNotions(structHeader, _TAG_HEADER)
-				if len(metaHeader) == 0 {
+				notionHeader := genNotions(structHeader, _TAG_HEADER)
+				if len(notionHeader) == 0 {
 					continue
 				}
 				p.append(func(r *http.Request, val *T) []error {
 					errs := []error{}
 					st := reflect.ValueOf(val).Elem().Field(i)
-					for _, meta := range metaHeader {
-						if v := r.Header.Get(meta.identifier); v != "" {
-							if err := setField(st.Field(meta.fieldNumber), strings.NewReader(v)); err != nil {
-								errs = append(errs, fmt.Errorf("header '%s': %w", meta.identifier, err))
+					for _, notion := range notionHeader {
+						if v := r.Header.Get(notion.identifier); v != "" {
+							if err := setField(st.Field(notion.fieldNumber), strings.NewReader(v)); err != nil {
+								errs = append(errs, fmt.Errorf("header '%s': %w", notion.identifier, err))
 							}
 						}
 					}

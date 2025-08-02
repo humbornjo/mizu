@@ -1,4 +1,4 @@
-package mizuoai
+package mizuoai_test
 
 import (
 	"bytes"
@@ -6,6 +6,9 @@ import (
 	"net/http/httptest"
 	"reflect"
 	"testing"
+
+	"github.com/humbornjo/mizu"
+	"github.com/humbornjo/mizu/mizuoai"
 )
 
 type TestInputBodyJSON struct {
@@ -48,11 +51,10 @@ func TestMizuOai_Rx_Read_BodyJSON(t *testing.T) {
 		{
 			name: "JSON Body Request",
 			request: func() *http.Request {
-				req := httptest.NewRequest("POST", "/users/123?name=John&age=30&admin=true",
+				req := httptest.NewRequest("GET", "/users/123?name=John&age=30&admin=true",
 					bytes.NewBufferString(`{"email": "test@example.com", "role": "user"}`))
 				req.Header.Set("Content-Type", "application/json")
 				req.Header.Set("Authorization", "Bearer xyz")
-				req.SetPathValue("id", "123")
 				return req
 			}(),
 			expected: &TestInputBodyJSON{
@@ -78,25 +80,33 @@ func TestMizuOai_Rx_Read_BodyJSON(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			rx := Rx[TestInputBodyJSON]{r: tc.request, read: func(r *http.Request) *TestInputBodyJSON {
-				input := new(TestInputBodyJSON)
-				genParser[TestInputBodyJSON]()(r, input)
-				return input
-			}}
-			result := rx.Read()
+			server := mizu.NewServer("test")
+			scope := mizuoai.NewScope(server, "")
 
-			// A simple way to compare, ignoring the body struct if it has been consumed
-			if !reflect.DeepEqual(result.Query, tc.expected.Query) {
-				t.Errorf("Query mismatch: got %+v, want %+v", result.Query, tc.expected.Query)
+			var receivedInput *TestInputBodyJSON
+
+			mizuoai.Get(scope, "/users/{id}", func(tx mizuoai.Tx[string], rx mizuoai.Rx[TestInputBodyJSON]) {
+				receivedInput = rx.Read()
+			})
+
+			w := httptest.NewRecorder()
+			server.Handler().ServeHTTP(w, tc.request)
+
+			if receivedInput == nil {
+				t.Fatal("handler was not called")
 			}
-			if !reflect.DeepEqual(result.Path, tc.expected.Path) {
-				t.Errorf("Path mismatch: got %+v, want %+v", result.Path, tc.expected.Path)
+
+			if !reflect.DeepEqual(receivedInput.Query, tc.expected.Query) {
+				t.Errorf("Query mismatch: got %+v, want %+v", receivedInput.Query, tc.expected.Query)
 			}
-			if !reflect.DeepEqual(result.Header, tc.expected.Header) {
-				t.Errorf("Header mismatch: got %+v, want %+v", result.Header, tc.expected.Header)
+			if !reflect.DeepEqual(receivedInput.Path, tc.expected.Path) {
+				t.Errorf("Path mismatch: got %+v, want %+v", receivedInput.Path, tc.expected.Path)
 			}
-			if tc.name == "JSON Body Request" && !reflect.DeepEqual(result.Body, tc.expected.Body) {
-				t.Errorf("Body mismatch: got %+v, want %+v", result.Body, tc.expected.Body)
+			if !reflect.DeepEqual(receivedInput.Header, tc.expected.Header) {
+				t.Errorf("Header mismatch: got %+v, want %+v", receivedInput.Header, tc.expected.Header)
+			}
+			if !reflect.DeepEqual(receivedInput.Body, tc.expected.Body) {
+				t.Errorf("Body mismatch: got %+v, want %+v", receivedInput.Body, tc.expected.Body)
 			}
 		})
 	}
@@ -111,7 +121,7 @@ func TestMizuOai_Rx_Read_BodyString(t *testing.T) {
 		{
 			name: "String Body Request",
 			request: func() *http.Request {
-				req := httptest.NewRequest("POST", "/",
+				req := httptest.NewRequest("GET", "/test",
 					bytes.NewBufferString("hello world"))
 				req.Header.Set("Content-Type", "text/plain")
 				return req
@@ -124,16 +134,24 @@ func TestMizuOai_Rx_Read_BodyString(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			rx := Rx[TestInputBodyString]{r: tc.request, read: func(r *http.Request) *TestInputBodyString {
-				input := new(TestInputBodyString)
-				parser := genParser[TestInputBodyString]()
-				parser(r, input)
-				return input
-			}}
-			result := rx.Read()
+			server := mizu.NewServer("test")
+			scope := mizuoai.NewScope(server, "")
 
-			if !reflect.DeepEqual(result, tc.expected) {
-				t.Errorf("Body mismatch: got %+v, want %+v", result, tc.expected)
+			var receivedInput *TestInputBodyString
+
+			mizuoai.Get(scope, "/test", func(tx mizuoai.Tx[string], rx mizuoai.Rx[TestInputBodyString]) {
+				receivedInput = rx.Read()
+			})
+
+			w := httptest.NewRecorder()
+			server.Handler().ServeHTTP(w, tc.request)
+
+			if receivedInput == nil {
+				t.Fatal("handler was not called")
+			}
+
+			if !reflect.DeepEqual(receivedInput, tc.expected) {
+				t.Errorf("Body mismatch: got %+v, want %+v", receivedInput, tc.expected)
 			}
 		})
 	}
@@ -148,7 +166,7 @@ func TestMizuOai_Rx_Read_BodyInt(t *testing.T) {
 		{
 			name: "Int Body Request",
 			request: func() *http.Request {
-				req := httptest.NewRequest("POST", "/",
+				req := httptest.NewRequest("GET", "/int",
 					bytes.NewBufferString(`12345`))
 				req.Header.Set("Content-Type", "application/json")
 				return req
@@ -161,16 +179,24 @@ func TestMizuOai_Rx_Read_BodyInt(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			rx := Rx[TestInputBodyInt]{r: tc.request, read: func(r *http.Request) *TestInputBodyInt {
-				input := new(TestInputBodyInt)
-				parser := genParser[TestInputBodyInt]()
-				parser(r, input)
-				return input
-			}}
-			result := rx.Read()
+			server := mizu.NewServer("test")
+			scope := mizuoai.NewScope(server, "")
 
-			if !reflect.DeepEqual(result, tc.expected) {
-				t.Errorf("Body mismatch: got %+v, want %+v", result, tc.expected)
+			var receivedInput *TestInputBodyInt
+
+			mizuoai.Get(scope, "/int", func(tx mizuoai.Tx[string], rx mizuoai.Rx[TestInputBodyInt]) {
+				receivedInput = rx.Read()
+			})
+
+			w := httptest.NewRecorder()
+			server.Handler().ServeHTTP(w, tc.request)
+
+			if receivedInput == nil {
+				t.Fatal("handler was not called")
+			}
+
+			if !reflect.DeepEqual(receivedInput, tc.expected) {
+				t.Errorf("Body mismatch: got %+v, want %+v", receivedInput, tc.expected)
 			}
 		})
 	}
@@ -185,7 +211,7 @@ func TestMizuOai_Rx_Read_BodyFloat(t *testing.T) {
 		{
 			name: "Float Body Request",
 			request: func() *http.Request {
-				req := httptest.NewRequest("POST", "/",
+				req := httptest.NewRequest("GET", "/float",
 					bytes.NewBufferString(`123.45`))
 				req.Header.Set("Content-Type", "application/json")
 				return req
@@ -198,16 +224,24 @@ func TestMizuOai_Rx_Read_BodyFloat(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			rx := Rx[TestInputBodyFloat]{r: tc.request, read: func(r *http.Request) *TestInputBodyFloat {
-				input := new(TestInputBodyFloat)
-				parser := genParser[TestInputBodyFloat]()
-				parser(r, input)
-				return input
-			}}
-			result := rx.Read()
+			server := mizu.NewServer("test")
+			scope := mizuoai.NewScope(server, "")
 
-			if !reflect.DeepEqual(result, tc.expected) {
-				t.Errorf("Body mismatch: got %+v, want %+v", result, tc.expected)
+			var receivedInput *TestInputBodyFloat
+
+			mizuoai.Get(scope, "/float", func(tx mizuoai.Tx[string], rx mizuoai.Rx[TestInputBodyFloat]) {
+				receivedInput = rx.Read()
+			})
+
+			w := httptest.NewRecorder()
+			server.Handler().ServeHTTP(w, tc.request)
+
+			if receivedInput == nil {
+				t.Fatal("handler was not called")
+			}
+
+			if !reflect.DeepEqual(receivedInput, tc.expected) {
+				t.Errorf("Body mismatch: got %+v, want %+v", receivedInput, tc.expected)
 			}
 		})
 	}
