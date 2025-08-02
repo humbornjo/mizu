@@ -24,6 +24,7 @@ type oaiConfig struct {
 	info         *base.Info
 	security     *base.SecurityRequirement
 	externalDocs *base.ExternalDoc
+	handlers     []*handlerConfig
 }
 
 // WithOaiDocumentation enables to serve HTML OpenAPI

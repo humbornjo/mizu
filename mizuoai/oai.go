@@ -9,10 +9,12 @@ import (
 	"reflect"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"text/template"
 
 	"github.com/humbornjo/mizu"
 	"github.com/pb33f/libopenapi/datamodel/high/base"
+	"github.com/pb33f/libopenapi/datamodel/high/v3"
 	"github.com/pb33f/libopenapi/orderedmap"
 )
 
@@ -24,29 +26,84 @@ type Scope struct {
 	oaiConfig *oaiConfig
 }
 
+type ctxkey int
+
+const (
+	_CTXKEY_OAI_INITIALIZED ctxkey = iota
+	_CTXKEY_OAI_CONFIG
+)
+
 // NewScope creates a new scope with the given path and options.
 // openapi.json will be served at /{path}/openapi.json. HTML will
 // be served at /{path}/openapi if enabled.
 func NewScope(server *mizu.Server, path string, opts ...OaiOption) *Scope {
-	// TODO: oaiConfig is not initialized from opts.
-	return &Scope{
-		path:   path,
-		server: server,
+	config := new(oaiConfig)
+	for _, opt := range opts {
+		opt(config)
 	}
+
+	server.InjectContext(func(ctx context.Context) context.Context {
+		once := ctx.Value(_CTXKEY_OAI_INITIALIZED)
+		if once == nil {
+			ctx = context.WithValue(ctx, _CTXKEY_OAI_INITIALIZED, &atomic.Bool{})
+		}
+
+		value := ctx.Value(_CTXKEY_OAI_CONFIG)
+		if value == nil {
+			return context.WithValue(ctx, _CTXKEY_OAI_CONFIG, config)
+		}
+		return ctx
+	})
+
+	enableDoc := config.enableDoc
+	server.HookOnExtractHandler(func(ctx context.Context, srv *mizu.Server) {
+		once, _ := ctx.Value(_CTXKEY_OAI_INITIALIZED).(*atomic.Bool)
+		if once != nil && once.CompareAndSwap(false, true) {
+			return
+		}
+
+		// value := ctx.Value(_CTXKEY_OAI_CONFIG)
+		// if value == nil {
+		// 	return
+		// }
+		//
+		// oaiConfig, ok := value.(*oaiConfig)
+		// if !ok {
+		// 	return
+		// }
+
+		// Serve openapi.json
+		srv.Get(path+"/openapi.json", func(w http.ResponseWriter, r *http.Request) {
+			http.ServeFile(w, r, path+"/openapi.json")
+		})
+
+		// Serve Swagger UI
+		if enableDoc {
+			srv.Get(path+"/openapi", func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "text/html")
+				_ = _SWAGGER_UI_TEMPLATE.Execute(w, map[string]string{"Path": path + "/openapi.json"})
+			})
+		}
+	})
+
+	return &Scope{path: path, server: server, oaiConfig: config}
 }
 
 // Get registers a generic handler for GET requests. It uses
 // reflection to parse request data into the input type `I` and
 // generate OpenAPI documentation.
-func Get[I any, O any](s *Scope, pattern string, oaiHandler func(Tx[O], Rx[I]), opts ...OaiOption) {
-	input := new(I)
-	valInput := reflect.ValueOf(input).Elem()
-	typInput := valInput.Type()
-	if typInput.Kind() != reflect.Struct {
-		panic("input type must be a struct")
+func Get[I any, O any](s *Scope, pattern string, oaiHandler func(Tx[O], Rx[I]), opts ...HandlerOption) {
+	if s == nil {
+		panic("scope is nil")
 	}
 
-	// TODO: handler-specific OaiOption are not used.
+	config := new(handlerConfig)
+	enrichHandler[I, O](config)
+	for _, opt := range opts {
+		opt(config)
+	}
+	s.oaiConfig.handlers = append(s.oaiConfig.handlers, config)
+
 	s.server.Get(pattern, handler[I, O](oaiHandler).genHandler())
 }
 
@@ -67,6 +124,11 @@ func (rx Rx[T]) Read() *T {
 // Context returns the context of the original request.
 func (rx Rx[T]) Context() context.Context {
 	return rx.r.Context()
+}
+
+// Context returns the context of the original request.
+func (rx Rx[T]) WithContext(ctx context.Context) {
+	_ = rx.r.WithContext(ctx)
 }
 
 // Request returns the original http.Request.
@@ -132,7 +194,20 @@ func genNotions(val reflect.Value, typ tag) []notion {
 
 // parser is a collection of functions that perform parsing of an
 // http.Request into a target struct.
-type parser[T any] []func(r *http.Request, val *T) []error
+type parser[T any] func(r *http.Request, val *T) []error
+
+func (p *parser[T]) append(f parser[T]) {
+	if *p == nil {
+		*p = f
+		return
+	}
+
+	old := *p
+	*p = func(r *http.Request, val *T) []error {
+		errs := old(r, val)
+		return append(errs, f(r, val)...)
+	}
+}
 
 // genParser creates a parser for a given generic type T. It uses
 // reflection to inspect the fields and tags of T to build a set
@@ -144,7 +219,8 @@ func genParser[T any]() parser[T] {
 
 	hasBody := false
 	hasForm := false
-	p := parser[T]{}
+
+	p := new(parser[T])
 	for i := range typ.NumField() {
 		fieldTyp := typ.Field(i)
 		if mizuTag, ok := fieldTyp.Tag.Lookup("mizu"); ok {
@@ -158,12 +234,12 @@ func genParser[T any]() parser[T] {
 				if len(metaPath) == 0 {
 					continue
 				}
-				p = append(p, func(r *http.Request, input *T) []error {
+				p.append(func(r *http.Request, val *T) []error {
 					errs := []error{}
-					st := reflect.ValueOf(input).Elem().FieldByName(fieldTyp.Name)
+					st := reflect.ValueOf(val).Elem().Field(i)
 					for _, meta := range metaPath {
-						if val := r.PathValue(meta.identifier); val != "" {
-							if err := setField(st.Field(meta.fieldNumber), strings.NewReader(val)); err != nil {
+						if v := r.PathValue(meta.identifier); v != "" {
+							if err := setField(st.Field(meta.fieldNumber), strings.NewReader(v)); err != nil {
 								errs = append(errs, fmt.Errorf("path param '%s': %w", meta.identifier, err))
 							}
 						}
@@ -179,12 +255,12 @@ func genParser[T any]() parser[T] {
 				if len(metaQuery) == 0 {
 					continue
 				}
-				p = append(p, func(r *http.Request, val *T) []error {
+				p.append(func(r *http.Request, val *T) []error {
 					errs := []error{}
-					st := reflect.ValueOf(val).Elem().FieldByName(fieldTyp.Name)
+					st := reflect.ValueOf(val).Elem().Field(i)
 					for _, meta := range metaQuery {
-						if val := r.URL.Query().Get(meta.identifier); val != "" {
-							if err := setField(st.Field(meta.fieldNumber), strings.NewReader(val)); err != nil {
+						if v := r.URL.Query().Get(meta.identifier); v != "" {
+							if err := setField(st.Field(meta.fieldNumber), strings.NewReader(v)); err != nil {
 								errs = append(errs, fmt.Errorf("query param '%s': %w", meta.identifier, err))
 							}
 						}
@@ -200,12 +276,12 @@ func genParser[T any]() parser[T] {
 				if len(metaHeader) == 0 {
 					continue
 				}
-				p = append(p, func(r *http.Request, val *T) []error {
+				p.append(func(r *http.Request, val *T) []error {
 					errs := []error{}
-					st := reflect.ValueOf(val).Elem().FieldByName(fieldTyp.Name)
+					st := reflect.ValueOf(val).Elem().Field(i)
 					for _, meta := range metaHeader {
-						if val := r.Header.Get(meta.identifier); val != "" {
-							if err := setField(st.Field(meta.fieldNumber), strings.NewReader(val)); err != nil {
+						if v := r.Header.Get(meta.identifier); v != "" {
+							if err := setField(st.Field(meta.fieldNumber), strings.NewReader(v)); err != nil {
 								errs = append(errs, fmt.Errorf("header '%s': %w", meta.identifier, err))
 							}
 						}
@@ -229,8 +305,8 @@ func genParser[T any]() parser[T] {
 					panic("cannot use multiple body")
 				}
 				hasBody = true
-				p = append(p, func(r *http.Request, val *T) []error {
-					if err := setField(reflect.ValueOf(val).Elem().FieldByName(fieldTyp.Name), r.Body); err != nil {
+				p.append(func(r *http.Request, val *T) []error {
+					if err := setField(reflect.ValueOf(val).Elem().Field(i), r.Body); err != nil {
 						return []error{fmt.Errorf("body: %w", err)}
 					}
 					return nil
@@ -238,7 +314,11 @@ func genParser[T any]() parser[T] {
 			}
 		}
 	}
-	return p
+
+	if *p == nil {
+		return func(r *http.Request, val *T) []error { return nil }
+	}
+	return *p
 }
 
 // handler is a generic type for user-provided API logic.
@@ -247,7 +327,6 @@ type handler[I any, O any] func(Tx[O], Rx[I])
 // genHandler wraps the user-provided handler with request
 // parsing logic.
 func (h handler[I, O]) genHandler() http.HandlerFunc {
-	// Pre-compile the parser for efficiency. This is safe to do once as the type I is known at compile time.
 	parser := genParser[I]()
 
 	// Return the actual http.HandlerFunc.
@@ -255,9 +334,7 @@ func (h handler[I, O]) genHandler() http.HandlerFunc {
 		// Lazily parse the request data.
 		rx := Rx[I]{r: r, read: func(r *http.Request) *I {
 			input := new(I)
-			for _, p := range parser {
-				p(r, input)
-			}
+			parser(r, input)
 			return input
 		}}
 		// The response object (tx) wraps the original http.ResponseWriter.
@@ -326,10 +403,98 @@ func setField(field reflect.Value, reader io.Reader) error {
 	return nil
 }
 
-// goTypeToSchema converts a Go type into a corresponding OpenAPI Schema.
-// It handles basic types (string, int, float, bool), structs, and slices.
-// For structs, it uses the `json` tag to determine property names.
-func goTypeToSchema(typ reflect.Type) *base.SchemaProxy {
+func enrichHandler[I any, O any](config *handlerConfig) {
+	input := new(I)
+	valInput := reflect.ValueOf(input).Elem()
+	typInput := valInput.Type()
+	if typInput.Kind() != reflect.Struct {
+		panic("input type must be a struct")
+	}
+
+	output := new(O)
+	valOutput := reflect.ValueOf(output).Elem()
+	typOutput := valOutput.Type()
+
+	// Process input type (request parameters/body)
+	for i := 0; i < typInput.NumField(); i++ {
+		field := typInput.Field(i)
+
+		// Check mizu tags first for parameter location
+		if mizuTag, ok := field.Tag.Lookup("mizu"); ok {
+			switch tag(mizuTag) {
+			case _TAG_PATH, _TAG_QUERY, _TAG_HEADER:
+				// Handle as parameter
+				jsonTag := strings.Split(field.Tag.Get("json"), ",")[0]
+				if jsonTag == "" || jsonTag == "-" {
+					jsonTag = field.Name
+				}
+
+				param := &v3.Parameter{
+					Name:        jsonTag,
+					In:          string(tag(mizuTag)),
+					Description: "Generated from struct field: " + field.Name,
+					Schema:      createSchemaProxy(field.Type),
+				}
+				config.Parameters = append(config.Parameters, param)
+			case _TAG_BODY:
+				// Handle as request body
+				if config.RequestBody == nil {
+					config.RequestBody = &v3.RequestBody{
+						Description: "Request body",
+						Content:     orderedmap.New[string, *v3.MediaType](),
+					}
+				}
+				config.RequestBody.Content.Set("application/json", &v3.MediaType{
+					Schema: createSchemaProxy(field.Type),
+				})
+			case _TAG_FORM:
+				// Handle as form data
+				if config.RequestBody == nil {
+					config.RequestBody = &v3.RequestBody{
+						Description: "Form data",
+						Content:     orderedmap.New[string, *v3.MediaType](),
+					}
+				}
+				config.RequestBody.Content.Set("application/x-www-form-urlencoded", &v3.MediaType{
+					Schema: createSchemaProxy(field.Type),
+				})
+			}
+		} else {
+			// Default to query parameter for simple fields
+			jsonTag := strings.Split(field.Tag.Get("json"), ",")[0]
+			if jsonTag == "" || jsonTag == "-" {
+				jsonTag = field.Name
+			}
+
+			param := &v3.Parameter{
+				Name:        jsonTag,
+				In:          "query",
+				Description: "Generated from struct field: " + field.Name,
+				Schema:      createSchemaProxy(field.Type),
+			}
+			config.Parameters = append(config.Parameters, param)
+		}
+	}
+
+	// Process output type (response body)
+	if config.Responses == nil {
+		config.Responses = &v3.Responses{
+			Codes: orderedmap.New[string, *v3.Response](),
+		}
+	}
+
+	response := &v3.Response{
+		Description: "Successful response",
+		Content:     orderedmap.New[string, *v3.MediaType](),
+	}
+	response.Content.Set("application/json", &v3.MediaType{
+		Schema: createSchemaProxy(typOutput),
+	})
+	config.Responses.Codes.Set("200", response)
+}
+
+// createSchemaProxy creates a *base.SchemaProxy from a reflect.Type
+func createSchemaProxy(typ reflect.Type) *base.SchemaProxy {
 	// Dereference pointer types to get the underlying type.
 	if typ.Kind() == reflect.Ptr {
 		typ = typ.Elem()
@@ -353,10 +518,10 @@ func goTypeToSchema(typ reflect.Type) *base.SchemaProxy {
 			field := typ.Field(i)
 			jsonTag := strings.Split(field.Tag.Get("json"), ",")[0]
 			if jsonTag == "" || jsonTag == "-" {
-				continue // Skip fields without a json tag or explicitly ignored
+				continue
 			}
 
-			fieldSchema := goTypeToSchema(field.Type)
+			fieldSchema := createSchemaProxy(field.Type)
 			if fieldSchema != nil {
 				schema.Properties.Set(jsonTag, fieldSchema)
 			}
@@ -364,7 +529,7 @@ func goTypeToSchema(typ reflect.Type) *base.SchemaProxy {
 	case reflect.Slice:
 		schema.Type = []string{"array"}
 		schema.Items = &base.DynamicValue[*base.SchemaProxy, bool]{
-			A: goTypeToSchema(typ.Elem()),
+			A: createSchemaProxy(typ.Elem()),
 		}
 	default:
 		// Unsupported types will result in a nil schema.
@@ -398,4 +563,3 @@ const _SWAGGER_UI_TEMPLATE_CONTENT = `<!DOCTYPE html>
 </script>
 </body>
 </html>`
-

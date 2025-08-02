@@ -80,9 +80,7 @@ func TestMizuOai_Rx_Read_BodyJSON(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			rx := Rx[TestInputBodyJSON]{r: tc.request, read: func(r *http.Request) *TestInputBodyJSON {
 				input := new(TestInputBodyJSON)
-				for _, parseFn := range genParser[TestInputBodyJSON]() {
-					parseFn(r, input)
-				}
+				genParser[TestInputBodyJSON]()(r, input)
 				return input
 			}}
 			result := rx.Read()
@@ -128,9 +126,8 @@ func TestMizuOai_Rx_Read_BodyString(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			rx := Rx[TestInputBodyString]{r: tc.request, read: func(r *http.Request) *TestInputBodyString {
 				input := new(TestInputBodyString)
-				for _, parseFn := range genParser[TestInputBodyString]() {
-					parseFn(r, input)
-				}
+				parser := genParser[TestInputBodyString]()
+				parser(r, input)
 				return input
 			}}
 			result := rx.Read()
@@ -166,9 +163,8 @@ func TestMizuOai_Rx_Read_BodyInt(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			rx := Rx[TestInputBodyInt]{r: tc.request, read: func(r *http.Request) *TestInputBodyInt {
 				input := new(TestInputBodyInt)
-				for _, parseFn := range genParser[TestInputBodyInt]() {
-					parseFn(r, input)
-				}
+				parser := genParser[TestInputBodyInt]()
+				parser(r, input)
 				return input
 			}}
 			result := rx.Read()
@@ -204,9 +200,8 @@ func TestMizuOai_Rx_Read_BodyFloat(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			rx := Rx[TestInputBodyFloat]{r: tc.request, read: func(r *http.Request) *TestInputBodyFloat {
 				input := new(TestInputBodyFloat)
-				for _, parseFn := range genParser[TestInputBodyFloat]() {
-					parseFn(r, input)
-				}
+				parser := genParser[TestInputBodyFloat]()
+				parser(r, input)
 				return input
 			}}
 			result := rx.Read()

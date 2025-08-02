@@ -37,8 +37,8 @@ type serverConfig struct {
 // interface. It provides HTTP routing, middleware support, and
 // graceful shutdown capabilities.
 type Server struct {
-	mu                *sync.Mutex
 	mux               *http.ServeMux
+	mu                *sync.Mutex
 	initialized       bool
 	middlewareBuckets []*middlewareBucket
 
