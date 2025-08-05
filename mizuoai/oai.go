@@ -3,9 +3,12 @@ package mizuoai
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
+	"path"
 	"reflect"
 	"strconv"
 	"strings"
@@ -13,6 +16,7 @@ import (
 	"text/template"
 
 	"github.com/humbornjo/mizu"
+	"github.com/pb33f/libopenapi"
 	"github.com/pb33f/libopenapi/datamodel/high/base"
 	"github.com/pb33f/libopenapi/datamodel/high/v3"
 	"github.com/pb33f/libopenapi/orderedmap"
@@ -35,7 +39,7 @@ const (
 // NewScope creates a new scope with the given path and options.
 // openapi.json will be served at /{path}/openapi.json. HTML will
 // be served at /{path}/openapi if enabled.
-func NewScope(server *mizu.Server, path string, opts ...OaiOption) *Scope {
+func NewScope(server *mizu.Server, pattern string, opts ...OaiOption) *Scope {
 	config := new(oaiConfig)
 	for _, opt := range opts {
 		opt(config)
@@ -57,35 +61,32 @@ func NewScope(server *mizu.Server, path string, opts ...OaiOption) *Scope {
 	enableDoc := config.enableDoc
 	server.HookOnExtractHandler(func(ctx context.Context, srv *mizu.Server) {
 		once, _ := ctx.Value(_CTXKEY_OAI_INITIALIZED).(*atomic.Bool)
-		if once != nil && once.CompareAndSwap(false, true) {
+		if once != nil && once.CompareAndSwap(true, false) {
 			return
 		}
 
-		// value := ctx.Value(_CTXKEY_OAI_CONFIG)
-		// if value == nil {
-		// 	return
-		// }
-		//
-		// oaiConfig, ok := value.(*oaiConfig)
-		// if !ok {
-		// 	return
-		// }
+		oaiJson, err := renderJson(config)
+		if err != nil {
+			log.Printf("failed to generate openapi.json: %s", err)
+			return
+		}
 
 		// Serve openapi.json
-		srv.Get(path+"/openapi.json", func(w http.ResponseWriter, r *http.Request) {
-			http.ServeFile(w, r, path+"/openapi.json")
+		srv.Get(path.Join(pattern, "/openapi.json"), func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write(oaiJson)
 		})
 
 		// Serve Swagger UI
 		if enableDoc {
-			srv.Get(path+"/openapi", func(w http.ResponseWriter, r *http.Request) {
+			srv.Get(path.Join(pattern, "/openapi"), func(w http.ResponseWriter, r *http.Request) {
 				w.Header().Set("Content-Type", "text/html")
-				_ = _SWAGGER_UI_TEMPLATE.Execute(w, map[string]string{"Path": path + "/openapi.json"})
+				_ = _SWAGGER_UI_TEMPLATE.Execute(w, map[string]string{"Path": path.Join(pattern, "/openapi.json")})
 			})
 		}
 	})
 
-	return &Scope{path: path, server: server, oaiConfig: config}
+	return &Scope{path: pattern, server: server, oaiConfig: config}
 }
 
 // Get registers a generic handler for GET requests. It uses
@@ -96,8 +97,11 @@ func Get[I any, O any](s *Scope, pattern string, oaiHandler func(Tx[O], Rx[I]), 
 		panic("scope is nil")
 	}
 
-	config := new(handlerConfig)
-	enrichHandler[I, O](config)
+	config := &handlerConfig{
+		path:   pattern,
+		method: http.MethodGet,
+	}
+	enrichOperation[I, O](config)
 	for _, opt := range opts {
 		opt(config)
 	}
@@ -402,7 +406,7 @@ func setField(field reflect.Value, reader io.Reader) error {
 	return nil
 }
 
-func enrichHandler[I any, O any](config *handlerConfig) {
+func enrichOperation[I any, O any](config *handlerConfig) {
 	input := new(I)
 	valInput := reflect.ValueOf(input).Elem()
 	typInput := valInput.Type()
@@ -536,6 +540,60 @@ func createSchemaProxy(typ reflect.Type) *base.SchemaProxy {
 	}
 
 	return base.CreateSchemaProxy(schema)
+}
+
+func renderJson(c *oaiConfig) ([]byte, error) {
+	preLoaded := []byte("{\"openapi\": \"3.1.0\"}")
+	if c.preLoaded != nil {
+		preLoaded = c.preLoaded
+	}
+	doc, err := libopenapi.NewDocument(preLoaded)
+	if err != nil {
+		return nil, err
+	}
+
+	modelv3, errs := doc.BuildV3Model()
+	if len(errs) > 0 {
+		return nil, errors.Join(errs...)
+	}
+
+	modelv3.Model.Info = c.info
+	modelv3.Model.Tags = c.tags
+	modelv3.Model.Servers = c.servers
+	modelv3.Model.Security = c.securities
+	modelv3.Model.ExternalDocs = c.externalDocs
+
+	if modelv3.Model.Paths == nil {
+		modelv3.Model.Paths = &v3.Paths{
+			PathItems: orderedmap.New[string, *v3.PathItem](),
+		}
+	}
+	for _, handler := range c.handlers {
+		pathItem := v3.PathItem{}
+		switch handler.method {
+		case http.MethodGet:
+			pathItem.Get = &handler.Operation
+		case http.MethodPost:
+			pathItem.Post = &handler.Operation
+		case http.MethodPut:
+			pathItem.Put = &handler.Operation
+		case http.MethodDelete:
+			pathItem.Delete = &handler.Operation
+		case http.MethodPatch:
+			pathItem.Patch = &handler.Operation
+		case http.MethodHead:
+			pathItem.Head = &handler.Operation
+		case http.MethodOptions:
+			pathItem.Options = &handler.Operation
+		case http.MethodTrace:
+			pathItem.Trace = &handler.Operation
+		default:
+			panic("unreachable")
+		}
+		modelv3.Model.Paths.PathItems.Set(handler.path, &pathItem)
+	}
+
+	return modelv3.Model.RenderJSON("  ")
 }
 
 var _SWAGGER_UI_TEMPLATE = template.Must(template.New("swagger_ui").Parse(_SWAGGER_UI_TEMPLATE_CONTENT))

@@ -121,10 +121,7 @@ func Initialize(opts ...Option) error {
 
 	// Merge additional attributes if provided
 	if len(config.attrs) > 0 {
-		additionalRes := resource.NewWithAttributes(
-			semconv.SchemaURL,
-			config.attrs...,
-		)
+		additionalRes := resource.NewWithAttributes(semconv.SchemaURL, config.attrs...)
 		res, err = resource.Merge(res, additionalRes)
 		if err != nil {
 			return err
@@ -134,18 +131,14 @@ func Initialize(opts ...Option) error {
 	if config.tracerProvider != nil {
 		otel.SetTracerProvider(config.tracerProvider)
 	} else {
-		tp := tracesdk.NewTracerProvider(
-			tracesdk.WithResource(res),
-		)
+		tp := tracesdk.NewTracerProvider(tracesdk.WithResource(res))
 		otel.SetTracerProvider(tp)
 	}
 
 	if config.meterProvider != nil {
 		otel.SetMeterProvider(config.meterProvider)
 	} else {
-		mp := metricsdk.NewMeterProvider(
-			metricsdk.WithResource(res),
-		)
+		mp := metricsdk.NewMeterProvider(metricsdk.WithResource(res))
 		otel.SetMeterProvider(mp)
 	}
 

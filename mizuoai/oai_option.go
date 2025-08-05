@@ -19,12 +19,13 @@ type OaiOption func(*oaiConfig)
 // for now.
 type oaiConfig struct {
 	enableDoc    bool
-	tags         []base.Tag
-	servers      []*v3.Server
 	info         *base.Info
-	security     *base.SecurityRequirement
 	externalDocs *base.ExternalDoc
+	preLoaded    []byte
+	tags         []*base.Tag
+	servers      []*v3.Server
 	handlers     []*handlerConfig
+	securities   []*base.SecurityRequirement
 }
 
 // WithOaiDocumentation enables to serve HTML OpenAPI
@@ -33,6 +34,12 @@ type oaiConfig struct {
 func WithOaiDocumentation() OaiOption {
 	return func(c *oaiConfig) {
 		c.enableDoc = true
+	}
+}
+
+func WithOaiPreLoadSpec(content []byte) OaiOption {
+	return func(c *oaiConfig) {
+		c.preLoaded = content
 	}
 }
 
@@ -157,12 +164,11 @@ func WithOaiVersion(version string) OaiOption {
 // See: https://swagger.io/specification/#security-requirement-object
 func WithOaiSecurity(requirement map[string][]string) OaiOption {
 	return func(c *oaiConfig) {
-		if c.security == nil {
-			c.security = &base.SecurityRequirement{Requirements: orderedmap.New[string, []string]()}
-		}
+		security := &base.SecurityRequirement{Requirements: orderedmap.New[string, []string]()}
 		for k, v := range requirement {
-			c.security.Requirements.Set(k, v)
+			security.Requirements.Set(k, v)
 		}
+		c.securities = append(c.securities, security)
 	}
 }
 
@@ -182,7 +188,7 @@ func WithOaiExternalDocs(url string, description string) OaiOption {
 // WithOaiTags adds tags to the operation.
 //
 // See: https://swagger.io/specification/#tag-object
-func WithOaiTags(tags ...base.Tag) OaiOption {
+func WithOaiTags(tags ...*base.Tag) OaiOption {
 	return func(c *oaiConfig) {
 		c.tags = tags
 	}
@@ -197,7 +203,11 @@ type HandlerOption func(*handlerConfig)
 
 // WARN: Callback is not supported, parameters, request body and
 // responses will be generated automatically.
-type handlerConfig v3.Operation
+type handlerConfig struct {
+	v3.Operation
+	path   string
+	method string
+}
 
 // WithHandlerSummary provides a summary of what the operation
 // does.

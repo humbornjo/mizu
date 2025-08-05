@@ -11,12 +11,19 @@ import (
 
 	"github.com/humbornjo/mizu"
 	"github.com/humbornjo/mizu/mizuconnect"
+	"github.com/humbornjo/mizu/mizuoai"
 
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 
 	"mizu.example/protogen/app_foo/greet/v1/greetv1connect"
 	"mizu.example/svc"
 )
+
+type InputOaiScrape struct {
+	Name string `mizu:"body"`
+}
+
+type OutputOaiScrape = string
 
 func MiddlewareLogging(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -25,9 +32,7 @@ func MiddlewareLogging(next http.Handler) http.Handler {
 	})
 }
 
-func MiddlewareOtelHttp() func(http.Handler) http.Handler {
-	return otelhttp.NewMiddleware("example-app")
-}
+var MiddlewareOtelHttp = otelhttp.NewMiddleware("example-app")
 
 func main() {
 	ctx, cancel := context.WithCancel(context.Background())
@@ -40,10 +45,10 @@ func main() {
 		mizu.WithDisplayRoutesOnStartup(),
 	)
 
-	// Apply middleware to all routes at outermost
-	server.Use(MiddlewareOtelHttp())
+	// Apply middleware to all handlers
+	server.Use(MiddlewareOtelHttp)
 
-	// Chain middleware to a single handler
+	// Chain middleware on one handler only
 	server.Use(MiddlewareLogging).Get(
 		"/scrape",
 		func(w http.ResponseWriter, r *http.Request) {
@@ -51,18 +56,27 @@ func main() {
 		},
 	)
 
-	// Create a connect register scope
-	connectScope := mizuconnect.NewScope(
+	// Create Connect RPC register scope
+	crpcScope := mizuconnect.NewScope(
 		server,
 		mizuconnect.WithHealth(),
 		mizuconnect.WithReflect(),
 		mizuconnect.WithValidate(),
 		mizuconnect.WithVanguard("/", nil, nil),
 	)
+	crpcService := svc.NewService()
+	crpcScope.Register(crpcService, greetv1connect.NewGreetServiceHandler)
 
-	// Register the service
-	connectService := svc.NewService()
-	connectScope.Register(connectService, greetv1connect.NewGreetServiceHandler)
+	// Create Openapi register scope
+	oaiScope := mizuoai.NewScope(
+		server, "/",
+		mizuoai.WithOaiDocumentation(),
+	)
+	mizuoai.Get(oaiScope, "/oai/scrape", func(tx mizuoai.Tx[OutputOaiScrape], rx mizuoai.Rx[InputOaiScrape]) {
+		input := rx.Read()
+		ret := "Hello, " + input.Name
+		_ = tx.Write(&ret)
+	})
 
 	errChan := make(chan error, 1)
 	ctx, stop := signal.NotifyContext(ctx, os.Interrupt)
