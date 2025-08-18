@@ -30,57 +30,43 @@ type config struct {
 // WithServiceName sets the service name for the OpenTelemetry
 // resource.
 func WithServiceName(name string) Option {
-	return func(c *config) {
-		c.serviceName = name
-	}
+	return func(c *config) { c.serviceName = name }
 }
 
 // WithServiceVersion sets the service version for the
 // OpenTelemetry resource.
 func WithServiceVersion(version string) Option {
-	return func(c *config) {
-		c.serviceVersion = version
-	}
+	return func(c *config) { c.serviceVersion = version }
 }
 
 // WithEnvironment sets the deployment environment for the
 // OpenTelemetry resource.
 func WithEnvironment(env string) Option {
-	return func(c *config) {
-		c.environment = env
-	}
+	return func(c *config) { c.environment = env }
 }
 
 // WithAttributes adds custom attributes to the OpenTelemetry
 // resource.
 func WithAttributes(attrs ...attribute.KeyValue) Option {
-	return func(c *config) {
-		c.attrs = append(c.attrs, attrs...)
-	}
+	return func(c *config) { c.attrs = append(c.attrs, attrs...) }
 }
 
 // WithResource sets a custom OpenTelemetry resource, overriding
 // the default resource creation.
 func WithResource(res *resource.Resource) Option {
-	return func(c *config) {
-		c.resource = res
-	}
+	return func(c *config) { c.resource = res }
 }
 
 // WithTracerProvider sets a custom tracer provider instead of
 // creating a default one.
 func WithTracerProvider(tp trace.TracerProvider) Option {
-	return func(c *config) {
-		c.tracerProvider = tp
-	}
+	return func(c *config) { c.tracerProvider = tp }
 }
 
 // WithMeterProvider sets a custom meter provider instead of
 // creating a default one.
 func WithMeterProvider(mp metric.MeterProvider) Option {
-	return func(c *config) {
-		c.meterProvider = mp
-	}
+	return func(c *config) { c.meterProvider = mp }
 }
 
 // Initialize sets up OpenTelemetry with the given options. It
