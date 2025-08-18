@@ -2,6 +2,7 @@ package mizuconnect
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"net/http"
 	"reflect"
@@ -24,27 +25,29 @@ type ctxkey int
 
 const (
 	_CTXKEY_HEALTH ctxkey = iota
+	_CTXKEY_REFLECT
 	_CTXKEY_VANGUARD
+
+	_CTXKEY_HEALTH_INITIALIZED
+	_CTXKEY_REFLECT_INITIALIZED
+	_CTXKEY_VANGUARD_INITIALIZED
 
 	_CTXKEY_VANGUARD_PATTERN
 	_CTXKEY_VANGUARD_TRANSCODER_OPTS
-
-	_CTXKEY_HEALTH_INITIALIZED
-	_CTXKEY_VANGUARD_INITIALIZED
 )
 
 var (
 	_DEFAULT_CONFIG = config{
-		enableVanguard:     false,
-		enableProtoHealth:  false,
-		enableProtoReflect: false,
+		enabledVanguard:     false,
+		enabledProtoHealth:  false,
+		enabledProtoReflect: false,
 	}
 )
 
 type config struct {
-	enableVanguard     bool
-	enableProtoHealth  bool
-	enableProtoReflect bool
+	enabledVanguard     bool
+	enabledProtoHealth  bool
+	enabledProtoReflect bool
 
 	connectOpts            []connect.HandlerOption
 	reflectOpts            []connect.HandlerOption
@@ -66,7 +69,7 @@ type Option func(*config)
 //	scope.WithVanguard("/", nil, nil)
 func WithVanguard(pattern string, svcOpts []vanguard.ServiceOption, transOpts []vanguard.TranscoderOption) Option {
 	return func(m *config) {
-		m.enableVanguard = true
+		m.enabledVanguard = true
 		m.vanguardPattern = pattern
 		m.vanguardServiceOpts = append(m.vanguardServiceOpts, svcOpts...)
 		m.vanguardTranscoderOpts = append(m.vanguardTranscoderOpts, transOpts...)
@@ -77,7 +80,7 @@ func WithVanguard(pattern string, svcOpts []vanguard.ServiceOption, transOpts []
 // services.
 func WithHealth() Option {
 	return func(m *config) {
-		m.enableProtoHealth = true
+		m.enabledProtoHealth = true
 	}
 }
 
@@ -86,7 +89,7 @@ func WithHealth() Option {
 // at runtime.
 func WithReflect(opts ...connect.HandlerOption) Option {
 	return func(m *config) {
-		m.enableProtoReflect = true
+		m.enabledProtoReflect = true
 		m.reflectOpts = append(m.reflectOpts, opts...)
 	}
 }
@@ -134,11 +137,11 @@ func NewScope(srv *mizu.Server, opts ...Option) *scope {
 
 // Register registers a Connect RPC service with the scope. impl
 // is the service implementation, newFunc is the generated
-// Connect constructor (e.g., greetv1connect.NewGreetServiceHandler),
-// and opts are additional handler options. The service is
-// automatically configured with validation, health checks,
-// reflection, and Vanguard transcoding based on the scope's
-// configuration.
+// Connect constructor
+// (e.g., greetv1connect.NewGreetServiceHandler), and opts are
+// additional handler options. The service is automatically
+// configured with validation, health checks, reflection, and
+// Vanguard transcoding based on the scope's configuration.
 //
 // Example:
 //
@@ -149,17 +152,51 @@ func (s *scope) Register(impl any, newFunc any, opts ...connect.HandlerOption) {
 	opts = append(opts, s.config.connectOpts...)
 
 	pattern, handler := invoke(impl, newFunc, opts...)
-	sd := detect(pattern)
+	fullyQualifiedServiceName, _ := detect(pattern)
 
 	// Register grpcreflect
-	if s.config.enableProtoReflect {
-		reflector := grpcreflect.NewStaticReflector(string(sd.Name()))
-		s.Handle(grpcreflect.NewHandlerV1(reflector, s.config.reflectOpts...))
-		s.Handle(grpcreflect.NewHandlerV1Alpha(reflector, s.config.reflectOpts...))
+	if s.config.enabledProtoReflect {
+		s.InjectContext(func(ctx context.Context) context.Context {
+			once := ctx.Value(_CTXKEY_REFLECT_INITIALIZED)
+			if once == nil {
+				ctx = context.WithValue(ctx, _CTXKEY_REFLECT_INITIALIZED, &atomic.Bool{})
+			}
+
+			value := ctx.Value(_CTXKEY_REFLECT)
+			if value == nil {
+				return context.WithValue(ctx, _CTXKEY_REFLECT, &[]string{fullyQualifiedServiceName})
+			}
+			services, ok := value.(*[]string)
+			if !ok {
+				panic("invalid value in context")
+			}
+			*services = append(*services, fullyQualifiedServiceName)
+			return ctx
+		})
+
+		s.HookOnExtractHandler(func(ctx context.Context, server *mizu.Server) {
+			once, _ := ctx.Value(_CTXKEY_REFLECT_INITIALIZED).(*atomic.Bool)
+			if once.CompareAndSwap(true, false) {
+				return
+			}
+
+			value := ctx.Value(_CTXKEY_REFLECT)
+			if value == nil {
+				return
+			}
+			serviceNames, ok := value.(*[]string)
+			if !ok {
+				panic("unreachable")
+			}
+			fmt.Println("serviceNames", *serviceNames)
+			reflector := grpcreflect.NewStaticReflector(*serviceNames...)
+			s.Handle(grpcreflect.NewHandlerV1(reflector, s.config.reflectOpts...))
+			s.Handle(grpcreflect.NewHandlerV1Alpha(reflector, s.config.reflectOpts...))
+		})
 	}
 
 	// Register grpchealth
-	if s.config.enableProtoHealth {
+	if s.config.enabledProtoHealth {
 		s.InjectContext(func(ctx context.Context) context.Context {
 			once := ctx.Value(_CTXKEY_HEALTH_INITIALIZED)
 			if once == nil {
@@ -168,13 +205,13 @@ func (s *scope) Register(impl any, newFunc any, opts ...connect.HandlerOption) {
 
 			value := ctx.Value(_CTXKEY_HEALTH)
 			if value == nil {
-				return context.WithValue(ctx, _CTXKEY_HEALTH, &[]string{string(sd.Name())})
+				return context.WithValue(ctx, _CTXKEY_HEALTH, &[]string{fullyQualifiedServiceName})
 			}
 			services, ok := value.(*[]string)
 			if !ok {
 				panic("invalid value in context")
 			}
-			*services = append(*services, string(sd.Name()))
+			*services = append(*services, fullyQualifiedServiceName)
 			return ctx
 		})
 
@@ -198,7 +235,7 @@ func (s *scope) Register(impl any, newFunc any, opts ...connect.HandlerOption) {
 	}
 
 	// Register vanguard transcoder
-	if s.config.enableVanguard {
+	if s.config.enabledVanguard {
 		vanService := vanguard.NewService(pattern, handler, s.config.vanguardServiceOpts...)
 		s.InjectContext(func(ctx context.Context) context.Context {
 			valueOnce := ctx.Value(_CTXKEY_VANGUARD_INITIALIZED)
@@ -276,7 +313,7 @@ func (s *scope) Register(impl any, newFunc any, opts ...connect.HandlerOption) {
 // Connect service pattern. It looks up the service in the global
 // protobuf registry to enable features like health checks and
 // reflection.
-func detect(pattern string) protoreflect.ServiceDescriptor {
+func detect(pattern string) (string, protoreflect.ServiceDescriptor) {
 	nameSvc := strings.Trim(pattern, "/")
 	d, err := protoregistry.GlobalFiles.FindDescriptorByName(protoreflect.FullName(nameSvc))
 	if err != nil {
@@ -287,7 +324,7 @@ func detect(pattern string) protoreflect.ServiceDescriptor {
 	if !ok {
 		panic("descriptor not indicates service:" + " " + nameSvc)
 	}
-	return sd
+	return nameSvc, sd
 }
 
 // invoke dynamically calls the Connect handler constructor
