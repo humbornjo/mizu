@@ -41,7 +41,20 @@ var (
 			}
 		},
 	}
+
+	PROTOCOLS_HTTP2             http.Protocols
+	PROTOCOLS_HTTP2_UNENCRYPTED http.Protocols
 )
+
+func init() {
+	protocols := http.Protocols{}
+
+	protocols.SetUnencryptedHTTP2(true)
+	PROTOCOLS_HTTP2_UNENCRYPTED = protocols
+
+	protocols.SetHTTP2(true)
+	PROTOCOLS_HTTP2 = protocols
+}
 
 // NewServer creates a new mizu HTTP server with the given
 // service name and options. The service name is used for logging
@@ -125,6 +138,18 @@ func WithPrometheusMetrics() Option {
 		new := func(s *Server) *Server {
 			s = old(s)
 			s.Handle("/metrics", promhttp.Handler())
+			return s
+		}
+		*m = new
+	}
+}
+
+func WithServerProtocols(protocols http.Protocols) Option {
+	return func(m *config) {
+		old := *m
+		new := func(s *Server) *Server {
+			s = old(s)
+			s.config.ServerProtocols = &protocols
 			return s
 		}
 		*m = new

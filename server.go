@@ -26,6 +26,7 @@ var _ internal.Mux = (*Server)(nil)
 
 type serverConfig struct {
 	CustomServer          *http.Server
+	ServerProtocols       *http.Protocols
 	ShutdownPeriod        time.Duration
 	ShutdownHardPeriod    time.Duration
 	ReadinessDrainDelay   time.Duration
@@ -251,6 +252,9 @@ func (s *Server) ServeContext(ctx context.Context, addr string) error {
 				return ingCtx
 			},
 		}
+	}
+	if s.config.ServerProtocols != nil {
+		server.Protocols = s.config.ServerProtocols
 	}
 	server.Handler = s.Middleware()(s.Handler())
 
