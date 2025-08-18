@@ -48,7 +48,10 @@ const (
 // openapi.json will be served at /{path}/openapi.json. HTML will
 // be served at /{path}/openapi if enabled.
 func NewOai(server *mizu.Server, pattern string, opts ...OaiOption) *oai {
-	config := new(oaiConfig)
+	config := &oaiConfig{
+		webhooks:                 orderedmap.New[string, *v3.PathItem](),
+		componentSecuritySchemas: orderedmap.New[string, *v3.SecurityScheme](),
+	}
 	for _, opt := range opts {
 		opt(config)
 	}
@@ -108,6 +111,10 @@ func Get[I any, O any](oai *oai, pattern string, oaiHandler func(Tx[O], Rx[I]), 
 	config := &operationConfig{
 		path:                       pattern,
 		method:                     http.MethodGet,
+		responseHeaders:            orderedmap.New[string, *v3.Header](),
+		responseLinks:              orderedmap.New[string, *v3.Link](),
+		extraResponses:             map[int]*v3.Response{},
+		callbacks:                  orderedmap.New[string, *v3.Callback](),
 		getComponentSecuritySchema: oai.oaiConfig.componentSecuritySchemas.Get,
 	}
 	enrichOperation[I, O](config)

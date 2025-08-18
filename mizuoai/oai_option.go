@@ -35,8 +35,8 @@ type oaiConfig struct {
 	servers                  []*v3.Server
 	handlers                 []*operationConfig
 	securities               []*base.SecurityRequirement
-	webhooks                 *orderedmap.Map[string, *v3.PathItem]
 	jsonSchemaDialect        string
+	webhooks                 *orderedmap.Map[string, *v3.PathItem]
 	componentSecuritySchemas *orderedmap.Map[string, *v3.SecurityScheme]
 }
 
@@ -183,9 +183,6 @@ func WithOaiLicense(name string, identifier string, url string) OaiOption {
 
 func WithOaiSecuritySchema(identifier string, schema *v3.SecurityScheme) OaiOption {
 	return func(c *oaiConfig) {
-		if c.componentSecuritySchemas == nil {
-			c.componentSecuritySchemas = orderedmap.New[string, *v3.SecurityScheme]()
-		}
 		c.componentSecuritySchemas.Set(identifier, schema)
 	}
 }
@@ -355,9 +352,6 @@ func WithOperationSecurity(requirements ...map[string][]string) OperationOption 
 
 func WithOperationCallback(callbackName string, callback *v3.Callback) OperationOption {
 	return func(c *operationConfig) {
-		if c.callbacks == nil {
-			c.callbacks = orderedmap.New[string, *v3.Callback]()
-		}
 		c.callbacks.Set(callbackName, callback)
 	}
 }
@@ -398,9 +392,6 @@ func WithOperationResponseCode(code int) OperationOption {
 
 func WithOperationResponseHeaders(headers map[string]*v3.Header) OperationOption {
 	return func(c *operationConfig) {
-		if c.responseHeaders == nil {
-			c.responseHeaders = orderedmap.New[string, *v3.Header]()
-		}
 		for k, v := range headers {
 			c.responseHeaders.Set(k, v)
 		}
@@ -409,9 +400,6 @@ func WithOperationResponseHeaders(headers map[string]*v3.Header) OperationOption
 
 func WithOperationResponseLinks(links map[string]*v3.Link) OperationOption {
 	return func(c *operationConfig) {
-		if c.responseLinks == nil {
-			c.responseLinks = orderedmap.New[string, *v3.Link]()
-		}
 		for k, v := range links {
 			c.responseLinks.Set(k, v)
 		}

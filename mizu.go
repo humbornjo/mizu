@@ -42,15 +42,18 @@ var (
 		},
 	}
 
-	// PROTOCOLS_HTTP2 supports HTTP/2 (both TLS and H2C)
+	// PROTOCOLS_HTTP2 supports HTTP/1 and HTTP/2 (both TLS and
+	// H2C)
 	PROTOCOLS_HTTP2 http.Protocols
 
-	// PROTOCOLS_HTTP2_UNENCRYPTED supports only unencrypted HTTP/2
+	// PROTOCOLS_HTTP2_UNENCRYPTED supports HTTP/1 and unencrypted
+	// HTTP/2
 	PROTOCOLS_HTTP2_UNENCRYPTED http.Protocols
 )
 
 func init() {
 	protocols := http.Protocols{}
+	protocols.SetHTTP1(true)
 
 	protocols.SetUnencryptedHTTP2(true)
 	PROTOCOLS_HTTP2_UNENCRYPTED = protocols
