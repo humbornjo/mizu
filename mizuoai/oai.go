@@ -2,6 +2,7 @@ package mizuoai
 
 import (
 	"context"
+	_ "embed"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -22,10 +23,17 @@ import (
 	"github.com/pb33f/libopenapi/orderedmap"
 )
 
-type Scope struct {
-	path   string
-	server *mizu.Server
+var (
+	ErrOaiVersion = errors.New("unsupported openapi version")
 
+	//go:embed tmpl_stoplight.html
+	_STOPLIGHT_UI_TEMPLATE_CONTENT string
+	_STOPLIGHT_UI_TEMPLATE         = template.Must(template.New("oai_ui").Parse(_STOPLIGHT_UI_TEMPLATE_CONTENT))
+)
+
+type oai struct {
+	path      string
+	server    *mizu.Server
 	oaiConfig *oaiConfig
 }
 
@@ -36,10 +44,10 @@ const (
 	_CTXKEY_OAI_CONFIG
 )
 
-// NewScope creates a new scope with the given path and options.
+// NewOai creates a new scope with the given path and options.
 // openapi.json will be served at /{path}/openapi.json. HTML will
 // be served at /{path}/openapi if enabled.
-func NewScope(server *mizu.Server, pattern string, opts ...OaiOption) *Scope {
+func NewOai(server *mizu.Server, pattern string, opts ...OaiOption) *oai {
 	config := new(oaiConfig)
 	for _, opt := range opts {
 		opt(config)
@@ -65,97 +73,78 @@ func NewScope(server *mizu.Server, pattern string, opts ...OaiOption) *Scope {
 			return
 		}
 
-		oaiJson, err := renderJson(config)
+		oaiYaml, err := renderYaml(config)
 		if err != nil {
 			log.Printf("failed to generate openapi.json: %s", err)
 			return
 		}
 
-		// Serve openapi.json
-		srv.Get(path.Join(pattern, "/openapi.json"), func(w http.ResponseWriter, r *http.Request) {
-			w.Header().Set("Content-Type", "application/json")
-			_, _ = w.Write(oaiJson)
+		// Serve openapi.yaml
+		srv.Get(path.Join(pattern, "/openapi.yml"), func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "text/yaml")
+			_, _ = w.Write(oaiYaml)
 		})
 
 		// Serve Swagger UI
 		if enableDoc {
 			srv.Get(path.Join(pattern, "/openapi"), func(w http.ResponseWriter, r *http.Request) {
 				w.Header().Set("Content-Type", "text/html")
-				_ = _SWAGGER_UI_TEMPLATE.Execute(w, map[string]string{"Path": path.Join(pattern, "/openapi.json")})
+				_ = _STOPLIGHT_UI_TEMPLATE.Execute(w, map[string]string{"Path": path.Join(pattern, "/openapi.yml")})
 			})
 		}
 	})
 
-	return &Scope{path: pattern, server: server, oaiConfig: config}
+	return &oai{path: pattern, server: server, oaiConfig: config}
 }
 
 // Get registers a generic handler for GET requests. It uses
 // reflection to parse request data into the input type `I` and
 // generate OpenAPI documentation.
-func Get[I any, O any](s *Scope, pattern string, oaiHandler func(Tx[O], Rx[I]), opts ...HandlerOption) {
-	if s == nil {
+func Get[I any, O any](oai *oai, pattern string, oaiHandler func(Tx[O], Rx[I]), opts ...OperationOption) {
+	if oai == nil {
 		panic("scope is nil")
 	}
 
-	config := &handlerConfig{
-		path:   pattern,
-		method: http.MethodGet,
+	config := &operationConfig{
+		path:                       pattern,
+		method:                     http.MethodGet,
+		getComponentSecuritySchema: oai.oaiConfig.componentSecuritySchemas.Get,
 	}
 	enrichOperation[I, O](config)
 	for _, opt := range opts {
 		opt(config)
 	}
-	s.oaiConfig.handlers = append(s.oaiConfig.handlers, config)
+	oai.oaiConfig.handlers = append(oai.oaiConfig.handlers, config)
 
-	s.server.Get(pattern, handler[I, O](oaiHandler).genHandler())
+	oai.server.Get(pattern, handler[I, O](oaiHandler).genHandler())
 }
 
 // Rx represents the request side of an API endpoint. It provides
 // access to the parsed request data and the original request
 // context.
 type Rx[T any] struct {
-	r    *http.Request
+	*http.Request
 	read func(*http.Request) *T
 }
 
 // Read returns the parsed input from the request. The parsing
 // logic is generated based on the struct tags of the input type.
-func (rx Rx[T]) Read() *T {
-	return rx.read(rx.r)
-}
-
-// Context returns the context of the original request.
-func (rx Rx[T]) Context() context.Context {
-	return rx.r.Context()
-}
-
-// WithContext sets the context of the original request.
-func (rx Rx[T]) WithContext(ctx context.Context) {
-	_ = rx.r.WithContext(ctx)
-}
-
-// Request returns the original http.Request.
-func (r Rx[T]) Request() *http.Request {
-	return r.r
+func (rx Rx[T]) MizuRead() *T {
+	return rx.read(rx.Request)
 }
 
 // Tx represents the response side of an API endpoint. It
 // provides methods to write the response.
 type Tx[T any] struct {
-	w http.ResponseWriter
+	http.ResponseWriter
 }
 
 // Write writes the JSON-encoded output to the response writer.
 // It also sets the Content-Type header to "application/json;
 // charset=utf-8".
-func (tx Tx[T]) Write(data *T) error {
-	tx.w.Header().Set("Content-Type", "application/json; charset=utf-8")
-	return json.NewEncoder(tx.w).Encode(data)
-}
-
-// ResponseWriter returns the original http.ResponseWriter.
-func (tx Tx[T]) ResponseWriter() http.ResponseWriter {
-	return tx.w
+func (tx Tx[T]) MizuWrite(data *T) error {
+	tx.Header().Set("Content-Type", "application/json; charset=utf-8")
+	return json.NewEncoder(tx.ResponseWriter).Encode(data)
 }
 
 // tag represents the source of request data (e.g., path, body).
@@ -335,13 +324,13 @@ func (h handler[I, O]) genHandler() http.HandlerFunc {
 	// Return the actual http.HandlerFunc.
 	return func(w http.ResponseWriter, r *http.Request) {
 		// Lazily parse the request data.
-		rx := Rx[I]{r: r, read: func(r *http.Request) *I {
+		rx := Rx[I]{Request: r, read: func(r *http.Request) *I {
 			input := new(I)
 			parser(r, input)
 			return input
 		}}
 		// The response object (tx) wraps the original http.ResponseWriter.
-		tx := Tx[O]{w: w}
+		tx := Tx[O]{ResponseWriter: w}
 
 		h(tx, rx)
 	}
@@ -406,7 +395,7 @@ func setField(field reflect.Value, reader io.Reader) error {
 	return nil
 }
 
-func enrichOperation[I any, O any](config *handlerConfig) {
+func enrichOperation[I any, O any](config *operationConfig) {
 	input := new(I)
 	valInput := reflect.ValueOf(input).Elem()
 	typInput := valInput.Type()
@@ -414,70 +403,57 @@ func enrichOperation[I any, O any](config *handlerConfig) {
 		panic("input type must be a struct")
 	}
 
+	// Process input type (request parameters/body)
+	for i := range typInput.NumField() {
+		field := typInput.Field(i)
+		mizuTag, ok := field.Tag.Lookup("mizu")
+		if !ok {
+			continue
+		}
+		switch tag(mizuTag) {
+		case _TAG_PATH, _TAG_QUERY, _TAG_HEADER:
+			for i := range field.Type.NumField() {
+				subfield := field.Type.Field(i)
+				subTag := subfield.Tag.Get(mizuTag)
+				if subTag == "" || subTag == "-" {
+					continue
+				}
+				param := &v3.Parameter{
+					Name:        subTag,
+					In:          mizuTag,
+					Description: subfield.Tag.Get("desc"),
+					Deprecated:  subfield.Tag.Get("deprecated") == "true",
+					Schema:      createSchemaProxy(subfield.Type),
+				}
+				config.Parameters = append(config.Parameters, param)
+			}
+		case _TAG_BODY:
+			config.RequestBody = &v3.RequestBody{
+				Description: field.Tag.Get("desc"),
+				Content:     orderedmap.New[string, *v3.MediaType](),
+			}
+			var contentType string
+			switch field.Type.Kind() {
+			case reflect.String:
+				contentType = "plain/text"
+			default:
+				contentType = "application/json"
+			}
+			config.RequestBody.Content.Set(contentType, &v3.MediaType{Schema: createSchemaProxy(field.Type)})
+		case _TAG_FORM:
+			config.RequestBody = &v3.RequestBody{
+				Description: field.Tag.Get("desc"),
+				Content:     orderedmap.New[string, *v3.MediaType](),
+			}
+			config.RequestBody.Content.Set("application/x-www-form-urlencoded", &v3.MediaType{
+				Schema: createSchemaProxy(field.Type),
+			})
+		}
+	}
+
 	output := new(O)
 	valOutput := reflect.ValueOf(output).Elem()
 	typOutput := valOutput.Type()
-
-	// Process input type (request parameters/body)
-	for i := 0; i < typInput.NumField(); i++ {
-		field := typInput.Field(i)
-
-		// Check mizu tags first for parameter location
-		if mizuTag, ok := field.Tag.Lookup("mizu"); ok {
-			switch tag(mizuTag) {
-			case _TAG_PATH, _TAG_QUERY, _TAG_HEADER:
-				// Handle as parameter
-				jsonTag := strings.Split(field.Tag.Get("json"), ",")[0]
-				if jsonTag == "" || jsonTag == "-" {
-					jsonTag = field.Name
-				}
-
-				param := &v3.Parameter{
-					Name:        jsonTag,
-					In:          string(tag(mizuTag)),
-					Description: "Generated from struct field: " + field.Name,
-					Schema:      createSchemaProxy(field.Type),
-				}
-				config.Parameters = append(config.Parameters, param)
-			case _TAG_BODY:
-				// Handle as request body
-				if config.RequestBody == nil {
-					config.RequestBody = &v3.RequestBody{
-						Description: "Request body",
-						Content:     orderedmap.New[string, *v3.MediaType](),
-					}
-				}
-				config.RequestBody.Content.Set("application/json", &v3.MediaType{
-					Schema: createSchemaProxy(field.Type),
-				})
-			case _TAG_FORM:
-				// Handle as form data
-				if config.RequestBody == nil {
-					config.RequestBody = &v3.RequestBody{
-						Description: "Form data",
-						Content:     orderedmap.New[string, *v3.MediaType](),
-					}
-				}
-				config.RequestBody.Content.Set("application/x-www-form-urlencoded", &v3.MediaType{
-					Schema: createSchemaProxy(field.Type),
-				})
-			}
-		} else {
-			// Default to query parameter for simple fields
-			jsonTag := strings.Split(field.Tag.Get("json"), ",")[0]
-			if jsonTag == "" || jsonTag == "-" {
-				jsonTag = field.Name
-			}
-
-			param := &v3.Parameter{
-				Name:        jsonTag,
-				In:          "query",
-				Description: "Generated from struct field: " + field.Name,
-				Schema:      createSchemaProxy(field.Type),
-			}
-			config.Parameters = append(config.Parameters, param)
-		}
-	}
 
 	// Process output type (response body)
 	if config.Responses == nil {
@@ -486,14 +462,27 @@ func enrichOperation[I any, O any](config *handlerConfig) {
 		}
 	}
 
+	// Set default response
 	response := &v3.Response{
-		Description: "Successful response",
+		Links:       config.responseLinks,
+		Headers:     config.responseHeaders,
+		Description: config.responseDescription,
 		Content:     orderedmap.New[string, *v3.MediaType](),
 	}
 	response.Content.Set("application/json", &v3.MediaType{
 		Schema: createSchemaProxy(typOutput),
 	})
-	config.Responses.Codes.Set("200", response)
+	defaultCode := 200
+	if config.responseCode != 0 {
+		defaultCode = config.responseCode
+	}
+	defaultContentKey := strconv.Itoa(defaultCode)
+	config.Responses.Codes.Set(defaultContentKey, response)
+
+	// Set extra Responses
+	for code, response := range config.extraResponses {
+		config.Responses.Codes.Set(strconv.Itoa(code), response)
+	}
 }
 
 // createSchemaProxy creates a *base.SchemaProxy from a reflect.Type
@@ -542,7 +531,7 @@ func createSchemaProxy(typ reflect.Type) *base.SchemaProxy {
 	return base.CreateSchemaProxy(schema)
 }
 
-func renderJson(c *oaiConfig) ([]byte, error) {
+func renderYaml(c *oaiConfig) ([]byte, error) {
 	preLoaded := []byte("{\"openapi\": \"3.1.0\"}")
 	if c.preLoaded != nil {
 		preLoaded = c.preLoaded
@@ -550,6 +539,10 @@ func renderJson(c *oaiConfig) ([]byte, error) {
 	doc, err := libopenapi.NewDocument(preLoaded)
 	if err != nil {
 		return nil, err
+	}
+
+	if !strings.HasPrefix(doc.GetVersion(), "3.") {
+		return nil, ErrOaiVersion
 	}
 
 	modelv3, errs := doc.BuildV3Model()
@@ -562,6 +555,7 @@ func renderJson(c *oaiConfig) ([]byte, error) {
 	modelv3.Model.Servers = c.servers
 	modelv3.Model.Security = c.securities
 	modelv3.Model.ExternalDocs = c.externalDocs
+	modelv3.Model.JsonSchemaDialect = c.jsonSchemaDialect
 
 	if modelv3.Model.Paths == nil {
 		modelv3.Model.Paths = &v3.Paths{
@@ -593,30 +587,5 @@ func renderJson(c *oaiConfig) ([]byte, error) {
 		modelv3.Model.Paths.PathItems.Set(handler.path, &pathItem)
 	}
 
-	return modelv3.Model.RenderJSON("  ")
+	return modelv3.Model.Render()
 }
-
-var _SWAGGER_UI_TEMPLATE = template.Must(template.New("swagger_ui").Parse(_SWAGGER_UI_TEMPLATE_CONTENT))
-
-const _SWAGGER_UI_TEMPLATE_CONTENT = `<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <meta name="description" content="SwaggerUI" />
-  <title>SwaggerUI</title>
-  <link rel="stylesheet" href="https://unpkg.com/swagger-ui-dist@5.11.0/swagger-ui.css" />
-</head>
-<body>
-<div id="swagger-ui"></div>
-<script src="https://unpkg.com/swagger-ui-dist@5.11.0/swagger-ui-bundle.js" crossorigin></script>
-<script>
-  window.onload = () => {
-    window.ui = SwaggerUIBundle({
-      url: '{{ .Path }}',
-      dom_id: '#swagger-ui',
-    });
-  };
-</script>
-</body>
-</html>`

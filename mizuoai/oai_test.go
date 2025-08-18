@@ -81,12 +81,12 @@ func TestMizuOai_Rx_Read_BodyJSON(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			server := mizu.NewServer("test")
-			scope := mizuoai.NewScope(server, "")
+			scope := mizuoai.NewOai(server, "")
 
 			var receivedInput *TestInputBodyJSON
 
 			mizuoai.Get(scope, "/users/{id}", func(tx mizuoai.Tx[string], rx mizuoai.Rx[TestInputBodyJSON]) {
-				receivedInput = rx.Read()
+				receivedInput = rx.MizuRead()
 			})
 
 			w := httptest.NewRecorder()
@@ -135,12 +135,12 @@ func TestMizuOai_Rx_Read_BodyString(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			server := mizu.NewServer("test")
-			scope := mizuoai.NewScope(server, "")
+			scope := mizuoai.NewOai(server, "")
 
 			var receivedInput *TestInputBodyString
 
 			mizuoai.Get(scope, "/test", func(tx mizuoai.Tx[string], rx mizuoai.Rx[TestInputBodyString]) {
-				receivedInput = rx.Read()
+				receivedInput = rx.MizuRead()
 			})
 
 			w := httptest.NewRecorder()
@@ -180,12 +180,12 @@ func TestMizuOai_Rx_Read_BodyInt(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			server := mizu.NewServer("test")
-			scope := mizuoai.NewScope(server, "")
+			scope := mizuoai.NewOai(server, "")
 
 			var receivedInput *TestInputBodyInt
 
 			mizuoai.Get(scope, "/int", func(tx mizuoai.Tx[string], rx mizuoai.Rx[TestInputBodyInt]) {
-				receivedInput = rx.Read()
+				receivedInput = rx.MizuRead()
 			})
 
 			w := httptest.NewRecorder()
@@ -225,12 +225,12 @@ func TestMizuOai_Rx_Read_BodyFloat(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			server := mizu.NewServer("test")
-			scope := mizuoai.NewScope(server, "")
+			scope := mizuoai.NewOai(server, "")
 
 			var receivedInput *TestInputBodyFloat
 
 			mizuoai.Get(scope, "/float", func(tx mizuoai.Tx[string], rx mizuoai.Rx[TestInputBodyFloat]) {
-				receivedInput = rx.Read()
+				receivedInput = rx.MizuRead()
 			})
 
 			w := httptest.NewRecorder()
