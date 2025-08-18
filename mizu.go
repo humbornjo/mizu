@@ -42,7 +42,10 @@ var (
 		},
 	}
 
-	PROTOCOLS_HTTP2             http.Protocols
+	// PROTOCOLS_HTTP2 supports HTTP/2 (both TLS and H2C)
+	PROTOCOLS_HTTP2 http.Protocols
+
+	// PROTOCOLS_HTTP2_UNENCRYPTED supports only unencrypted HTTP/2
 	PROTOCOLS_HTTP2_UNENCRYPTED http.Protocols
 )
 
@@ -158,13 +161,16 @@ func WithServerProtocols(protocols http.Protocols) Option {
 
 // WithCustomHttpServer allows using a custom http.Server instead
 // of the default one. This gives full control over server
-// configuration like timeouts, TLS, etc.
-func WithCustomHttpServer(server *http.Server) Option {
+// configuration like timeouts, TLS, etc. cleanupFns are called
+// after the server completes shutdown, it is commonly used to
+// stop the in flight requests (e.g. context.CancelFunc).
+func WithCustomHttpServer(server *http.Server, cleanupFns ...func()) Option {
 	return func(m *config) {
 		old := *m
 		new := func(s *Server) *Server {
 			s = old(s)
 			s.config.CustomServer = server
+			s.config.CustomCleanupFns = cleanupFns
 			return s
 		}
 		*m = new

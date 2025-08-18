@@ -26,6 +26,7 @@ var _ internal.Mux = (*Server)(nil)
 
 type serverConfig struct {
 	CustomServer          *http.Server
+	CustomCleanupFns      []func()
 	ServerProtocols       *http.Protocols
 	ShutdownPeriod        time.Duration
 	ShutdownHardPeriod    time.Duration
@@ -289,8 +290,16 @@ func (s *Server) ServeContext(ctx context.Context, addr string) error {
 		defer downCancel()
 		err := server.Shutdown(downCtx)
 
-		// Cancel in-flight requests, disabled it by setting custom http.Server via WithCustomHttpServer
+		// Cancel in-flight requests, disable it or customize it by setting http.Server via WithCustomHttpServer
 		ingCancel()
+
+		// Custom cleanup functions from WithCustomHttpServer, this block is mutually exclusive with ingCancel
+		if s.config.CustomCleanupFns != nil {
+			for _, fn := range s.config.CustomCleanupFns {
+				fn()
+			}
+		}
+
 		if err != nil {
 			log.Println("⚠️ [WARN] Graceful shutdown failed:", err)
 			time.Sleep(shutdownHardPeriod)
