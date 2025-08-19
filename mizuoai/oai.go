@@ -48,10 +48,7 @@ const (
 // openapi.json will be served at /{path}/openapi.json. HTML will
 // be served at /{path}/openapi if enabled.
 func NewOai(server *mizu.Server, pattern string, opts ...OaiOption) *oai {
-	config := &oaiConfig{
-		webhooks:                 orderedmap.New[string, *v3.PathItem](),
-		componentSecuritySchemas: orderedmap.New[string, *v3.SecurityScheme](),
-	}
+	config := newOaiConfig()
 	for _, opt := range opts {
 		opt(config)
 	}
@@ -103,27 +100,24 @@ func NewOai(server *mizu.Server, pattern string, opts ...OaiOption) *oai {
 // Get registers a generic handler for GET requests. It uses
 // reflection to parse request data into the input type `I` and
 // generate OpenAPI documentation.
-func Get[I any, O any](oai *oai, pattern string, oaiHandler func(Tx[O], Rx[I]), opts ...OperationOption) {
+func Get[I any, O any](oai *oai, pattern string, oaiHandler func(Tx[O], Rx[I]), opts ...OperationOption) *v3.PathItem {
 	if oai == nil {
-		panic("scope is nil")
+		panic("empty oai instance")
 	}
 
-	config := &operationConfig{
-		path:                       pattern,
-		method:                     http.MethodGet,
-		responseHeaders:            orderedmap.New[string, *v3.Header](),
-		responseLinks:              orderedmap.New[string, *v3.Link](),
-		extraResponses:             map[int]*v3.Response{},
-		callbacks:                  orderedmap.New[string, *v3.Callback](),
-		getComponentSecuritySchema: oai.oaiConfig.componentSecuritySchemas.Get,
-	}
-	enrichOperation[I, O](config)
+	config := newOperationConfig(pattern, http.MethodGet)
+	config.getComponentSecuritySchema = oai.oaiConfig.componentSecuritySchemas.Get
+
 	for _, opt := range opts {
 		opt(config)
 	}
-	oai.oaiConfig.handlers = append(oai.oaiConfig.handlers, config)
+	enrichOperation[I, O](config)
 
-	oai.server.Get(pattern, handler[I, O](oaiHandler).genHandler())
+	if oaiHandler != nil {
+		oai.oaiConfig.handlers = append(oai.oaiConfig.handlers, config)
+		oai.server.Get(pattern, handler[I, O](oaiHandler).genHandler())
+	}
+	return &v3.PathItem{Get: &config.Operation}
 }
 
 // Rx represents the request side of an API endpoint. It provides
@@ -146,6 +140,8 @@ type Tx[T any] struct {
 	http.ResponseWriter
 }
 
+// TODO: this should also use inner write method
+//
 // Write writes the JSON-encoded output to the response writer.
 // It also sets the Content-Type header to "application/json;
 // charset=utf-8".
@@ -570,7 +566,10 @@ func renderYaml(c *oaiConfig) ([]byte, error) {
 		}
 	}
 	for _, handler := range c.handlers {
-		pathItem := v3.PathItem{}
+		pathItem, ok := modelv3.Model.Paths.PathItems.Get(handler.path)
+		if !ok {
+			pathItem = &v3.PathItem{}
+		}
 		switch handler.method {
 		case http.MethodGet:
 			pathItem.Get = &handler.Operation
@@ -591,7 +590,7 @@ func renderYaml(c *oaiConfig) ([]byte, error) {
 		default:
 			panic("unreachable")
 		}
-		modelv3.Model.Paths.PathItems.Set(handler.path, &pathItem)
+		modelv3.Model.Paths.PathItems.Set(handler.path, pathItem)
 	}
 
 	return modelv3.Model.Render()

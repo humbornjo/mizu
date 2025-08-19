@@ -40,6 +40,13 @@ type oaiConfig struct {
 	componentSecuritySchemas *orderedmap.Map[string, *v3.SecurityScheme]
 }
 
+func newOaiConfig() *oaiConfig {
+	return &oaiConfig{
+		webhooks:                 orderedmap.New[string, *v3.PathItem](),
+		componentSecuritySchemas: orderedmap.New[string, *v3.SecurityScheme](),
+	}
+}
+
 // WithOaiDocumentation enables to serve HTML OpenAPI
 // documentation. It will be served at the same path as
 // openapi.json
@@ -259,8 +266,24 @@ type operationConfig struct {
 	responseLinks              *orderedmap.Map[string, *v3.Link]
 	responseDescription        string
 	extraResponses             map[int]*v3.Response
+	pathServers                []*v3.Server
+	pathDescription            string
+	pathSummary                string
+	pathParameters             []*v3.Parameter
+	pathExtensions             *orderedmap.Map[string, *yaml.Node]
 	callbacks                  *orderedmap.Map[string, *v3.Callback]
 	getComponentSecuritySchema func(string) (*v3.SecurityScheme, bool)
+}
+
+func newOperationConfig(pattern string, method string) *operationConfig {
+	return &operationConfig{
+		path:            pattern,
+		method:          method,
+		responseHeaders: orderedmap.New[string, *v3.Header](),
+		responseLinks:   orderedmap.New[string, *v3.Link](),
+		extraResponses:  map[int]*v3.Response{},
+		callbacks:       orderedmap.New[string, *v3.Callback](),
+	}
 }
 
 // WithOperationSummary provides a summary of what the operation
@@ -350,9 +373,24 @@ func WithOperationSecurity(requirements ...map[string][]string) OperationOption 
 	}
 }
 
-func WithOperationCallback(callbackName string, callback *v3.Callback) OperationOption {
+func WithOperationCallback(callbackName string, expression map[string]*v3.PathItem, extensions ...map[string]any,
+) OperationOption {
+	yamlExtensions := orderedmap.New[string, *yaml.Node]()
+	if len(extensions) > 0 {
+		for k, v := range extensions[0] {
+			yamlb, _ := yaml.Marshal(v)
+			node := &yaml.Node{}
+			_ = yaml.Unmarshal(yamlb, node)
+			yamlExtensions.Set(k, node)
+		}
+	}
+	orderedExpression := orderedmap.New[string, *v3.PathItem]()
+	for k, v := range expression {
+		orderedExpression.Set(k, v)
+	}
+
 	return func(c *operationConfig) {
-		c.callbacks.Set(callbackName, callback)
+		c.callbacks.Set(callbackName, &v3.Callback{Expression: orderedExpression, Extensions: yamlExtensions})
 	}
 }
 
@@ -440,5 +478,61 @@ func WithOperationResponse[T any](code int, contentType string, response *v3.Res
 // --------------------------------------------------------------
 // Path Options
 
-// WARN: path-wise option is not supported, need mizu to impl
-// GROUP
+func WithPathDescription(desc string) OperationOption {
+	return func(c *operationConfig) {
+		c.pathDescription = desc
+	}
+}
+
+func WithPathSummary(summary string) OperationOption {
+	return func(c *operationConfig) {
+		c.pathSummary = summary
+	}
+}
+
+func WithPathParameters(parameters []*v3.Parameter) OperationOption {
+	return func(c *operationConfig) {
+		c.pathParameters = parameters
+	}
+}
+
+func WithPathExtensions(extensions ...map[string]any) OperationOption {
+	yamlExtensions := orderedmap.New[string, *yaml.Node]()
+	if len(extensions) > 0 {
+		for k, v := range extensions[0] {
+			yamlb, _ := yaml.Marshal(v)
+			node := &yaml.Node{}
+			_ = yaml.Unmarshal(yamlb, node)
+			yamlExtensions.Set(k, node)
+		}
+	}
+	return func(c *operationConfig) {
+		c.pathExtensions = yamlExtensions
+	}
+}
+
+func WithPathServer(url string, desc string, variables map[string]*v3.ServerVariable, extensions ...map[string]any,
+) OperationOption {
+	yamlExtensions := orderedmap.New[string, *yaml.Node]()
+	if len(extensions) > 0 {
+		for k, v := range extensions[0] {
+			yamlb, _ := yaml.Marshal(v)
+			node := &yaml.Node{}
+			_ = yaml.Unmarshal(yamlb, node)
+			yamlExtensions.Set(k, node)
+		}
+	}
+
+	orderedVariables := orderedmap.New[string, *v3.ServerVariable]()
+	for k, v := range variables {
+		orderedVariables.Set(k, v)
+	}
+	return func(c *operationConfig) {
+		c.pathServers = append(c.Servers, &v3.Server{
+			URL:         url,
+			Description: desc,
+			Variables:   orderedVariables,
+			Extensions:  yamlExtensions,
+		})
+	}
+}
