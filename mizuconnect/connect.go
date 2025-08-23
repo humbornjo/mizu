@@ -59,35 +59,18 @@ type config struct {
 // Option configures the mizuconnect scope.
 type Option func(*config)
 
-// WithVanguard enables Vanguard transcoding for REST API
-// compatibility. This allows Connect RPC services to be accessed
-// via HTTP/JSON. The pattern parameter specifies the path,
-// should be mounted on "/" in most cases to achieve RESTful.
-//
-// Example:
-//
-//	scope.WithVanguard("/", nil, nil)
-func WithVanguard(pattern string, svcOpts []vanguard.ServiceOption, transOpts []vanguard.TranscoderOption) Option {
-	return func(m *config) {
-		m.enabledVanguard = true
-		m.vanguardPattern = pattern
-		m.vanguardServiceOpts = append(m.vanguardServiceOpts, svcOpts...)
-		m.vanguardTranscoderOpts = append(m.vanguardTranscoderOpts, transOpts...)
-	}
-}
-
-// WithHealth enables gRPC health checks for the registered
+// WithGrpcHealth enables gRPC health checks for the registered
 // services.
-func WithHealth() Option {
+func WithGrpcHealth() Option {
 	return func(m *config) {
 		m.enabledProtoHealth = true
 	}
 }
 
-// WithReflect enables gRPC reflection for the registered
+// WithGrpcReflect enables gRPC reflection for the registered
 // services. This allows clients to discover service definitions
 // at runtime.
-func WithReflect(opts ...connect.HandlerOption) Option {
+func WithGrpcReflect(opts ...connect.HandlerOption) Option {
 	return func(m *config) {
 		m.enabledProtoReflect = true
 		m.reflectOpts = append(m.reflectOpts, opts...)
@@ -103,6 +86,23 @@ func WithValidate() Option {
 			panic(err)
 		}
 		m.connectOpts = append(m.connectOpts, connect.WithInterceptors(interceptor))
+	}
+}
+
+// WithVanguard enables Vanguard transcoding for REST API
+// compatibility. This allows Connect RPC services to be accessed
+// via HTTP/JSON. The pattern parameter specifies the path,
+// should be mounted on "/" in most cases to achieve RESTful.
+//
+// Example:
+//
+//	scope.WithVanguard("/", nil, nil)
+func WithVanguard(pattern string, svcOpts []vanguard.ServiceOption, transOpts []vanguard.TranscoderOption) Option {
+	return func(m *config) {
+		m.enabledVanguard = true
+		m.vanguardPattern = pattern
+		m.vanguardServiceOpts = append(m.vanguardServiceOpts, svcOpts...)
+		m.vanguardTranscoderOpts = append(m.vanguardTranscoderOpts, transOpts...)
 	}
 }
 

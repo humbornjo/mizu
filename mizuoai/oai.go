@@ -16,11 +16,8 @@ import (
 	"sync/atomic"
 	"text/template"
 
+	"github.com/getkin/kin-openapi/openapi3"
 	"github.com/humbornjo/mizu"
-	"github.com/pb33f/libopenapi"
-	"github.com/pb33f/libopenapi/datamodel/high/base"
-	"github.com/pb33f/libopenapi/datamodel/high/v3"
-	"github.com/pb33f/libopenapi/orderedmap"
 )
 
 var (
@@ -32,7 +29,6 @@ var (
 )
 
 type oai struct {
-	path      string
 	server    *mizu.Server
 	oaiConfig *oaiConfig
 }
@@ -47,8 +43,13 @@ const (
 // NewOai creates a new scope with the given path and options.
 // openapi.json will be served at /{path}/openapi.json. HTML will
 // be served at /{path}/openapi if enabled.
-func NewOai(server *mizu.Server, pattern string, opts ...OaiOption) *oai {
-	config := newOaiConfig()
+func NewOai(server *mizu.Server, title string, opts ...OaiOption) *oai {
+	if title == "" {
+		panic("title is required")
+	}
+
+	config := new(oaiConfig)
+	config.info.Title = title
 	for _, opt := range opts {
 		opt(config)
 	}
@@ -73,51 +74,41 @@ func NewOai(server *mizu.Server, pattern string, opts ...OaiOption) *oai {
 			return
 		}
 
-		oaiYaml, err := renderYaml(config)
+		oaiJson, err := renderJson(config)
 		if err != nil {
 			log.Printf("failed to generate openapi.json: %s", err)
 			return
 		}
 
-		// Serve openapi.yaml
-		srv.Get(path.Join(pattern, "/openapi.yml"), func(w http.ResponseWriter, r *http.Request) {
-			w.Header().Set("Content-Type", "text/yaml")
-			_, _ = w.Write(oaiYaml)
+		// Serve openapi.json
+		srv.Get(path.Join(config.pathDoc, "/openapi.json"), func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/json; charset=utf-8")
+			_, _ = w.Write(oaiJson)
 		})
 
 		// Serve Swagger UI
 		if enableDoc {
-			srv.Get(path.Join(pattern, "/openapi"), func(w http.ResponseWriter, r *http.Request) {
+			srv.Get(path.Join(config.pathDoc, "/openapi"), func(w http.ResponseWriter, r *http.Request) {
 				w.Header().Set("Content-Type", "text/html")
-				_ = _STOPLIGHT_UI_TEMPLATE.Execute(w, map[string]string{"Path": path.Join(pattern, "/openapi.yml")})
+				_ = _STOPLIGHT_UI_TEMPLATE.Execute(w, map[string]string{"Path": path.Join(config.pathDoc, "/openapi.json")})
 			})
 		}
 	})
 
-	return &oai{path: pattern, server: server, oaiConfig: config}
+	return &oai{server: server, oaiConfig: config}
 }
 
-// Get registers a generic handler for GET requests. It uses
-// reflection to parse request data into the input type `I` and
-// generate OpenAPI documentation.
-func Get[I any, O any](oai *oai, pattern string, oaiHandler func(Tx[O], Rx[I]), opts ...OperationOption) *v3.PathItem {
-	if oai == nil {
-		panic("empty oai instance")
-	}
-
-	config := newOperationConfig(pattern, http.MethodGet)
-	config.getComponentSecuritySchema = oai.oaiConfig.componentSecuritySchemas.Get
-
+// Path registers a new path in the OpenAPI spec. It can be used
+// to set the path field that can't be accessed via Get, Post,
+// etc.
+//
+// See: https://spec.openapis.org/oas/v3.0.4.html#path-item-object
+func (oai *oai) Path(pattern string, opts ...PathOption) {
+	config := new(pathConfig)
 	for _, opt := range opts {
 		opt(config)
 	}
-	enrichOperation[I, O](config)
-
-	if oaiHandler != nil {
-		oai.oaiConfig.handlers = append(oai.oaiConfig.handlers, config)
-		oai.server.Get(pattern, handler[I, O](oaiHandler).genHandler())
-	}
-	return &v3.PathItem{Get: &config.Operation}
+	oai.oaiConfig.paths.Set(pattern, &config.PathItem)
 }
 
 // Rx represents the request side of an API endpoint. It provides
@@ -207,6 +198,8 @@ func (p *parser[T]) append(f parser[T]) {
 // genParser creates a parser for a given generic type T. It uses
 // reflection to inspect the fields and tags of T to build a set
 // of parsing functions for different parts of the request.
+//
+// nolint: gocyclo
 func genParser[T any]() parser[T] {
 	input := new(T)
 	val := reflect.ValueOf(input).Elem()
@@ -291,7 +284,23 @@ func genParser[T any]() parser[T] {
 					panic("cannot use multiple form")
 				}
 				hasForm = true
-				// TODO: Implement form parsing.
+				structForm := val.FieldByName(fieldTyp.Name)
+				notionForm := genNotions(structForm, _TAG_FORM)
+				p.append(func(r *http.Request, val *T) []error {
+					errs := []error{}
+					if err := r.ParseForm(); err != nil {
+						errs = append(errs, err)
+					}
+					st := reflect.ValueOf(val).Elem().Field(i)
+					for _, notion := range notionForm {
+						if v := r.FormValue(notion.identifier); v != "" {
+							if err := setField(st.Field(notion.fieldNumber), strings.NewReader(v)); err != nil {
+								errs = append(errs, fmt.Errorf("form param '%s': %w", notion.identifier, err))
+							}
+						}
+					}
+					return errs
+				})
 			case _TAG_BODY:
 				if hasForm {
 					panic("cannot use both form and body")
@@ -421,19 +430,23 @@ func enrichOperation[I any, O any](config *operationConfig) {
 				if subTag == "" || subTag == "-" {
 					continue
 				}
-				param := &v3.Parameter{
-					Name:        subTag,
-					In:          mizuTag,
-					Description: subfield.Tag.Get("desc"),
-					Deprecated:  subfield.Tag.Get("deprecated") == "true",
-					Schema:      createSchemaProxy(subfield.Type),
+				param := &openapi3.ParameterRef{
+					Value: &openapi3.Parameter{
+						Name:        subTag,
+						In:          mizuTag,
+						Description: subfield.Tag.Get("desc"),
+						Deprecated:  subfield.Tag.Get("deprecated") == "true",
+						Schema:      createSchemaProxy(subfield.Type),
+					},
 				}
 				config.Parameters = append(config.Parameters, param)
 			}
 		case _TAG_BODY:
-			config.RequestBody = &v3.RequestBody{
-				Description: field.Tag.Get("desc"),
-				Content:     orderedmap.New[string, *v3.MediaType](),
+			config.RequestBody = &openapi3.RequestBodyRef{
+				Value: &openapi3.RequestBody{
+					Description: field.Tag.Get("desc"),
+					Required:    field.Tag.Get("required") == "true",
+				},
 			}
 			var contentType string
 			switch field.Type.Kind() {
@@ -442,15 +455,18 @@ func enrichOperation[I any, O any](config *operationConfig) {
 			default:
 				contentType = "application/json"
 			}
-			config.RequestBody.Content.Set(contentType, &v3.MediaType{Schema: createSchemaProxy(field.Type)})
-		case _TAG_FORM:
-			config.RequestBody = &v3.RequestBody{
-				Description: field.Tag.Get("desc"),
-				Content:     orderedmap.New[string, *v3.MediaType](),
-			}
-			config.RequestBody.Content.Set("application/x-www-form-urlencoded", &v3.MediaType{
+			config.RequestBody.Value.Content[contentType] = &openapi3.MediaType{
 				Schema: createSchemaProxy(field.Type),
-			})
+			}
+		case _TAG_FORM: // TODO: form as In is invalid
+			config.RequestBody = &openapi3.RequestBodyRef{
+				Value: &openapi3.RequestBody{
+					Description: field.Tag.Get("desc"),
+				},
+			}
+			config.RequestBody.Value.Content["application/x-www-form-urlencoded"] = &openapi3.MediaType{
+				Schema: createSchemaProxy(field.Type),
+			}
 		}
 	}
 
@@ -460,55 +476,44 @@ func enrichOperation[I any, O any](config *operationConfig) {
 
 	// Process output type (response body)
 	if config.Responses == nil {
-		config.Responses = &v3.Responses{
-			Codes: orderedmap.New[string, *v3.Response](),
-		}
+		config.Responses = &openapi3.Responses{}
 	}
 
 	// Set default response
-	response := &v3.Response{
-		Links:       config.responseLinks,
-		Headers:     config.responseHeaders,
-		Description: config.responseDescription,
-		Content:     orderedmap.New[string, *v3.MediaType](),
-	}
-	response.Content.Set("application/json", &v3.MediaType{
+	response := &openapi3.Response{Content: make(openapi3.Content)}
+	response.Links = config.responseLinks
+	response.Headers = config.responseHeaders
+	response.Content["application/json"] = &openapi3.MediaType{
 		Schema: createSchemaProxy(typOutput),
-	})
-	defaultCode := 200
-	if config.responseCode != 0 {
-		defaultCode = config.responseCode
 	}
-	defaultContentKey := strconv.Itoa(defaultCode)
-	config.Responses.Codes.Set(defaultContentKey, response)
-
-	// Set extra Responses
-	for code, response := range config.extraResponses {
-		config.Responses.Codes.Set(strconv.Itoa(code), response)
+	defaultKey := "200"
+	if config.responseCode != nil {
+		defaultKey = strconv.Itoa(*config.responseCode)
 	}
+	config.Responses.Set(defaultKey, &openapi3.ResponseRef{Value: response})
 }
 
 // createSchemaProxy creates a *base.SchemaProxy from a reflect.Type
-func createSchemaProxy(typ reflect.Type) *base.SchemaProxy {
+func createSchemaProxy(typ reflect.Type) *openapi3.SchemaRef {
 	// Dereference pointer types to get the underlying type.
 	if typ.Kind() == reflect.Ptr {
 		typ = typ.Elem()
 	}
 
-	schema := &base.Schema{}
+	var typs openapi3.Types
+	schema := openapi3.NewSchema()
 	switch typ.Kind() {
 	case reflect.String:
-		schema.Type = []string{"string"}
+		typs = openapi3.Types([]string{"string"})
 	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64,
 		reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
-		schema.Type = []string{"integer"}
+		typs = openapi3.Types([]string{"integer"})
 	case reflect.Float32, reflect.Float64:
-		schema.Type = []string{"number"}
+		typs = openapi3.Types([]string{"number"})
 	case reflect.Bool:
-		schema.Type = []string{"boolean"}
+		typs = openapi3.Types([]string{"boolean"})
 	case reflect.Struct:
-		schema.Type = []string{"object"}
-		schema.Properties = orderedmap.New[string, *base.SchemaProxy]()
+		typs = openapi3.Types([]string{"object"})
 		for i := 0; i < typ.NumField(); i++ {
 			field := typ.Field(i)
 			jsonTag := strings.Split(field.Tag.Get("json"), ",")[0]
@@ -518,57 +523,83 @@ func createSchemaProxy(typ reflect.Type) *base.SchemaProxy {
 
 			fieldSchema := createSchemaProxy(field.Type)
 			if fieldSchema != nil {
-				schema.Properties.Set(jsonTag, fieldSchema)
+				schema.Properties[jsonTag] = fieldSchema
 			}
 		}
 	case reflect.Slice:
-		schema.Type = []string{"array"}
-		schema.Items = &base.DynamicValue[*base.SchemaProxy, bool]{
-			A: createSchemaProxy(typ.Elem()),
-		}
+		typs = openapi3.Types([]string{"array"})
+		schema.Items = createSchemaProxy(typ.Elem())
 	default:
 		// Unsupported types will result in a nil schema.
 		return nil
 	}
-
-	return base.CreateSchemaProxy(schema)
+	schema.Type = &typs
+	return openapi3.NewSchemaRef("", schema)
 }
 
-func renderYaml(c *oaiConfig) ([]byte, error) {
-	preLoaded := []byte("{\"openapi\": \"3.1.0\"}")
-	if c.preLoaded != nil {
-		preLoaded = c.preLoaded
-	}
-	doc, err := libopenapi.NewDocument(preLoaded)
-	if err != nil {
-		return nil, err
+func renderJson(c *oaiConfig) ([]byte, error) {
+	defaultPreLoaded := []byte("openapi: 3.0.4")
+	if c.preLoaded == nil {
+		loader := openapi3.Loader{}
+		preLoaded, err := loader.LoadFromData(defaultPreLoaded)
+		if err != nil {
+			return nil, err
+		}
+		c.preLoaded = preLoaded
 	}
 
-	if !strings.HasPrefix(doc.GetVersion(), "3.") {
+	// Merge with Pre Loaded OpenAPI Object
+	modelv3 := c.preLoaded
+	if modelv3.Info == nil {
+		modelv3.Info = &c.info
+	} else {
+		if c.info.Contact != nil {
+			modelv3.Info.Contact = c.info.Contact
+		}
+		if c.info.Description != "" {
+			modelv3.Info.Description = c.info.Description
+		}
+		if c.info.License != nil {
+			modelv3.Info.License = c.info.License
+		}
+		if c.info.Title != "" {
+			modelv3.Info.Title = c.info.Title
+		}
+		if c.info.Version != "" {
+			modelv3.Info.Version = c.info.Version
+		}
+		if c.info.TermsOfService != "" {
+			modelv3.Info.TermsOfService = c.info.TermsOfService
+		}
+	}
+	modelv3.Tags = append(modelv3.Tags, c.tags...)
+	modelv3.Servers = append(modelv3.Servers, c.servers...)
+	modelv3.Security = append(modelv3.Security, c.security...)
+	if modelv3.ExternalDocs != nil {
+		modelv3.ExternalDocs = c.externalDocs
+	}
+	if modelv3.Extensions == nil {
+		modelv3.Extensions = c.extensions
+	} else {
+		for k, v := range c.extensions {
+			if _, ok := modelv3.Extensions[k]; !ok {
+				modelv3.Extensions[k] = v
+			}
+		}
+	}
+
+	if !strings.HasPrefix(modelv3.OpenAPI, "3.0") {
 		return nil, ErrOaiVersion
 	}
 
-	modelv3, errs := doc.BuildV3Model()
-	if len(errs) > 0 {
-		return nil, errors.Join(errs...)
+	if modelv3.Paths == nil {
+		modelv3.Paths = openapi3.NewPaths()
 	}
 
-	modelv3.Model.Info = c.info
-	modelv3.Model.Tags = c.tags
-	modelv3.Model.Servers = c.servers
-	modelv3.Model.Security = c.securities
-	modelv3.Model.ExternalDocs = c.externalDocs
-	modelv3.Model.JsonSchemaDialect = c.jsonSchemaDialect
-
-	if modelv3.Model.Paths == nil {
-		modelv3.Model.Paths = &v3.Paths{
-			PathItems: orderedmap.New[string, *v3.PathItem](),
-		}
-	}
 	for _, handler := range c.handlers {
-		pathItem, ok := modelv3.Model.Paths.PathItems.Get(handler.path)
-		if !ok {
-			pathItem = &v3.PathItem{}
+		pathItem := modelv3.Paths.Find(handler.path)
+		if pathItem == nil {
+			pathItem = &openapi3.PathItem{}
 		}
 		switch handler.method {
 		case http.MethodGet:
@@ -590,8 +621,8 @@ func renderYaml(c *oaiConfig) ([]byte, error) {
 		default:
 			panic("unreachable")
 		}
-		modelv3.Model.Paths.PathItems.Set(handler.path, pathItem)
+		modelv3.Paths.Set(handler.path, pathItem)
 	}
 
-	return modelv3.Model.Render()
+	return modelv3.MarshalJSON()
 }

@@ -1,16 +1,10 @@
 package mizuoai
 
 import (
-	"log"
-	"reflect"
-
-	"github.com/pb33f/libopenapi/datamodel/high/base"
-	"github.com/pb33f/libopenapi/datamodel/high/v3"
-	"github.com/pb33f/libopenapi/orderedmap"
-	"gopkg.in/yaml.v3"
+	"github.com/getkin/kin-openapi/openapi3"
 )
 
-// INFO: mizuoai only support OPENAPI v3.1.0 (version is not
+// INFO: mizuoai only support OPENAPI v3.0.4 (version is not
 // customizable), but still compatible with OpenAPI v3.0.x
 
 // --------------------------------------------------------------
@@ -20,31 +14,26 @@ type OaiOption func(*oaiConfig)
 
 // oaiConfig holds the configuration for an OpenAPI Object. It is
 // populated by the OaiOption functions and used to generate the
-// OpenAPI specification. Version is fixed as 3.1.0.
+// OpenAPI specification. Version is fixed as 3.0.4.
 //
 // Each field corresponds to a field in the OpenAPI Object.
-// See: https://swagger.io/specification/#operation-object
+// See: https://spec.openapis.org/oas/v3.0.4.html#openapi-object
 //
 // WARN: components are ignored for now.
 type oaiConfig struct {
-	enableDoc                bool
-	info                     *base.Info
-	externalDocs             *base.ExternalDoc
-	preLoaded                []byte
-	tags                     []*base.Tag
-	servers                  []*v3.Server
-	handlers                 []*operationConfig
-	securities               []*base.SecurityRequirement
-	jsonSchemaDialect        string
-	webhooks                 *orderedmap.Map[string, *v3.PathItem]
-	componentSecuritySchemas *orderedmap.Map[string, *v3.SecurityScheme]
-}
+	enableDoc bool
+	pathDoc   string
+	preLoaded *openapi3.T
 
-func newOaiConfig() *oaiConfig {
-	return &oaiConfig{
-		webhooks:                 orderedmap.New[string, *v3.PathItem](),
-		componentSecuritySchemas: orderedmap.New[string, *v3.SecurityScheme](),
-	}
+	paths        openapi3.Paths
+	info         openapi3.Info
+	servers      []*openapi3.Server
+	security     []openapi3.SecurityRequirement
+	tags         []*openapi3.Tag
+	externalDocs *openapi3.ExternalDocs
+	extensions   map[string]any
+
+	handlers []*operationConfig
 }
 
 // WithOaiDocumentation enables to serve HTML OpenAPI
@@ -56,15 +45,67 @@ func WithOaiDocumentation() OaiOption {
 	}
 }
 
-func WithOaiPreLoadSpec(content []byte) OaiOption {
+// WithOaiServePath sets the path to serve openapi.json.
+func WithOaiServePath(path string) OaiOption {
 	return func(c *oaiConfig) {
-		c.preLoaded = content
+		c.pathDoc = path
 	}
 }
 
-func WithOaiJsonSchemaDialect(dialect string) OaiOption {
+func WithOaiPreLoadDoc(doc *openapi3.T) OaiOption {
 	return func(c *oaiConfig) {
-		c.jsonSchemaDialect = dialect
+		c.preLoaded = doc
+	}
+}
+
+// WithOaiDescription provides a verbose description of the API.
+// CommonMark syntax MAY be used for rich text representation.
+//
+// See: https://spec.openapis.org/oas/v3.0.4.html#info-object
+func WithOaiDescription(description string) OaiOption {
+	return func(c *oaiConfig) {
+		c.info.Description = description
+	}
+}
+
+// WithOaiTermsOfService provides a URL to the Terms of Service
+// for the API. Must be in the form of URI.
+//
+// See: https://spec.openapis.org/oas/v3.0.4.html#info-object
+func WithOaiTermsOfService(url string) OaiOption {
+	return func(c *oaiConfig) {
+		c.info.TermsOfService = url
+	}
+}
+
+// WithOaiContact provides contact information for the exposed
+// API.
+//
+// See: https://spec.openapis.org/oas/v3.0.4.html#contact-object
+func WithOaiContact(name string, url string, email string, extensions ...map[string]any) OaiOption {
+	var firstExtensions map[string]any
+	if len(extensions) > 0 {
+		firstExtensions = extensions[0]
+	}
+	return func(c *oaiConfig) {
+		c.info.Contact = &openapi3.Contact{Name: name, URL: url, Email: email, Extensions: firstExtensions}
+	}
+}
+
+// WithOaiLicense provides the license information for the
+// exposed API.
+//
+// See: https://spec.openapis.org/oas/v3.0.4.html#license-object
+func WithOaiLicense(name string, url string, extensions ...map[string]any) OaiOption {
+	var firstExtensions map[string]any
+	if len(extensions) > 0 {
+		firstExtensions = extensions[0]
+	}
+	return func(c *oaiConfig) {
+		if name == "" {
+			panic("name is required")
+		}
+		c.info.License = &openapi3.License{URL: url, Name: name, Extensions: firstExtensions}
 	}
 }
 
@@ -73,182 +114,157 @@ func WithOaiJsonSchemaDialect(dialect string) OaiOption {
 // field is not provided, or is an empty array, the default value
 // would be a Server Object with a url value of /.
 //
-// See: https://swagger.io/specification/#operation-object
-func WithOaiServer(url string, desc string, variables map[string]*v3.ServerVariable, extensions ...map[string]any,
+// See: https://spec.openapis.org/oas/v3.0.4.html#server-object
+func WithOaiServer(url string, desc string, variables map[string]*openapi3.ServerVariable, extensions ...map[string]any,
 ) OaiOption {
-	yamlExtensions := orderedmap.New[string, *yaml.Node]()
+	var firstExtensions map[string]any
 	if len(extensions) > 0 {
-		for k, v := range extensions[0] {
-			yamlb, _ := yaml.Marshal(v)
-			node := &yaml.Node{}
-			_ = yaml.Unmarshal(yamlb, node)
-			yamlExtensions.Set(k, node)
-		}
-	}
-
-	orderedVariables := orderedmap.New[string, *v3.ServerVariable]()
-	for k, v := range variables {
-		orderedVariables.Set(k, v)
+		firstExtensions = extensions[0]
 	}
 	return func(c *oaiConfig) {
-		c.servers = append(c.servers, &v3.Server{
+		c.servers = append(c.servers, &openapi3.Server{
 			URL:         url,
 			Description: desc,
-			Variables:   orderedVariables,
-			Extensions:  yamlExtensions,
+			Variables:   variables,
+			Extensions:  firstExtensions,
 		})
 	}
 }
 
-// WithOaiTitle sets the title of the operation. Title is
-// required to describe API.
-//
-// See: https://swagger.io/specification/#info-object
-func WithOaiTitle(title string) OaiOption {
-	return func(c *oaiConfig) {
-		if c.info == nil {
-			c.info = &base.Info{}
-		}
-		c.info.Title = title
-	}
-}
-
-// WithOaiSummary provides a short summary of about API.
-//
-// See: https://swagger.io/specification/#info-object
-func WithOaiSummary(summary string) OaiOption {
-	return func(c *oaiConfig) {
-		if c.info == nil {
-			c.info = &base.Info{}
-		}
-		c.info.Summary = summary
-	}
-}
-
-// WithOaiDescription provides a verbose description of the API.
-// CommonMark syntax MAY be used for rich text representation.
-//
-// See: https://swagger.io/specification/#info-object
-func WithOaiDescription(description string) OaiOption {
-	return func(c *oaiConfig) {
-		if c.info == nil {
-			c.info = &base.Info{}
-		}
-		c.info.Description = description
-	}
-}
-
-// WithOaiTermsOfService provides a URL to the Terms of Service
-// for the API. Must be in the form of URI.
-//
-// See: https://swagger.io/specification/#info-object
-func WithOaiTermsOfService(url string) OaiOption {
-	return func(c *oaiConfig) {
-		if c.info == nil {
-			c.info = &base.Info{}
-		}
-		c.info.TermsOfService = url
-	}
-}
-
-// WithOaiContact provides contact information for the exposed
-// API.
-//
-// See: https://swagger.io/specification/#info-object
-func WithOaiContact(name, email, url string) OaiOption {
-	return func(c *oaiConfig) {
-		if c.info == nil {
-			c.info = &base.Info{}
-		}
-		c.info.Contact = &base.Contact{
-			Name:  name,
-			Email: email,
-			URL:   url,
-		}
-	}
-}
-
-// WithOaiLicense provides the license information for the
-// exposed API.
-//
-// See: https://swagger.io/specification/#license-object
-func WithOaiLicense(name string, identifier string, url string) OaiOption {
-	return func(c *oaiConfig) {
-		if name == "" {
-			panic("name is required")
-		}
-		if c.info == nil {
-			c.info = &base.Info{}
-		}
-		c.info.License = &base.License{
-			URL:        url,
-			Name:       name,
-			Identifier: identifier,
-		}
-	}
-}
-
-func WithOaiSecuritySchema(identifier string, schema *v3.SecurityScheme) OaiOption {
-	return func(c *oaiConfig) {
-		c.componentSecuritySchemas.Set(identifier, schema)
-	}
-}
-
 // WithOaiSecurity adds a security requirement to the operation.
+// Each name MUST correspond to a security scheme which is
+// declared in the Security Schemes under the Components Object.
 //
-// See: https://swagger.io/specification/#security-requirement-object
+// See: https://spec.openapis.org/oas/v3.0.4.html#security-requirement-object
 func WithOaiSecurity(requirement map[string][]string) OaiOption {
+	securityRequirement := openapi3.SecurityRequirement(requirement)
 	return func(c *oaiConfig) {
-		security := &base.SecurityRequirement{Requirements: orderedmap.New[string, []string]()}
-		for k, v := range requirement {
-			if _, ok := c.componentSecuritySchemas.Get(k); !ok {
-				log.Fatalf("security schema %s not found", k)
-			}
-			security.Requirements.Set(k, v)
-		}
-		c.securities = append(c.securities, security)
+		c.security = append(c.security, securityRequirement)
+	}
+}
+
+// WithOaiTags adds tags to the operation.
+//
+// See: https://spec.openapis.org/oas/v3.0.4.html#tag-object
+func WithOaiTag(name string, desc string, externalDocs *openapi3.ExternalDocs, extensions ...map[string]any) OaiOption {
+	var firstExtensions map[string]any
+	if len(extensions) > 0 {
+		firstExtensions = extensions[0]
+	}
+	return func(c *oaiConfig) {
+		c.tags = append(c.tags, &openapi3.Tag{
+			Name:         name,
+			Description:  desc,
+			ExternalDocs: externalDocs,
+			Extensions:   firstExtensions,
+		})
 	}
 }
 
 // WithOaiExternalDocs provides a reference to an external
 // resource for extended documentation.
 //
-// See: https://swagger.io/specification/#external-documentation-object
-func WithOaiExternalDocs(url string, description string) OaiOption {
+// See: https://spec.openapis.org/oas/v3.0.4.html#external-documentation-object
+func WithOaiExternalDocs(url string, description string, extensions ...map[string]any) OaiOption {
+	var firstExtensions map[string]any
+	if len(extensions) > 0 {
+		firstExtensions = extensions[0]
+	}
 	return func(c *oaiConfig) {
-		c.externalDocs = &base.ExternalDoc{
-			URL:         url,
-			Description: description,
-		}
+		c.externalDocs = &openapi3.ExternalDocs{URL: url, Description: description, Extensions: firstExtensions}
 	}
 }
 
-// WithOaiTags adds tags to the operation.
+// WithOaiExtensions adds extensions to the operation.
 //
-// See: https://swagger.io/specification/#tag-object
-func WithOaiTag(name string, desc string, externalDocs *base.ExternalDoc, extensions ...map[string]any) OaiOption {
-	yamlExtensions := orderedmap.New[string, *yaml.Node]()
-	if len(extensions) > 0 {
-		for k, v := range extensions[0] {
-			yamlb, _ := yaml.Marshal(v)
-			node := &yaml.Node{}
-			_ = yaml.Unmarshal(yamlb, node)
-			yamlExtensions.Set(k, node)
-		}
-	}
+// See: https://spec.openapis.org/oas/v3.0.4.html#openapi-object
+func WithOaiExtensions(extensions map[string]any) OaiOption {
 	return func(c *oaiConfig) {
-		c.tags = append(c.tags, &base.Tag{
-			Name:         name,
-			Description:  desc,
-			ExternalDocs: externalDocs,
-			Extensions:   yamlExtensions,
+		c.extensions = extensions
+	}
+}
+
+// --------------------------------------------------------------
+// Path Options
+//
+// WARN: $ref is not supported
+
+type PathOption func(*pathConfig)
+
+type pathConfig struct {
+	openapi3.PathItem
+}
+
+// WithPathSummary adds a summary for the path. An optional. An
+// optional string summary, intended to apply to all operations
+// in this path.
+//
+// See: https://spec.openapis.org/oas/v3.0.4.html#path-item-object
+func WithPathSummary(summary string) PathOption {
+	return func(c *pathConfig) {
+		c.Summary = summary
+	}
+}
+
+// WithPathDescription adds a description for the path. An
+// optional string summary, intended to apply to all operations
+// in this path.
+//
+// See: https://spec.openapis.org/oas/v3.0.4.html#path-item-object
+func WithPathDescription(desc string) PathOption {
+	return func(c *pathConfig) {
+		c.Description = desc
+	}
+}
+
+// WithPathServers adds an Server Objects in Path Item Object,
+// which provide connectivity information to a target server. If
+// the servers field is not provided, or is an empty array, the
+// default value would be a Server Object with a url value of /.
+//
+// See: https://spec.openapis.org/oas/v3.0.4.html#server-object
+func WithPathServer(url string, desc string, variables map[string]*openapi3.ServerVariable, extensions ...map[string]any,
+) PathOption {
+	var firstExtensions map[string]any
+	if len(extensions) > 0 {
+		firstExtensions = extensions[0]
+	}
+	return func(c *pathConfig) {
+		c.Servers = append(c.Servers, &openapi3.Server{
+			URL:         url,
+			Description: desc,
+			Variables:   variables,
+			Extensions:  firstExtensions,
 		})
 	}
 }
 
-func WithOaiWebhook(webhookName string, pathItem *v3.PathItem) OaiOption {
-	return func(c *oaiConfig) {
-		c.webhooks.Set(webhookName, pathItem)
+// WithPathParameters adds parameters to the path. A list of
+// parameters that are applicable for all the operations
+// described under this path. These parameters can be overridden
+// at the operation level, but cannot be removed there. The list
+// MUST NOT include duplicated parameters. A unique parameter is
+// defined by a combination of a name and location. The list can
+// use the Reference Object to link to parameters that are
+// defined in the OpenAPI Object’s components.parameters.
+//
+// See: https://spec.openapis.org/oas/v3.0.4.html#path-item-object
+func WithPathParameters(parameters ...*openapi3.ParameterRef) PathOption {
+	return func(c *pathConfig) {
+		c.Parameters = parameters
+	}
+}
+
+// WithPathExtensions adds extensions to the operation.
+//
+// See: https://spec.openapis.org/oas/v3.0.4.html#path-item-object
+func WithPathExtensions(extensions ...map[string]any) PathOption {
+	var firstExtensions map[string]any
+	if len(extensions) > 0 {
+		firstExtensions = extensions[0]
+	}
+	return func(c *pathConfig) {
+		c.Extensions = firstExtensions
 	}
 }
 
@@ -258,38 +274,29 @@ func WithOaiWebhook(webhookName string, pathItem *v3.PathItem) OaiOption {
 type OperationOption func(*operationConfig)
 
 type operationConfig struct {
-	v3.Operation
-	path                       string
-	method                     string
-	responseCode               int
-	responseHeaders            *orderedmap.Map[string, *v3.Header]
-	responseLinks              *orderedmap.Map[string, *v3.Link]
-	responseDescription        string
-	extraResponses             map[int]*v3.Response
-	pathServers                []*v3.Server
-	pathDescription            string
-	pathSummary                string
-	pathParameters             []*v3.Parameter
-	pathExtensions             *orderedmap.Map[string, *yaml.Node]
-	callbacks                  *orderedmap.Map[string, *v3.Callback]
-	getComponentSecuritySchema func(string) (*v3.SecurityScheme, bool)
+	openapi3.Operation
+	responseCode    *int
+	responseLinks   openapi3.Links
+	responseHeaders openapi3.Headers
+
+	path   string
+	method string
 }
 
-func newOperationConfig(pattern string, method string) *operationConfig {
-	return &operationConfig{
-		path:            pattern,
-		method:          method,
-		responseHeaders: orderedmap.New[string, *v3.Header](),
-		responseLinks:   orderedmap.New[string, *v3.Link](),
-		extraResponses:  map[int]*v3.Response{},
-		callbacks:       orderedmap.New[string, *v3.Callback](),
+// WithOperationTags adds tags to the operation, for logical
+// grouping of operations.
+//
+// See: https://spec.openapis.org/oas/v3.0.4.html#operation-object
+func WithOperationTags(tags ...string) OperationOption {
+	return func(c *operationConfig) {
+		c.Tags = tags
 	}
 }
 
 // WithOperationSummary provides a summary of what the operation
 // does.
 //
-// See: https://swagger.io/specification/#operation-object
+// See: https://spec.openapis.org/oas/v3.0.4.html#operation-object
 func WithOperationSummary(summary string) OperationOption {
 	return func(c *operationConfig) {
 		c.Summary = summary
@@ -300,239 +307,133 @@ func WithOperationSummary(summary string) OperationOption {
 // operation behavior. CommonMark syntax MAY be used for rich
 // text representation.
 //
-// See: https://swagger.io/specification/#operation-object
+// See: https://spec.openapis.org/oas/v3.0.4.html#operation-object
 func WithOperationDescription(description string) OperationOption {
 	return func(c *operationConfig) {
 		c.Description = description
 	}
 }
 
-// WithOperationTags adds tags to the operation, for logical
-// grouping of operations.
-//
-// See: https://swagger.io/specification/#operation-object
-func WithOperationTags(tags ...string) OperationOption {
-	return func(c *operationConfig) {
-		c.Tags = tags
-	}
-}
-
 // WithOperationExternalDocs provides a reference to an external
 // resource for extended documentation.
 //
-// See: https://swagger.io/specification/#external-documentation-object
-func WithOperationExternalDocs(url string, description string) OperationOption {
+// See: https://spec.openapis.org/oas/v3.0.4.html#external-documentation-object
+func WithOperationExternalDocs(url string, description string, extensions ...map[string]any) OperationOption {
+	var firstExtensions map[string]any
+	if len(extensions) > 0 {
+		firstExtensions = extensions[0]
+	}
 	return func(c *operationConfig) {
-		c.ExternalDocs = &base.ExternalDoc{
-			URL:         url,
-			Description: description,
-		}
+		c.ExternalDocs = &openapi3.ExternalDocs{URL: url, Description: description, Extensions: firstExtensions}
 	}
 }
 
 // WithOperationOperationId provides a unique string used to
-// identify the operation. The id MUST be unique among all
-// operations described in the API.
+// identify the operation. Unique string used to identify the
+// operation. The id MUST be unique among all operations
+// described in the API. The operationId value is case-sensitive.
 //
-// See: https://swagger.io/specification/#operation-object
+// See: https://spec.openapis.org/oas/v3.0.4.html#operation-object
 func WithOperationOperationId(operationId string) OperationOption {
 	return func(c *operationConfig) {
-		c.OperationId = operationId
+		c.OperationID = operationId
+	}
+}
+
+// WithOperationParameters adds parameters to the operation. A
+// list of parameters that are applicable for this operation. If
+// a parameter is already defined in the Path Item, the new
+// definition will override it but can never remove it. The list
+// MUST NOT include duplicated parameters. A unique parameter is
+// defined by a combination of a name and location. The list can
+// use the Reference Object to link to parameters that are
+// defined in the OpenAPI Object’s
+//
+// See: https://spec.openapis.org/oas/v3.0.4.html#path-item-object
+func WithOperationParameters(parameters ...*openapi3.ParameterRef) OperationOption {
+	return func(c *operationConfig) {
+		c.Parameters = parameters
+	}
+}
+
+// WithOperationCallback adds a callback to the operation. A
+// possible out-of band callbacks related to the parent
+// operation. The key is a unique identifier for the Callback
+// Object. Value is a Callback Object that describes a request
+// that may be initiated by the API provider and the expected
+// responses.
+//
+// See: https://spec.openapis.org/oas/v3.0.4.html#operation-object
+func WithOperationCallback(key string, value *openapi3.CallbackRef) OperationOption {
+	return func(c *operationConfig) {
+		c.Callbacks[key] = value
 	}
 }
 
 // WithOperationDeprecated marks the operation as deprecated.
 //
-// See: https://swagger.io/specification/#operation-object
+// See: https://spec.openapis.org/oas/v3.0.4.html#operation-object
 func WithOperationDeprecated() OperationOption {
-	boolean := new(bool)
-	*boolean = true
 	return func(c *operationConfig) {
-		c.Deprecated = boolean
+		c.Deprecated = true
 	}
 }
 
 // WithOperationSecurity adds security requirements to the
-// operation.
+// operation. Each name MUST correspond to a security scheme
+// which is declared in the Security Schemes under the
+// Components Object.
 //
-// See: https://swagger.io/specification/#security-requirement-object
-func WithOperationSecurity(requirements ...map[string][]string) OperationOption {
+// See: https://spec.openapis.org/oas/v3.0.4.html#security-requirement-object
+func WithOperationSecurity(requirement map[string][]string) OperationOption {
+	securityRequirement := openapi3.SecurityRequirement(requirement)
 	return func(c *operationConfig) {
-		for _, req := range requirements {
-			securityRequirement := &base.SecurityRequirement{
-				Requirements: orderedmap.New[string, []string](),
-			}
-			for k, v := range req {
-				if _, ok := c.getComponentSecuritySchema(k); !ok {
-					log.Fatalf("security schema %s not found", k)
-				}
-				securityRequirement.Requirements.Set(k, v)
-			}
-			c.Security = append(c.Security, securityRequirement)
+		if c.Security == nil {
+			c.Security = &openapi3.SecurityRequirements{securityRequirement}
+			return
 		}
+		*c.Security = append(*c.Security, securityRequirement)
 	}
 }
 
-func WithOperationCallback(callbackName string, expression map[string]*v3.PathItem, extensions ...map[string]any,
+// WithOperationServer adds an Server Objects to the operation.
+// An alternative servers array to service this operation. If a
+// servers array is specified at the Path Item Object or OpenAPI
+// Object level, it will be overridden by this value.
+//
+// See: https://spec.openapis.org/oas/v3.0.4.html#server-object
+func WithOperationServer(url string, desc string, variables map[string]*openapi3.ServerVariable,
+	extensions ...map[string]any,
 ) OperationOption {
-	yamlExtensions := orderedmap.New[string, *yaml.Node]()
+	var firstExtensions map[string]any
 	if len(extensions) > 0 {
-		for k, v := range extensions[0] {
-			yamlb, _ := yaml.Marshal(v)
-			node := &yaml.Node{}
-			_ = yaml.Unmarshal(yamlb, node)
-			yamlExtensions.Set(k, node)
-		}
-	}
-	orderedExpression := orderedmap.New[string, *v3.PathItem]()
-	for k, v := range expression {
-		orderedExpression.Set(k, v)
-	}
-
-	return func(c *operationConfig) {
-		c.callbacks.Set(callbackName, &v3.Callback{Expression: orderedExpression, Extensions: yamlExtensions})
-	}
-}
-
-// WithOperationServers adds servers to the operation.
-//
-// See: https://swagger.io/specification/#server-object
-func WithOperationServer(url string, desc string, variables map[string]*v3.ServerVariable, extensions ...map[string]any) OperationOption {
-	yamlExtensions := orderedmap.New[string, *yaml.Node]()
-	if len(extensions) > 0 {
-		for k, v := range extensions[0] {
-			yamlb, _ := yaml.Marshal(v)
-			node := &yaml.Node{}
-			_ = yaml.Unmarshal(yamlb, node)
-			yamlExtensions.Set(k, node)
-		}
-	}
-
-	orderedVariables := orderedmap.New[string, *v3.ServerVariable]()
-	for k, v := range variables {
-		orderedVariables.Set(k, v)
+		firstExtensions = extensions[0]
 	}
 	return func(c *operationConfig) {
-		c.Servers = append(c.Servers, &v3.Server{
+		if c.Servers == nil {
+			c.Servers = &openapi3.Servers{{
+				URL:         url,
+				Description: desc,
+				Variables:   variables,
+				Extensions:  firstExtensions,
+			}}
+			return
+		}
+		*c.Servers = append(*c.Servers, &openapi3.Server{
 			URL:         url,
 			Description: desc,
-			Variables:   orderedVariables,
-			Extensions:  yamlExtensions,
+			Variables:   variables,
+			Extensions:  firstExtensions,
 		})
 	}
 }
 
-func WithOperationResponseCode(code int) OperationOption {
+// WithResponseOverride overrides the default response for the
+// operation. Links and headers can be added if needed.
+func WithResponseOverride(code int, links openapi3.Links, headers openapi3.Headers) OperationOption {
 	return func(c *operationConfig) {
-		c.responseCode = code
-	}
-}
-
-func WithOperationResponseHeaders(headers map[string]*v3.Header) OperationOption {
-	return func(c *operationConfig) {
-		for k, v := range headers {
-			c.responseHeaders.Set(k, v)
-		}
-	}
-}
-
-func WithOperationResponseLinks(links map[string]*v3.Link) OperationOption {
-	return func(c *operationConfig) {
-		for k, v := range links {
-			c.responseLinks.Set(k, v)
-		}
-	}
-}
-
-func WithOperationResponseDescription(description string) OperationOption {
-	return func(c *operationConfig) {
-		c.responseDescription = description
-	}
-}
-
-// WithOperationResponse sets extra responses of the operation.
-//
-// Multiple response schema is voodoo, mizuoai support it, but it
-// is definitely not the right way to do it. Try your best to
-// avoid involving this function.
-func WithOperationResponse[T any](code int, contentType string, response *v3.Response) OperationOption {
-	return func(c *operationConfig) {
-		output := new(T)
-		valOutput := reflect.ValueOf(output).Elem()
-		typOutput := valOutput.Type()
-
-		if contentType == "" {
-			switch typOutput.Kind() {
-			case reflect.String:
-				contentType = "plain/text"
-			default:
-				contentType = "application/json"
-			}
-		}
-
-		response.Content.Set(contentType, &v3.MediaType{Schema: createSchemaProxy(typOutput)})
-		c.extraResponses[code] = response
-	}
-}
-
-// --------------------------------------------------------------
-// Path Options
-
-func WithPathDescription(desc string) OperationOption {
-	return func(c *operationConfig) {
-		c.pathDescription = desc
-	}
-}
-
-func WithPathSummary(summary string) OperationOption {
-	return func(c *operationConfig) {
-		c.pathSummary = summary
-	}
-}
-
-func WithPathParameters(parameters []*v3.Parameter) OperationOption {
-	return func(c *operationConfig) {
-		c.pathParameters = parameters
-	}
-}
-
-func WithPathExtensions(extensions ...map[string]any) OperationOption {
-	yamlExtensions := orderedmap.New[string, *yaml.Node]()
-	if len(extensions) > 0 {
-		for k, v := range extensions[0] {
-			yamlb, _ := yaml.Marshal(v)
-			node := &yaml.Node{}
-			_ = yaml.Unmarshal(yamlb, node)
-			yamlExtensions.Set(k, node)
-		}
-	}
-	return func(c *operationConfig) {
-		c.pathExtensions = yamlExtensions
-	}
-}
-
-func WithPathServer(url string, desc string, variables map[string]*v3.ServerVariable, extensions ...map[string]any,
-) OperationOption {
-	yamlExtensions := orderedmap.New[string, *yaml.Node]()
-	if len(extensions) > 0 {
-		for k, v := range extensions[0] {
-			yamlb, _ := yaml.Marshal(v)
-			node := &yaml.Node{}
-			_ = yaml.Unmarshal(yamlb, node)
-			yamlExtensions.Set(k, node)
-		}
-	}
-
-	orderedVariables := orderedmap.New[string, *v3.ServerVariable]()
-	for k, v := range variables {
-		orderedVariables.Set(k, v)
-	}
-	return func(c *operationConfig) {
-		c.pathServers = append(c.Servers, &v3.Server{
-			URL:         url,
-			Description: desc,
-			Variables:   orderedVariables,
-			Extensions:  yamlExtensions,
-		})
+		c.responseCode = &code
+		c.responseLinks = links
+		c.responseHeaders = headers
 	}
 }

@@ -224,7 +224,7 @@ func WithProfilingHandlers() Option {
 // WithDisplayRoutesOnStartup enables logging of all registered
 // routes when the server starts. This is useful for debugging
 // and development to see what endpoints are available.
-func WithDisplayRoutesOnStartup() Option {
+func WithRevealRoutesOnStartup() Option {
 	return func(m *config) {
 		old := *m
 		new := func(s *Server) *Server {
@@ -248,7 +248,7 @@ func WithDisplayRoutesOnStartup() Option {
 						method, uri = fields[0], fields[1]
 					}
 					if method == "" {
-						log.Printf("  ➤ 📍 %-7s %s\n", "-", uri)
+						log.Printf("  ➤ 📍 %-7s %s\n", "*", uri)
 					} else {
 						log.Printf("  ➤ 📍 %-7s %s\n", method, uri)
 					}

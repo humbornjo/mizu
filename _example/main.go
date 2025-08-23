@@ -48,7 +48,7 @@ func main() {
 	serviceName := "example-app"
 	server := mizu.NewServer(
 		serviceName,
-		mizu.WithDisplayRoutesOnStartup(),
+		mizu.WithRevealRoutesOnStartup(),
 		mizu.WithProfilingHandlers(),
 		mizu.WithReadinessDrainDelay(0*time.Second),
 		mizu.WithServerProtocols(mizu.PROTOCOLS_HTTP2),
@@ -67,8 +67,8 @@ func main() {
 
 	// Create Connect RPC register scope
 	crpcScope := mizuconnect.NewScope(server,
-		mizuconnect.WithHealth(),
-		mizuconnect.WithReflect(),
+		mizuconnect.WithGrpcHealth(),
+		mizuconnect.WithGrpcReflect(),
 		mizuconnect.WithValidate(),
 		mizuconnect.WithVanguard("/", nil, nil),
 	)
@@ -77,9 +77,8 @@ func main() {
 
 	// Create Openapi register instance
 	oai := mizuoai.NewOai(
-		server, "/",
+		server, "mizu_example",
 		mizuoai.WithOaiDocumentation(),
-		mizuoai.WithOaiTitle("mizu example api"),
 	)
 	mizuoai.Get(oai, "/oai/scrape", HandleOaiScrape,
 		mizuoai.WithOperationTags("tag_1", "tag_2"),
