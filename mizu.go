@@ -41,7 +41,26 @@ var (
 			}
 		},
 	}
+
+	// PROTOCOLS_HTTP2 supports HTTP/1 and HTTP/2 (both TLS and
+	// H2C)
+	PROTOCOLS_HTTP2 http.Protocols
+
+	// PROTOCOLS_HTTP2_UNENCRYPTED supports HTTP/1 and unencrypted
+	// HTTP/2
+	PROTOCOLS_HTTP2_UNENCRYPTED http.Protocols
 )
+
+func init() {
+	protocols := http.Protocols{}
+	protocols.SetHTTP1(true)
+
+	protocols.SetUnencryptedHTTP2(true)
+	PROTOCOLS_HTTP2_UNENCRYPTED = protocols
+
+	protocols.SetHTTP2(true)
+	PROTOCOLS_HTTP2 = protocols
+}
 
 // NewServer creates a new mizu HTTP server with the given
 // service name and options. The service name is used for logging
@@ -131,15 +150,30 @@ func WithPrometheusMetrics() Option {
 	}
 }
 
+func WithServerProtocols(protocols http.Protocols) Option {
+	return func(m *config) {
+		old := *m
+		new := func(s *Server) *Server {
+			s = old(s)
+			s.config.ServerProtocols = &protocols
+			return s
+		}
+		*m = new
+	}
+}
+
 // WithCustomHttpServer allows using a custom http.Server instead
 // of the default one. This gives full control over server
-// configuration like timeouts, TLS, etc.
-func WithCustomHttpServer(server *http.Server) Option {
+// configuration like timeouts, TLS, etc. cleanupFns are called
+// after the server completes shutdown, it is commonly used to
+// stop the in flight requests (e.g. context.CancelFunc).
+func WithCustomHttpServer(server *http.Server, cleanupFns ...func()) Option {
 	return func(m *config) {
 		old := *m
 		new := func(s *Server) *Server {
 			s = old(s)
 			s.config.CustomServer = server
+			s.config.CustomCleanupFns = cleanupFns
 			return s
 		}
 		*m = new
@@ -190,7 +224,7 @@ func WithProfilingHandlers() Option {
 // WithDisplayRoutesOnStartup enables logging of all registered
 // routes when the server starts. This is useful for debugging
 // and development to see what endpoints are available.
-func WithDisplayRoutesOnStartup() Option {
+func WithRevealRoutesOnStartup() Option {
 	return func(m *config) {
 		old := *m
 		new := func(s *Server) *Server {
@@ -214,7 +248,7 @@ func WithDisplayRoutesOnStartup() Option {
 						method, uri = fields[0], fields[1]
 					}
 					if method == "" {
-						log.Printf("  ➤ 📍 %-7s %s\n", "-", uri)
+						log.Printf("  ➤ 📍 %-7s %s\n", "*", uri)
 					} else {
 						log.Printf("  ➤ 📍 %-7s %s\n", method, uri)
 					}

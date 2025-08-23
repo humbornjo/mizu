@@ -85,7 +85,10 @@ func TestMizu_WithCustomHttpServer(t *testing.T) {
 		WriteTimeout: 10 * time.Second,
 	}
 
-	server := mizu.NewServer("custom-test", mizu.WithCustomHttpServer(customServer))
+	server := mizu.NewServer(
+		"custom-test",
+		mizu.WithCustomHttpServer(customServer),
+	)
 
 	// Add a test route
 	server.HandleFunc("/custom", func(w http.ResponseWriter, r *http.Request) {

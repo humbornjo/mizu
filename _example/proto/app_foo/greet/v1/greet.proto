@@ -1,10 +1,8 @@
 syntax = "proto3";
 
-package greet.v1;
+package app_foo.greet.v1;
 
 import "google/api/annotations.proto";
-
-option go_package = "greet/v1";
 
 message GreetRequest {
   string name = 1;

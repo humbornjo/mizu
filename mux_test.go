@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/humbornjo/mizu"
+	"github.com/humbornjo/mizu/internal"
 )
 
 func TestMux_Routing(t *testing.T) {
@@ -20,7 +21,7 @@ func TestMux_Routing(t *testing.T) {
 
 	testCases := []struct {
 		name           string
-		setup          func(m mizu.Mux)
+		setup          func(m internal.Mux)
 		method         string
 		path           string
 		expectedStatus int
@@ -28,7 +29,7 @@ func TestMux_Routing(t *testing.T) {
 	}{
 		{
 			name: "Get",
-			setup: func(m mizu.Mux) {
+			setup: func(m internal.Mux) {
 				m.Get("/test", handler)
 			},
 			method:         http.MethodGet,
@@ -38,7 +39,7 @@ func TestMux_Routing(t *testing.T) {
 		},
 		{
 			name: "Post",
-			setup: func(m mizu.Mux) {
+			setup: func(m internal.Mux) {
 				m.Post("/test", handler)
 			},
 			method:         http.MethodPost,
@@ -48,7 +49,7 @@ func TestMux_Routing(t *testing.T) {
 		},
 		{
 			name: "Put",
-			setup: func(m mizu.Mux) {
+			setup: func(m internal.Mux) {
 				m.Put("/test", handler)
 			},
 			method:         http.MethodPut,
@@ -58,7 +59,7 @@ func TestMux_Routing(t *testing.T) {
 		},
 		{
 			name: "Delete",
-			setup: func(m mizu.Mux) {
+			setup: func(m internal.Mux) {
 				m.Delete("/test", handler)
 			},
 			method:         http.MethodDelete,
@@ -68,7 +69,7 @@ func TestMux_Routing(t *testing.T) {
 		},
 		{
 			name: "Patch",
-			setup: func(m mizu.Mux) {
+			setup: func(m internal.Mux) {
 				m.Patch("/test", handler)
 			},
 			method:         http.MethodPatch,
@@ -78,7 +79,7 @@ func TestMux_Routing(t *testing.T) {
 		},
 		{
 			name: "Head",
-			setup: func(m mizu.Mux) {
+			setup: func(m internal.Mux) {
 				m.Head("/test", func(w http.ResponseWriter, r *http.Request) {
 					// No body should be written for a HEAD request
 				})
@@ -90,7 +91,7 @@ func TestMux_Routing(t *testing.T) {
 		},
 		{
 			name: "Options",
-			setup: func(m mizu.Mux) {
+			setup: func(m internal.Mux) {
 				m.Options("/test", handler)
 			},
 			method:         http.MethodOptions,
@@ -100,7 +101,7 @@ func TestMux_Routing(t *testing.T) {
 		},
 		{
 			name: "Connect",
-			setup: func(m mizu.Mux) {
+			setup: func(m internal.Mux) {
 				m.Connect("/test", handler)
 			},
 			method:         http.MethodConnect,
@@ -110,7 +111,7 @@ func TestMux_Routing(t *testing.T) {
 		},
 		{
 			name: "Trace",
-			setup: func(m mizu.Mux) {
+			setup: func(m internal.Mux) {
 				m.Trace("/test", handler)
 			},
 			method:         http.MethodTrace,
@@ -120,7 +121,7 @@ func TestMux_Routing(t *testing.T) {
 		},
 		{
 			name: "HandleFunc",
-			setup: func(m mizu.Mux) {
+			setup: func(m internal.Mux) {
 				m.HandleFunc("/test", handler)
 			},
 			method:         http.MethodGet,
@@ -130,7 +131,7 @@ func TestMux_Routing(t *testing.T) {
 		},
 		{
 			name: "Handle",
-			setup: func(m mizu.Mux) {
+			setup: func(m internal.Mux) {
 				m.Handle("/test", handleHandler)
 			},
 			method:         http.MethodGet,
@@ -140,7 +141,7 @@ func TestMux_Routing(t *testing.T) {
 		},
 		{
 			name: "Not Found",
-			setup: func(m mizu.Mux) {
+			setup: func(m internal.Mux) {
 				m.Get("/other", handler)
 			},
 			method:         http.MethodGet,
@@ -152,7 +153,7 @@ func TestMux_Routing(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			// Each test case gets a fresh Servemizu.Mux and mizu.Mux
+			// Each test case gets a fresh Serveinternal.Mux and internal.Mux
 			server := mizu.NewServer("-")
 			mux := server.Use(noopMiddleware)
 			tc.setup(mux)

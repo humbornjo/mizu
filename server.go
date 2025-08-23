@@ -9,6 +9,8 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/humbornjo/mizu/internal"
 )
 
 // Option configures the mizu server.
@@ -20,10 +22,12 @@ type middlewareBucket struct {
 	Middlewares []func(http.Handler) http.Handler
 }
 
-var _ Mux = (*Server)(nil)
+var _ internal.Mux = (*Server)(nil)
 
 type serverConfig struct {
 	CustomServer          *http.Server
+	CustomCleanupFns      []func()
+	ServerProtocols       *http.Protocols
 	ShutdownPeriod        time.Duration
 	ShutdownHardPeriod    time.Duration
 	ReadinessDrainDelay   time.Duration
@@ -35,8 +39,8 @@ type serverConfig struct {
 // interface. It provides HTTP routing, middleware support, and
 // graceful shutdown capabilities.
 type Server struct {
-	mu                *sync.Mutex
 	mux               *http.ServeMux
+	mu                *sync.Mutex
 	initialized       bool
 	middlewareBuckets []*middlewareBucket
 
@@ -56,7 +60,7 @@ func (s *Server) Name() string {
 // Use adds a middleware to the server and returns a new Mux
 // scoped to that middleware. Middlewares are applied in the
 // order they are added.
-func (s *Server) Use(middleware func(http.Handler) http.Handler) Mux {
+func (s *Server) Use(middleware func(http.Handler) http.Handler) internal.Mux {
 	ms := middlewareBucket{
 		Middlewares: []func(http.Handler) http.Handler{middleware},
 	}
@@ -250,6 +254,9 @@ func (s *Server) ServeContext(ctx context.Context, addr string) error {
 			},
 		}
 	}
+	if s.config.ServerProtocols != nil {
+		server.Protocols = s.config.ServerProtocols
+	}
 	server.Handler = s.Middleware()(s.Handler())
 
 	log.Println("🚀 [INFO] Starting HTTP server on", addr)
@@ -283,8 +290,16 @@ func (s *Server) ServeContext(ctx context.Context, addr string) error {
 		defer downCancel()
 		err := server.Shutdown(downCtx)
 
-		// Cancel in-flight requests, disabled it by setting custom http.Server via WithCustomHttpServer
+		// Cancel in-flight requests, disable it or customize it by setting http.Server via WithCustomHttpServer
 		ingCancel()
+
+		// Custom cleanup functions from WithCustomHttpServer, this block is mutually exclusive with ingCancel
+		if s.config.CustomCleanupFns != nil {
+			for _, fn := range s.config.CustomCleanupFns {
+				fn()
+			}
+		}
+
 		if err != nil {
 			log.Println("⚠️ [WARN] Graceful shutdown failed:", err)
 			time.Sleep(shutdownHardPeriod)
