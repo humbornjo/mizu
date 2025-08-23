@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"log"
 	"log/slog"
 	"net/http"
 	"os"
@@ -75,7 +74,7 @@ func HandleOaiOrder(tx mizuoai.Tx[OutputOaiOrder], rx mizuoai.Rx[InputOaiOrder])
 
 func MiddlewareLogging(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		log.Println("Received request:", r.Method, r.URL.Path)
+		slog.Info("Received request", "method", r.Method, "path", r.URL.Path)
 		next.ServeHTTP(w, r)
 	})
 }
@@ -126,7 +125,7 @@ func main() {
 		mizuoai.WithOperationSummary("mizu_example http scrape"),
 		mizuoai.WithOperationDescription("nobody knows scrape more than I do"),
 	)
-	mizuoai.Post(oai, "/oai/order", HandleOaiOrder,
+	mizuoai.Post(oai, "/oai/user/{user_id}/order", HandleOaiOrder,
 		mizuoai.WithOperationTags("bisiness", "order"),
 		mizuoai.WithOperationSummary("mizu_example order service"),
 		mizuoai.WithOperationDescription("nobody knows order more than I do"),

@@ -2,7 +2,6 @@ package mizuconnect
 
 import (
 	"context"
-	"fmt"
 	"log"
 	"net/http"
 	"reflect"
@@ -188,7 +187,6 @@ func (s *scope) Register(impl any, newFunc any, opts ...connect.HandlerOption) {
 			if !ok {
 				panic("unreachable")
 			}
-			fmt.Println("serviceNames", *serviceNames)
 			reflector := grpcreflect.NewStaticReflector(*serviceNames...)
 			s.Handle(grpcreflect.NewHandlerV1(reflector, s.config.reflectOpts...))
 			s.Handle(grpcreflect.NewHandlerV1Alpha(reflector, s.config.reflectOpts...))
