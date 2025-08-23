@@ -129,6 +129,7 @@ func (rx Rx[T]) MizuRead() *T {
 // provides methods to write the response.
 type Tx[T any] struct {
 	http.ResponseWriter
+	write func(*T) error
 }
 
 // TODO: this should also use inner write method
@@ -178,11 +179,11 @@ func genNotions(val reflect.Value, typ tag) []notion {
 	return notions
 }
 
-// parser is a collection of functions that perform parsing of an
+// decode is a collection of functions that perform parsing of an
 // http.Request into a target struct.
-type parser[T any] func(r *http.Request, val *T) []error
+type decode[T any] func(r *http.Request, val *T) []error
 
-func (p *parser[T]) append(f parser[T]) {
+func (p *decode[T]) append(f decode[T]) {
 	if *p == nil {
 		*p = f
 		return
@@ -195,12 +196,12 @@ func (p *parser[T]) append(f parser[T]) {
 	}
 }
 
-// genParser creates a parser for a given generic type T. It uses
-// reflection to inspect the fields and tags of T to build a set
-// of parsing functions for different parts of the request.
+// genDecode creates a parser for a given generic type T. It
+// uses reflection to inspect the fields and tags of T to build a
+// set of parsing functions for different parts of the request.
 //
 // nolint: gocyclo
-func genParser[T any]() parser[T] {
+func genDecode[T any]() decode[T] {
 	input := new(T)
 	val := reflect.ValueOf(input).Elem()
 	typ := val.Type()
@@ -208,7 +209,7 @@ func genParser[T any]() parser[T] {
 	hasBody := false
 	hasForm := false
 
-	p := new(parser[T])
+	p := new(decode[T])
 	for i := range typ.NumField() {
 		fieldTyp := typ.Field(i)
 		if mizuTag, ok := fieldTyp.Tag.Lookup("mizu"); ok {
@@ -325,25 +326,48 @@ func genParser[T any]() parser[T] {
 	return *p
 }
 
+type encode[T any] func(http.ResponseWriter, *T) error
+
+func genEncode[T any]() encode[T] {
+	v := new(T)
+	field := reflect.ValueOf(v).Elem()
+	switch field.Kind() {
+	case reflect.String:
+		return func(w http.ResponseWriter, val *T) error {
+			w.Header().Set("Content-Type", "text/plain")
+			_, err := w.Write([]byte(any(*val).(string)))
+			return err
+		}
+	default:
+		return func(w http.ResponseWriter, val *T) error {
+			w.Header().Set("Content-Type", "application/json")
+			err := json.NewEncoder(w).Encode(val)
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return err
+		}
+	}
+}
+
 // handler is a generic type for user-provided API logic.
 type handler[I any, O any] func(Tx[O], Rx[I])
 
 // genHandler wraps the user-provided handler with request
 // parsing logic.
 func (h handler[I, O]) genHandler() http.HandlerFunc {
-	parser := genParser[I]()
+	encode := genEncode[O]()
+	decode := genDecode[I]()
 
 	// Return the actual http.HandlerFunc.
 	return func(w http.ResponseWriter, r *http.Request) {
 		// Lazily parse the request data.
+		tx := Tx[O]{ResponseWriter: w, write: func(val *O) error {
+			return encode(w, val)
+		}}
 		rx := Rx[I]{Request: r, read: func(r *http.Request) *I {
 			input := new(I)
-			parser(r, input)
+			decode(r, input)
 			return input
 		}}
-		// The response object (tx) wraps the original http.ResponseWriter.
-		tx := Tx[O]{ResponseWriter: w}
-
 		h(tx, rx)
 	}
 }
@@ -436,7 +460,7 @@ func enrichOperation[I any, O any](config *operationConfig) {
 						In:          mizuTag,
 						Description: subfield.Tag.Get("desc"),
 						Deprecated:  subfield.Tag.Get("deprecated") == "true",
-						Schema:      createSchemaProxy(subfield.Type),
+						Schema:      openapi3.NewSchemaRef("", createSchema(subfield.Type)),
 					},
 				}
 				config.Parameters = append(config.Parameters, param)
@@ -455,18 +479,15 @@ func enrichOperation[I any, O any](config *operationConfig) {
 			default:
 				contentType = "application/json"
 			}
-			config.RequestBody.Value.Content[contentType] = &openapi3.MediaType{
-				Schema: createSchemaProxy(field.Type),
-			}
-		case _TAG_FORM: // TODO: form as In is invalid
+			config.RequestBody.Value.WithSchema(createSchema(field.Type), []string{contentType})
+		case _TAG_FORM:
 			config.RequestBody = &openapi3.RequestBodyRef{
 				Value: &openapi3.RequestBody{
 					Description: field.Tag.Get("desc"),
 				},
 			}
-			config.RequestBody.Value.Content["application/x-www-form-urlencoded"] = &openapi3.MediaType{
-				Schema: createSchemaProxy(field.Type),
-			}
+			contentType := "application/x-www-form-urlencoded"
+			config.RequestBody.Value.WithSchema(createSchema(field.Type), []string{contentType})
 		}
 	}
 
@@ -483,8 +504,16 @@ func enrichOperation[I any, O any](config *operationConfig) {
 	response := &openapi3.Response{Content: make(openapi3.Content)}
 	response.Links = config.responseLinks
 	response.Headers = config.responseHeaders
-	response.Content["application/json"] = &openapi3.MediaType{
-		Schema: createSchemaProxy(typOutput),
+
+	var contentType string
+	switch valOutput.Kind() {
+	case reflect.String:
+		contentType = "plain/text"
+	default:
+		contentType = "application/json"
+	}
+	response.Content[contentType] = &openapi3.MediaType{
+		Schema: openapi3.NewSchemaRef("", createSchema(typOutput)),
 	}
 	defaultKey := "200"
 	if config.responseCode != nil {
@@ -493,8 +522,8 @@ func enrichOperation[I any, O any](config *operationConfig) {
 	config.Responses.Set(defaultKey, &openapi3.ResponseRef{Value: response})
 }
 
-// createSchemaProxy creates a *base.SchemaProxy from a reflect.Type
-func createSchemaProxy(typ reflect.Type) *openapi3.SchemaRef {
+// createSchema creates a *base.SchemaProxy from a reflect.Type
+func createSchema(typ reflect.Type) *openapi3.Schema {
 	// Dereference pointer types to get the underlying type.
 	if typ.Kind() == reflect.Ptr {
 		typ = typ.Elem()
@@ -521,20 +550,20 @@ func createSchemaProxy(typ reflect.Type) *openapi3.SchemaRef {
 				continue
 			}
 
-			fieldSchema := createSchemaProxy(field.Type)
+			fieldSchema := createSchema(field.Type)
 			if fieldSchema != nil {
-				schema.Properties[jsonTag] = fieldSchema
+				schema.WithProperty(jsonTag, fieldSchema)
 			}
 		}
 	case reflect.Slice:
 		typs = openapi3.Types([]string{"array"})
-		schema.Items = createSchemaProxy(typ.Elem())
+		schema.WithItems(createSchema(typ.Elem()))
 	default:
 		// Unsupported types will result in a nil schema.
 		return nil
 	}
 	schema.Type = &typs
-	return openapi3.NewSchemaRef("", schema)
+	return schema
 }
 
 func renderJson(c *oaiConfig) ([]byte, error) {

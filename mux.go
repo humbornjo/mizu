@@ -33,8 +33,7 @@ func (m *mux) Use(middleware func(http.Handler) http.Handler) internal.Mux {
 	m.inner.mu.Lock()
 	defer m.inner.mu.Unlock()
 	if m.bucket == nil {
-		// TODO: Add best practice example in README.md
-		panic("middlewares already consumed, see https://github.com/humborn/mizu/tree/main/README.md#Chaining-Middlewares")
+		panic("middlewares already consumed")
 	}
 	m.bucket.Middlewares = append(m.bucket.Middlewares, middleware)
 	return m
