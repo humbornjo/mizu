@@ -28,7 +28,6 @@ var (
 	// some_v is an auxiliary variable used to init the `Some`.
 	some_v int = 1
 
-	// None represents an option with no value.
 	None R = R(nil)
 
 	// `Some` is a sentinel value representing the presence of a

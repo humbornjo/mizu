@@ -11,9 +11,10 @@ import (
 // widely adopted With Option paradigm.
 type R[T any] = internal.R
 
-type Some[T any] func(*T) R[T]
-
+// None represents an option with no value.
 var None = internal.None
+
+type Some[T any] func(*T) R[T]
 
 // Rption is used to create an rust style option. It is called
 // Rption to avoid name collisions with the widely adopted With
@@ -32,7 +33,10 @@ func Rption[T any](x *T) R[T] {
 	if x == nil {
 		return None
 	}
-	f := func(t *T) { *t = *x }
+	f := func(t *T) R[T] {
+		*t = *x
+		return internal.Some
+	}
 	// nolint: gosec
 	return R[T](unsafe.Pointer(&f))
 }
@@ -57,8 +61,5 @@ func Match[T any](o R[T]) (R[T], Some[T]) {
 	if o == None {
 		return None, nil
 	}
-	return internal.Some, func(v *T) R[T] {
-		(*(*Some[T])(o))(v)
-		return internal.Some
-	}
+	return internal.Some, (*(*Some[T])(o))
 }
