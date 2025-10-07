@@ -81,7 +81,7 @@ func TestMizuOai_Rx_Read_BodyJSON(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			server := mizu.NewServer("test")
-			scope := mizuoai.NewOai(server, "")
+			scope := mizuoai.NewOai(server, "test_title")
 
 			var receivedInput *TestInputBodyJSON
 
@@ -135,7 +135,7 @@ func TestMizuOai_Rx_Read_BodyString(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			server := mizu.NewServer("test")
-			scope := mizuoai.NewOai(server, "")
+			scope := mizuoai.NewOai(server, "test_title")
 
 			var receivedInput *TestInputBodyString
 
@@ -180,7 +180,7 @@ func TestMizuOai_Rx_Read_BodyInt(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			server := mizu.NewServer("test")
-			scope := mizuoai.NewOai(server, "")
+			scope := mizuoai.NewOai(server, "test_title")
 
 			var receivedInput *TestInputBodyInt
 
@@ -225,7 +225,7 @@ func TestMizuOai_Rx_Read_BodyFloat(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			server := mizu.NewServer("test")
-			scope := mizuoai.NewOai(server, "")
+			scope := mizuoai.NewOai(server, "test_title")
 
 			var receivedInput *TestInputBodyFloat
 

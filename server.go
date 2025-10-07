@@ -22,8 +22,6 @@ type middlewareBucket struct {
 	Middlewares []func(http.Handler) http.Handler
 }
 
-var _ internal.Mux = (*Server)(nil)
-
 type serverConfig struct {
 	CustomServer          *http.Server
 	CustomCleanupFns      []func()
@@ -61,11 +59,11 @@ func (s *Server) Name() string {
 // scoped to that middleware. Middlewares are applied in the
 // order they are added.
 func (s *Server) Use(middleware func(http.Handler) http.Handler) internal.Mux {
-	ms := middlewareBucket{
+	bucket := middlewareBucket{
 		Middlewares: []func(http.Handler) http.Handler{middleware},
 	}
-	s.middlewareBuckets = append(s.middlewareBuckets, &ms)
-	return newMux(s, &ms)
+	s.middlewareBuckets = append(s.middlewareBuckets, &bucket)
+	return newMux("", s, &bucket)
 }
 
 // Handle registers an HTTP handler for the given pattern.
@@ -136,6 +134,9 @@ func (s *Server) Connect(pattern string, handler http.HandlerFunc) {
 func (s *Server) Trace(pattern string, handler http.HandlerFunc) {
 	s.HandleFunc(strings.Join([]string{http.MethodTrace, pattern}, " "), handler)
 }
+
+// Group returns a new Mux scoped to the given prefix
+func (s *Server) Group(prefix string) internal.Mux { return newGroupMux(prefix, s, nil) }
 
 // InjectContext modifies the server's initialization context
 // using the provided injector function. This context is only
@@ -218,9 +219,9 @@ func (s *Server) Middleware() func(http.Handler) http.Handler {
 
 	return func(handler http.Handler) http.Handler {
 		for i := len(s.middlewareBuckets) - 1; i >= 0; i-- {
-			ms := s.middlewareBuckets[i]
-			for j := len(ms.Middlewares) - 1; j >= 0; j-- {
-				m := ms.Middlewares[j]
+			bucket := s.middlewareBuckets[i]
+			for j := len(bucket.Middlewares) - 1; j >= 0; j-- {
+				m := bucket.Middlewares[j]
 				handler = m(handler)
 			}
 		}
