@@ -85,6 +85,9 @@ func NewServer(srvName string, opts ...Option) *Server {
 		initialized:    atomic.Bool{},
 		isShuttingDown: atomic.Bool{},
 	}
+	server.initialized.Store(false)
+	server.isShuttingDown.Store(false)
+
 	server.Mux = &mux{inner: http.NewServeMux(), server: server}
 	return (*config)(server)
 }

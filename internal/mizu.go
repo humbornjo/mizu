@@ -11,7 +11,6 @@ type Mux interface {
 	HandleFunc(pattern string, handlerFunc http.HandlerFunc)
 
 	Handler() http.Handler
-	Middleware() func(http.Handler) http.Handler
 	Use(middleware func(http.Handler) http.Handler) Mux
 
 	Group(prefix string) Mux

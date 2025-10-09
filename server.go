@@ -104,9 +104,10 @@ func (s *Server) HookOnExtractHandler(hook func(context.Context, *Server)) {
 	s.hookOnExtractHandler = append(s.hookOnExtractHandler, hook)
 }
 
-// Handler returns the base HTTP handler (mux) without middlewares.
-// This method will be called before starting the server. It can
-// also be used to extract handlers for other purposes.
+// Handler returns the base HTTP handler (mux) without
+// middlewares. This method will be called before starting the
+// server. It can also be used to extract handlers for other
+// purposes.
 func (s *Server) Handler() http.Handler {
 	if s.initialized.CompareAndSwap(false, true) {
 		s.HandleFunc(
@@ -115,8 +116,6 @@ func (s *Server) Handler() http.Handler {
 		)
 	}
 
-	s.mu.Lock()
-	defer s.mu.Unlock()
 	for _, hook := range s.hookOnExtractHandler {
 		hook(s.ctx, s)
 	}
@@ -124,11 +123,14 @@ func (s *Server) Handler() http.Handler {
 	return s.Mux.Handler()
 }
 
-// Middleware returns a function that applies all registered
-// middlewares to a given handler and returns the final composed
-// handler.
-func (s *Server) Middleware() func(http.Handler) http.Handler {
-	return s.Mux.Middleware()
+// Uses is a shortcut for chaining multiple middlewares.
+func (s *Server) Uses(middleware func(http.Handler) http.Handler, more ...func(http.Handler) http.Handler,
+) internal.Mux {
+	m := s.Use(middleware)
+	for _, mw := range more {
+		m = m.Use(mw)
+	}
+	return m
 }
 
 // ServeContext starts the HTTP server on the given address and
@@ -160,7 +162,7 @@ func (s *Server) ServeContext(ctx context.Context, addr string) error {
 	if s.config.ServerProtocols != nil {
 		server.Protocols = s.config.ServerProtocols
 	}
-	server.Handler = s.Middleware()(s.Handler())
+	server.Handler = s.Handler()
 
 	log.Println("🚀 [INFO] Starting HTTP server on", addr)
 	for _, hook := range s.hookOnStartup {

@@ -105,16 +105,17 @@ curl http://localhost:8080/healthz         # OK (built-in health check)
 
 ### Server Options
 
-| Option                                        | Description                                           | Default    |
-| --------------------------------------------- | ----------------------------------------------------- | ---------- |
-| `WithReadinessDrainDelay(duration)`           | Graceful shutdown delay for load balancer propagation | `5s`       |
-| `WithShutdownPeriod(duration)`                | Timeout for graceful shutdown                         | `15s`      |
-| `WithHardShutdownPeriod(duration)`            | Hard shutdown timeout after graceful fails            | `3s`       |
-| `WithCustomHttpServer(*http.Server)`          | Use custom HTTP server configuration                  | `nil`      |
-| `WithWizardHandleReadiness(pattern, handler)` | Custom health check endpoint and handler              | `/healthz` |
-| `WithPrometheusMetrics()`                     | Enable Prometheus metrics endpoint                    | Disabled   |
-| `WithProfilingHandlers()`                     | Enable pprof debugging endpoints                      | Disabled   |
-| `WithDisplayRoutesOnStartup()`                | Log registered routes on startup                      | Disabled   |
+| Option                                        | Description                                                                                  | Default     |
+| --------------------------------------------- | -------------------------------------------------------------------------------------------- | ----------- |
+| `WithReadinessDrainDelay(duration)`           | Graceful shutdown delay for load balancer propagation                                        | `5s`        |
+| `WithShutdownPeriod(duration)`                | Timeout for graceful shutdown                                                                | `15s`       |
+| `WithHardShutdownPeriod(duration)`            | Hard shutdown timeout after graceful fails                                                   | `3s`        |
+| `WithCustomHttpServer(*http.Server)`          | Use custom HTTP server configuration                                                         | `nil`       |
+| `WithWizardHandleReadiness(pattern, handler)` | Custom health check endpoint and handler                                                     | `/healthz`  |
+| `WithPrometheusMetrics()`                     | Enable Prometheus metrics endpoint                                                           | Disabled    |
+| `WithProfilingHandlers()`                     | Enable pprof debugging endpoints                                                             | Disabled    |
+| `WithRevealRoutesOnStartup()`                 | Log registered routes on startup                                                             | Disabled    |
+| `WithServerProtocols(protocols)`              | Configure HTTP protocol support, see [example](./_example) for the RPC case that uses HTTP/2 | HTTP/1 only |
 
 ### HTTP Server Timeouts
 
@@ -201,31 +202,6 @@ Streamlined integration with Connect protocol for type-safe RPC services.
 
 Go 1.24+
 
-### Development Commands
-
-```bash
-# Install development dependencies
-make install-deps
-
-# Install Git hooks (recommended for contributors)
-make install-hooks
-
-# Format code
-make fmt
-
-# Run linting
-make lint
-
-# Run tests
-make test
-
-# Run all checks
-make all
-
-# View project statistics
-make stats
-```
-
 ### Git Hooks
 
 For contributors, it's recommended to install the pre-commit hooks:
@@ -236,35 +212,6 @@ make install-hooks
 ```
 
 This installs a pre-commit hook that automatically runs `make format` and `make lint` before each commit, ensuring code quality and consistency.
-
-### Package Structure
-
-```
-mizu/
-├── 📁 mizuotel/          # OpenTelemetry integration
-├── 📁 mizulog/           # Structured logging
-├── 📁 mizuconnect/       # Connect RPC integration
-├── 📄 server.go          # Core HTTP server
-├── 📄 mux.go             # Routing and middleware
-├── 📄 mizu.go            # Server configuration
-└── 📄 *_test.go          # Comprehensive test suite
-```
-
-## 🔒 Security
-
-### Considerations
-
-- **Timeout Configuration** - Timeouts prevent resource exhaustion
-- **Health Checks** - Default `/healthz` endpoint
-- **Graceful Shutdown** - Connection draining prevents dropped requests
-- **Debug Endpoints** - Profiling handlers for development use
-
-### Vulnerability Reporting
-
-```bash
-# Run security checks
-make sec
-```
 
 ## 🙏 References
 
