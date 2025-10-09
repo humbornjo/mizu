@@ -1,244 +1,149 @@
 package mizu
 
 import (
+	"context"
 	"net/http"
 	"path"
-	"sync"
 
 	"github.com/humbornjo/mizu/internal"
 )
 
 type mux struct {
-	prefix         string
-	inner          *Server
-	bucketVolatile *middlewareBucket
-	bucketPersist  *middlewareBucket
+	inner    *http.ServeMux
+	prefix   string
+	server   *Server
+	buckets  []*bucket // contains the middlewares passed by initializer
+	volatile *bucket   // contains the middlewares passed by Use
 }
 
-func newMux(
-	prefix string, server *Server, volatile *middlewareBucket, mws ...func(http.Handler) http.Handler,
-) internal.Mux {
-	return &mux{
-		prefix:         prefix,
-		inner:          server,
-		bucketVolatile: volatile,
-		bucketPersist:  &middlewareBucket{Middlewares: mws},
+func (m *mux) Handler() http.Handler {
+	return m.inner
+}
+
+func (m *mux) Middleware() func(http.Handler) http.Handler {
+	m.server.mu.Lock()
+	defer m.server.mu.Unlock()
+
+	mws := m.drainBucket()
+	for i := len(m.buckets) - 1; i >= 0; i-- {
+		for j := len(m.buckets[i].Middlewares) - 1; j >= 0; j-- {
+			mws = append(mws, m.buckets[i].Middlewares[j])
+		}
+	}
+
+	return func(h http.Handler) http.Handler {
+		for _, mw := range mws {
+			h = mw(h)
+		}
+		return h
 	}
 }
 
 // drainBucket applies all accumulated middlewares in the bucket
 // to the given handler and clears the bucket.
-func drainBucket(handler http.Handler, m *mux) http.Handler {
-	if m.bucketVolatile == nil {
-		return handler
-	}
-	for i := len(m.bucketVolatile.Middlewares) - 1; i >= 0; i-- {
-		handler = m.bucketVolatile.Middlewares[i](handler)
-	}
-	m.bucketVolatile.Middlewares = m.bucketVolatile.Middlewares[:0]
-	m.bucketVolatile = nil
-
-	if m.bucketPersist != nil {
-		for i := len(m.bucketPersist.Middlewares) - 1; i >= 0; i-- {
-			handler = m.bucketPersist.Middlewares[i](handler)
+func (m *mux) drainBucket() []func(http.Handler) http.Handler {
+	var mws []func(http.Handler) http.Handler
+	if m.volatile != nil {
+		for i := len(m.volatile.Middlewares) - 1; i >= 0; i-- {
+			mws = append(mws, m.volatile.Middlewares[i])
 		}
+		m.volatile.Middlewares = m.volatile.Middlewares[:0]
+		m.volatile = nil
 	}
-	return handler
+
+	return mws
 }
 
 func (m *mux) Use(middleware func(http.Handler) http.Handler) internal.Mux {
-	m.inner.mu.Lock()
-	defer m.inner.mu.Unlock()
-	if m.bucketVolatile == nil {
-		panic("middlewares already consumed")
+	m.server.mu.Lock()
+	defer m.server.mu.Unlock()
+
+	if m.volatile != nil {
+		m.volatile.Middlewares = append(m.volatile.Middlewares, middleware)
+	} else {
+		m.volatile = &bucket{Middlewares: []func(http.Handler) http.Handler{middleware}}
+		m.buckets = append(m.buckets, m.volatile)
 	}
-	m.bucketVolatile.Middlewares = append(m.bucketVolatile.Middlewares, middleware)
 	return m
 }
 
-func (m *mux) Handle(pattern string, handler http.Handler) {
-	m.inner.mu.Lock()
-	defer m.inner.mu.Unlock()
-	m.inner.Handle(path.Join(m.prefix, pattern), drainBucket(handler, m))
+func (m *mux) HandleFunc(pattern string, handlerFunc http.HandlerFunc) {
+	m.server.mu.Lock()
+	defer m.server.mu.Unlock()
+
+	// Record the registered paths
+	m.server.InjectContext(func(ctx context.Context) context.Context {
+		value := ctx.Value(_CTXKEY)
+		if value == nil {
+			return context.WithValue(ctx, _CTXKEY, &[]string{pattern})
+		}
+
+		paths, ok := value.(*[]string)
+		if !ok {
+			panic("unreachable")
+		}
+		*paths = append(*paths, pattern)
+		return ctx
+	})
+
+	mws := m.drainBucket()
+	var handler http.Handler = handlerFunc
+	for _, mw := range mws {
+		handler = mw(handler)
+	}
+
+	m.inner.HandleFunc(path.Join(m.prefix, pattern), handler.ServeHTTP)
 }
 
-func (m *mux) HandleFunc(pattern string, handlerFunc http.HandlerFunc) {
-	m.inner.mu.Lock()
-	defer m.inner.mu.Unlock()
-	m.inner.HandleFunc(path.Join(m.prefix, pattern), drainBucket(handlerFunc, m).ServeHTTP)
+func (m *mux) Handle(pattern string, handler http.Handler) {
+	m.HandleFunc(pattern, handler.ServeHTTP)
 }
 
 func (m *mux) Get(pattern string, handler http.HandlerFunc) {
-	m.inner.mu.Lock()
-	defer m.inner.mu.Unlock()
-	m.inner.Get(path.Join(m.prefix, pattern), drainBucket(handler, m).ServeHTTP)
+	m.HandleFunc(http.MethodGet+" "+pattern, handler.ServeHTTP)
 }
 
 func (m *mux) Post(pattern string, handler http.HandlerFunc) {
-	m.inner.mu.Lock()
-	defer m.inner.mu.Unlock()
-	m.inner.Post(path.Join(m.prefix, pattern), drainBucket(handler, m).ServeHTTP)
+	m.HandleFunc(http.MethodPost+" "+pattern, handler.ServeHTTP)
 }
 
 func (m *mux) Put(pattern string, handler http.HandlerFunc) {
-	m.inner.mu.Lock()
-	defer m.inner.mu.Unlock()
-	m.inner.Put(path.Join(m.prefix, pattern), drainBucket(handler, m).ServeHTTP)
+	m.HandleFunc(http.MethodPut+" "+pattern, handler.ServeHTTP)
 }
 
 func (m *mux) Delete(pattern string, handler http.HandlerFunc) {
-	m.inner.mu.Lock()
-	defer m.inner.mu.Unlock()
-	m.inner.Delete(path.Join(m.prefix, pattern), drainBucket(handler, m).ServeHTTP)
+	m.HandleFunc(http.MethodDelete+" "+pattern, handler.ServeHTTP)
 }
 
 func (m *mux) Patch(pattern string, handler http.HandlerFunc) {
-	m.inner.mu.Lock()
-	defer m.inner.mu.Unlock()
-	m.inner.Patch(path.Join(m.prefix, pattern), drainBucket(handler, m).ServeHTTP)
+	m.HandleFunc(http.MethodPatch+" "+pattern, handler.ServeHTTP)
 }
 
 func (m *mux) Head(pattern string, handler http.HandlerFunc) {
-	m.inner.mu.Lock()
-	defer m.inner.mu.Unlock()
-	m.inner.Head(path.Join(m.prefix, pattern), drainBucket(handler, m).ServeHTTP)
+	m.HandleFunc(http.MethodHead+" "+pattern, handler.ServeHTTP)
 }
 
 func (m *mux) Trace(pattern string, handler http.HandlerFunc) {
-	m.inner.mu.Lock()
-	defer m.inner.mu.Unlock()
-	m.inner.Trace(path.Join(m.prefix, pattern), drainBucket(handler, m).ServeHTTP)
+	m.HandleFunc(http.MethodTrace+" "+pattern, handler.ServeHTTP)
 }
 
 func (m *mux) Options(pattern string, handler http.HandlerFunc) {
-	m.inner.mu.Lock()
-	defer m.inner.mu.Unlock()
-	m.inner.Options(path.Join(m.prefix, pattern), drainBucket(handler, m).ServeHTTP)
+	m.HandleFunc(http.MethodOptions+" "+pattern, handler.ServeHTTP)
 }
 
 func (m *mux) Connect(pattern string, handler http.HandlerFunc) {
-	m.inner.mu.Lock()
-	defer m.inner.mu.Unlock()
-	m.inner.Connect(path.Join(m.prefix, pattern), drainBucket(handler, m).ServeHTTP)
+	m.HandleFunc(http.MethodConnect+" "+pattern, handler.ServeHTTP)
 }
 
 func (m *mux) Group(prefix string) internal.Mux {
-	m.inner.mu.Lock()
-	defer m.inner.mu.Unlock()
-	return newGroupMux(prefix, m.inner, &middlewareBucket{
-		Middlewares: append(m.bucketPersist.Middlewares, m.bucketVolatile.Middlewares...),
-	})
-}
+	m.server.mu.Lock()
+	defer m.server.mu.Unlock()
 
-type groupMux struct {
-	mux *Server
-	mu  sync.Mutex
-
-	prefix  string
-	buckets []*middlewareBucket
-}
-
-func newGroupMux(prefix string, server *Server, bucket *middlewareBucket) internal.Mux {
-	return &groupMux{mux: server, prefix: prefix, buckets: []*middlewareBucket{bucket}}
-}
-
-func (m *groupMux) middleware() func(http.Handler) http.Handler {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-
-	return func(handler http.Handler) http.Handler {
-		for i := len(m.buckets) - 1; i >= 0; i-- {
-			bucket := m.buckets[i]
-			for j := len(bucket.Middlewares) - 1; j >= 0; j-- {
-				m := bucket.Middlewares[j]
-				handler = m(handler)
-			}
-		}
-		return handler
+	m.volatile = nil
+	return &mux{
+		inner:   m.inner,
+		prefix:  path.Join(m.prefix, prefix),
+		server:  m.server,
+		buckets: append([]*bucket{}, m.buckets...),
 	}
-}
-
-func (m *groupMux) Use(middleware func(http.Handler) http.Handler) internal.Mux {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-
-	bucket := &middlewareBucket{
-		Middlewares: []func(http.Handler) http.Handler{middleware},
-	}
-	m.buckets = append(m.buckets, bucket)
-	return newMux(m.prefix, m.mux, nil, m.middleware())
-}
-
-func (m *groupMux) Handle(pattern string, handler http.Handler) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	m.mux.Handle(path.Join(m.prefix, pattern), m.middleware()(handler))
-}
-
-func (m *groupMux) HandleFunc(pattern string, handlerFunc http.HandlerFunc) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	m.mux.HandleFunc(path.Join(m.prefix, pattern), m.middleware()(handlerFunc).ServeHTTP)
-}
-
-func (m *groupMux) Get(pattern string, handler http.HandlerFunc) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	m.mux.Get(path.Join(m.prefix, pattern), m.middleware()(handler).ServeHTTP)
-}
-
-func (m *groupMux) Post(pattern string, handler http.HandlerFunc) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	m.mux.Post(path.Join(m.prefix, pattern), m.middleware()(handler).ServeHTTP)
-}
-
-func (m *groupMux) Put(pattern string, handler http.HandlerFunc) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	m.mux.Put(path.Join(m.prefix, pattern), m.middleware()(handler).ServeHTTP)
-}
-
-func (m *groupMux) Delete(pattern string, handler http.HandlerFunc) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	m.mux.Delete(path.Join(m.prefix, pattern), m.middleware()(handler).ServeHTTP)
-}
-
-func (m *groupMux) Patch(pattern string, handler http.HandlerFunc) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	m.mux.Patch(path.Join(m.prefix, pattern), m.middleware()(handler).ServeHTTP)
-}
-
-func (m *groupMux) Head(pattern string, handler http.HandlerFunc) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	m.mux.Head(path.Join(m.prefix, pattern), m.middleware()(handler).ServeHTTP)
-}
-
-func (m *groupMux) Trace(pattern string, handler http.HandlerFunc) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	m.mux.Trace(path.Join(m.prefix, pattern), m.middleware()(handler).ServeHTTP)
-}
-
-func (m *groupMux) Options(pattern string, handler http.HandlerFunc) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	m.mux.Options(path.Join(m.prefix, pattern), m.middleware()(handler).ServeHTTP)
-}
-
-func (m *groupMux) Connect(pattern string, handler http.HandlerFunc) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	m.mux.Connect(path.Join(m.prefix, pattern), m.middleware()(handler).ServeHTTP)
-}
-
-func (m *groupMux) Group(prefix string) internal.Mux {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	return newGroupMux(path.Join(m.prefix, prefix), m.mux, &middlewareBucket{
-		Middlewares: []func(http.Handler) http.Handler{m.middleware()},
-	})
 }

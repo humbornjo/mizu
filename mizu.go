@@ -79,14 +79,13 @@ func NewServer(srvName string, opts ...Option) *Server {
 	}
 
 	server := &Server{
+		mu:             &sync.Mutex{},
 		ctx:            context.Background(),
 		name:           srvName,
+		initialized:    atomic.Bool{},
 		isShuttingDown: atomic.Bool{},
-
-		mu:                &sync.Mutex{},
-		mux:               http.NewServeMux(),
-		middlewareBuckets: make([]*middlewareBucket, 0),
 	}
+	server.Mux = &mux{inner: http.NewServeMux(), server: server}
 	return (*config)(server)
 }
 
