@@ -3,7 +3,6 @@ package mizu
 import (
 	"context"
 	"fmt"
-	"log"
 	"net/http"
 	"net/http/pprof"
 	"slices"
@@ -70,7 +69,8 @@ func init() {
 func NewServer(srvName string, opts ...Option) *Server {
 	var config = new(config)
 	*config = func(s *Server) *Server {
-		s.config = _DEFAULT_SERVER_CONFIG
+		cc := _DEFAULT_SERVER_CONFIG
+		s.config = &cc
 		return s
 	}
 
@@ -79,14 +79,20 @@ func NewServer(srvName string, opts ...Option) *Server {
 	}
 
 	server := &Server{
-		ctx:            context.Background(),
+		mu:  &sync.Mutex{},
+		mmu: &sync.Mutex{},
+		ctx: context.WithValue(
+			context.Background(),
+			_CTXKEY, new([]string),
+		),
 		name:           srvName,
-		isShuttingDown: atomic.Bool{},
-
-		mu:                &sync.Mutex{},
-		mux:               http.NewServeMux(),
-		middlewareBuckets: make([]*middlewareBucket, 0),
+		initialized:    &atomic.Bool{},
+		isShuttingDown: &atomic.Bool{},
 	}
+	server.initialized.Store(false)
+	server.isShuttingDown.Store(false)
+
+	server.inner = &mux{inner: http.NewServeMux(), server: server}
 	return (*config)(server)
 }
 
@@ -150,6 +156,7 @@ func WithPrometheusMetrics() Option {
 	}
 }
 
+// WithServerProtocols sets the server protocols to use.
 func WithServerProtocols(protocols http.Protocols) Option {
 	return func(m *config) {
 		old := *m
@@ -206,13 +213,21 @@ func WithProfilingHandlers() Option {
 		old := *m
 		new := func(s *Server) *Server {
 			s = old(s)
+
+			s.HandleFunc("/debug/pprof", func(w http.ResponseWriter, r *http.Request) {
+				http.Redirect(w, r, r.RequestURI+"/", http.StatusMovedPermanently)
+			})
+
 			s.HandleFunc("/debug/pprof/", pprof.Index)
 			s.HandleFunc("/debug/pprof/trace", pprof.Trace)
 			s.HandleFunc("/debug/pprof/symbol", pprof.Symbol)
 			s.HandleFunc("/debug/pprof/cmdline", pprof.Cmdline)
 			s.HandleFunc("/debug/pprof/profile", pprof.Profile)
+
 			s.Handle("/debug/pprof/heap", pprof.Handler("heap"))
 			s.Handle("/debug/pprof/block", pprof.Handler("block"))
+			s.Handle("/debug/pprof/mutex", pprof.Handler("mutex"))
+			s.Handle("/debug/pprof/allocs", pprof.Handler("allocs"))
 			s.Handle("/debug/pprof/goroutine", pprof.Handler("goroutine"))
 			s.Handle("/debug/pprof/threadcreate", pprof.Handler("threadcreate"))
 			return s
@@ -224,36 +239,30 @@ func WithProfilingHandlers() Option {
 // WithDisplayRoutesOnStartup enables logging of all registered
 // routes when the server starts. This is useful for debugging
 // and development to see what endpoints are available.
-func WithRevealRoutesOnStartup() Option {
+func WithRevealRoutes() Option {
 	return func(m *config) {
 		old := *m
 		new := func(s *Server) *Server {
 			s = old(s)
-			s.HookOnStartup(func(ctx context.Context, s *Server) {
-				value := ctx.Value(_CTXKEY)
-				if value == nil {
-					return
-				}
-				paths, ok := value.(*[]string)
-				if !ok {
-					panic("unreachable")
-				}
-				log.Println("📦 [INFO] Available routes:")
 
-				slices.Sort(*paths)
-				for _, path := range *paths {
+			routes := new([]string)
+			Hook(s, _CTXKEY, routes, WithHookStartup(func(s *Server) {
+				fmt.Println("📦 [INFO] Available routes:")
+
+				slices.Sort(*routes)
+				for _, path := range *routes {
 					method := ""
 					uri := path
 					if fields := strings.Fields(path); len(fields) == 2 {
 						method, uri = fields[0], fields[1]
 					}
 					if method == "" {
-						log.Printf("  ➤ 📍 %-7s %s\n", "*", uri)
+						fmt.Printf("     ➤ 📍 %-7s %s\n", "*", uri)
 					} else {
-						log.Printf("  ➤ 📍 %-7s %s\n", method, uri)
+						fmt.Printf("     ➤ 📍 %-7s %s\n", method, uri)
 					}
 				}
-			})
+			}))
 			return s
 		}
 		*m = new

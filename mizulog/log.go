@@ -3,6 +3,7 @@ package mizulog
 import (
 	"context"
 	"log/slog"
+	"os"
 )
 
 type ctxkey int
@@ -26,7 +27,7 @@ func Initialize(h slog.Handler, opts ...Option) {
 // slog.Handler. If h is nil, it uses the current default handler.
 func New(h slog.Handler, opts ...Option) *handler {
 	if h == nil {
-		h = slog.Default().Handler()
+		h = slog.NewTextHandler(os.Stdout, nil)
 	}
 
 	config := new(config)
@@ -63,13 +64,26 @@ func InjectContextAttrs(ctx context.Context, attrs ...slog.Attr) context.Context
 	return context.WithValue(ctx, _CTXKEY, append(ctxAttrs, attrs...))
 }
 
+type level interface {
+	int | string
+}
+
 // WithLogLevel sets the minimum log level for the handler.
-func WithLogLevel(level slog.Level) Option {
+func WithLogLevel[T level](level T) Option {
+	l := new(slog.Level)
+	switch data := any(level).(type) {
+	case int:
+		*l = slog.Level(data)
+	case string:
+		if err := l.UnmarshalText([]byte(data)); err != nil {
+			panic(err)
+		}
+	}
 	return func(m *config) {
 		old := *m
 		new := func(h *handler) *handler {
 			h = old(h)
-			h.level = level
+			h.level = *l
 			return h
 		}
 		*m = new

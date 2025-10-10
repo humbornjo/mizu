@@ -1,15 +1,3 @@
-# ---------------------------------------------------------------
-# Mizu Example Makefile
-#
-# Usage:
-#   make [target]
-#
-# Targets:
-#   help      Show this help message
-#   gen       Generate protocol buffer files
-#   clean     Clean up generated files
-# ---------------------------------------------------------------
-
 # --- Configuration ---
 PREFIX=protogen
 
@@ -17,7 +5,6 @@ PREFIX=protogen
 GENERATE_ICON := ✨
 CLEAN_ICON := 🧹
 DONE_ICON := ✅
-HELP_ICON := 💬
 
 # --- Targets ---
 .PHONY: all gen clean help
@@ -25,20 +12,31 @@ HELP_ICON := 💬
 
 all: gen ## Generate all files (default)
 
-gen: clean ## $(GENERATE_ICON) Generate protocol buffer files
+gen: clean ## Generate protocol buffer files
 	@echo "$(GENERATE_ICON) Generating protocol buffer files..."
 	@buf generate
+	@echo 'package '$(PREFIX)'\n\n'    \
+		'import (\n'                  \
+		'  _ "embed"\n'               \
+		')\n\n'                       \
+		'var (\n'                     \
+		'  //go:embed openapi.yaml\n' \
+		'  OPENAPI []byte\n'          \
+		')' >  dist/const.go
 	@mkdir -p ./${PREFIX}
 	@mv dist/* ./${PREFIX}/
 	@echo "$(DONE_ICON) Protobuf generation complete."
 	@rm -r dist
 
-clean: ## $(CLEAN_ICON) Clean up generated files
+clean: ## Clean up generated files
 	@echo "$(CLEAN_ICON) Cleaning up generated files..."
 	@rm -rf dist
 	@rm -rf ./${PREFIX}
 
-help: ## $(HELP_ICON) Show this help message
+run: ## Run example
+	@go run -trimpath .
+
+help: ## Show this help message
 	@echo "Usage: make [target]"
 	@echo ""
 	@echo "Available targets:"

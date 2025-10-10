@@ -39,9 +39,12 @@ type oaiConfig struct {
 // WithOaiDocumentation enables to serve HTML OpenAPI
 // documentation. It will be served at the same path as
 // openapi.json
-func WithOaiDocumentation() OaiOption {
+func WithOaiDocumentation(doc *openapi3.T) OaiOption {
 	return func(c *oaiConfig) {
 		c.enableDoc = true
+		if doc != nil {
+			c.preLoaded = doc
+		}
 	}
 }
 
@@ -52,7 +55,12 @@ func WithOaiServePath(path string) OaiOption {
 	}
 }
 
-func WithOaiPreLoadDoc(doc *openapi3.T) OaiOption {
+// WithOaiPreLoad loads an OpenAPI document from data.
+func WithOaiPreLoad(data []byte) OaiOption {
+	doc, err := openapi3.NewLoader().LoadFromData(data)
+	if err != nil {
+		panic(err)
+	}
 	return func(c *oaiConfig) {
 		c.preLoaded = doc
 	}

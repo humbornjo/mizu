@@ -10,7 +10,7 @@ import (
 	metricsdk "go.opentelemetry.io/otel/sdk/metric"
 	"go.opentelemetry.io/otel/sdk/resource"
 	tracesdk "go.opentelemetry.io/otel/sdk/trace"
-	"go.opentelemetry.io/otel/semconv/v1.26.0"
+	"go.opentelemetry.io/otel/semconv/v1.37.0"
 	"go.opentelemetry.io/otel/trace"
 )
 
@@ -93,7 +93,7 @@ func Initialize(opts ...Option) error {
 		attrs := []attribute.KeyValue{
 			semconv.ServiceName(config.serviceName),
 			semconv.ServiceVersion(config.serviceVersion),
-			semconv.DeploymentEnvironment(config.environment),
+			semconv.DeploymentEnvironmentName(config.environment),
 		}
 
 		res, err = resource.Merge(

@@ -1,19 +1,17 @@
 package mizuoai
 
 import (
-	"context"
 	_ "embed"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
-	"log"
 	"net/http"
 	"path"
 	"reflect"
 	"strconv"
 	"strings"
-	"sync/atomic"
+	"sync"
 	"text/template"
 
 	"github.com/getkin/kin-openapi/openapi3"
@@ -28,22 +26,17 @@ var (
 	_STOPLIGHT_UI_TEMPLATE         = template.Must(template.New("oai_ui").Parse(_STOPLIGHT_UI_TEMPLATE_CONTENT))
 )
 
-type oai struct {
-	server    *mizu.Server
-	oaiConfig *oaiConfig
-}
-
 type ctxkey int
 
 const (
-	_CTXKEY_OAI_INITIALIZED ctxkey = iota
-	_CTXKEY_OAI_CONFIG
+	_CTXKEY_OAI ctxkey = iota
 )
 
-// NewOai creates a new scope with the given path and options.
-// openapi.json will be served at /{path}/openapi.json. HTML will
-// be served at /{path}/openapi if enabled.
-func NewOai(server *mizu.Server, title string, opts ...OaiOption) *oai {
+// Initialize inject OpenAPI config into mizu.Server with the
+// given path and options. openapi.json will be served at
+// /{path}/openapi.json. HTML will be served at /{path}/openapi
+// if enabled. {path} can be set using WithOaiServePath
+func Initialize(server *mizu.Server, title string, opts ...OaiOption) {
 	if title == "" {
 		panic("title is required")
 	}
@@ -54,48 +47,30 @@ func NewOai(server *mizu.Server, title string, opts ...OaiOption) *oai {
 		opt(config)
 	}
 
-	server.InjectContext(func(ctx context.Context) context.Context {
-		once := ctx.Value(_CTXKEY_OAI_INITIALIZED)
-		if once == nil {
-			ctx = context.WithValue(ctx, _CTXKEY_OAI_INITIALIZED, &atomic.Bool{})
-		}
+	if config.enableDoc {
+		once := sync.Once{}
+		mizu.Hook(server, _CTXKEY_OAI, config, mizu.WithHookHandler(func(srv *mizu.Server) {
+			once.Do(func() {
+				oaiJson, err := renderJson(config)
+				if err != nil {
+					fmt.Printf("🚨 [ERROR] Failed to generate openapi.json: %s\n", err)
+					return
+				}
 
-		value := ctx.Value(_CTXKEY_OAI_CONFIG)
-		if value == nil {
-			return context.WithValue(ctx, _CTXKEY_OAI_CONFIG, config)
-		}
-		return ctx
-	})
+				// Serve openapi.json
+				srv.Get(path.Join(config.pathDoc, "/openapi.json"), func(w http.ResponseWriter, r *http.Request) {
+					w.Header().Set("Content-Type", "application/json")
+					_, _ = w.Write(oaiJson)
+				})
 
-	enableDoc := config.enableDoc
-	server.HookOnExtractHandler(func(ctx context.Context, srv *mizu.Server) {
-		once, _ := ctx.Value(_CTXKEY_OAI_INITIALIZED).(*atomic.Bool)
-		if once != nil && once.CompareAndSwap(true, false) {
-			return
-		}
-
-		oaiJson, err := renderJson(config)
-		if err != nil {
-			log.Printf("failed to generate openapi.json: %s", err)
-			return
-		}
-
-		// Serve openapi.json
-		srv.Get(path.Join(config.pathDoc, "/openapi.json"), func(w http.ResponseWriter, r *http.Request) {
-			w.Header().Set("Content-Type", "application/json; charset=utf-8")
-			_, _ = w.Write(oaiJson)
-		})
-
-		// Serve Swagger UI
-		if enableDoc {
-			srv.Get(path.Join(config.pathDoc, "/openapi"), func(w http.ResponseWriter, r *http.Request) {
-				w.Header().Set("Content-Type", "text/html")
-				_ = _STOPLIGHT_UI_TEMPLATE.Execute(w, map[string]string{"Path": path.Join(config.pathDoc, "/openapi.json")})
+				encoded, _ := json.Marshal(string(oaiJson))
+				srv.Get(path.Join(config.pathDoc, "/openapi"), func(w http.ResponseWriter, r *http.Request) {
+					w.Header().Set("Content-Type", "text/html")
+					_ = _STOPLIGHT_UI_TEMPLATE.Execute(w, map[string]string{"Document": string(encoded)})
+				})
 			})
-		}
-	})
-
-	return &oai{server: server, oaiConfig: config}
+		}))
+	}
 }
 
 // Path registers a new path in the OpenAPI spec. It can be used
@@ -103,12 +78,14 @@ func NewOai(server *mizu.Server, title string, opts ...OaiOption) *oai {
 // etc.
 //
 // See: https://spec.openapis.org/oas/v3.0.4.html#path-item-object
-func (oai *oai) Path(pattern string, opts ...PathOption) {
+func Path(server *mizu.Server, pattern string, opts ...PathOption) {
 	config := new(pathConfig)
 	for _, opt := range opts {
 		opt(config)
 	}
-	oai.oaiConfig.paths.Set(pattern, &config.PathItem)
+
+	oai := mizu.Hook[ctxkey, oaiConfig](server, _CTXKEY_OAI, nil)
+	oai.paths.Set(pattern, &config.PathItem)
 }
 
 // Rx represents the request side of an API endpoint. It provides
@@ -150,11 +127,11 @@ func (t tag) String() string {
 }
 
 const (
-	_TAG_PATH   tag = "path"
-	_TAG_QUERY  tag = "query"
-	_TAG_HEADER tag = "header"
-	_TAG_BODY   tag = "body"
-	_TAG_FORM   tag = "form"
+	_STRUCT_TAG_PATH   tag = "path"
+	_STRUCT_TAG_QUERY  tag = "query"
+	_STRUCT_TAG_HEADER tag = "header"
+	_STRUCT_TAG_BODY   tag = "body"
+	_STRUCT_TAG_FORM   tag = "form"
 )
 
 // notion holds metadata about a struct field to be parsed from a
@@ -214,12 +191,12 @@ func genDecode[T any]() decode[T] {
 		fieldTyp := typ.Field(i)
 		if mizuTag, ok := fieldTyp.Tag.Lookup("mizu"); ok {
 			switch tag(mizuTag) {
-			case _TAG_PATH:
+			case _STRUCT_TAG_PATH:
 				if fieldTyp.Type.Kind() != reflect.Struct {
 					panic("path must be a struct")
 				}
 				structPath := val.FieldByName(fieldTyp.Name)
-				notionPath := genNotions(structPath, _TAG_PATH)
+				notionPath := genNotions(structPath, _STRUCT_TAG_PATH)
 				if len(notionPath) == 0 {
 					continue
 				}
@@ -235,12 +212,12 @@ func genDecode[T any]() decode[T] {
 					}
 					return errs
 				})
-			case _TAG_QUERY:
+			case _STRUCT_TAG_QUERY:
 				if fieldTyp.Type.Kind() != reflect.Struct {
 					panic("query must be a struct")
 				}
 				structQuery := val.FieldByName(fieldTyp.Name)
-				notionQuery := genNotions(structQuery, _TAG_QUERY)
+				notionQuery := genNotions(structQuery, _STRUCT_TAG_QUERY)
 				if len(notionQuery) == 0 {
 					continue
 				}
@@ -256,12 +233,12 @@ func genDecode[T any]() decode[T] {
 					}
 					return errs
 				})
-			case _TAG_HEADER:
+			case _STRUCT_TAG_HEADER:
 				if fieldTyp.Type.Kind() != reflect.Struct {
 					panic("header must be a struct")
 				}
 				structHeader := val.FieldByName(fieldTyp.Name)
-				notionHeader := genNotions(structHeader, _TAG_HEADER)
+				notionHeader := genNotions(structHeader, _STRUCT_TAG_HEADER)
 				if len(notionHeader) == 0 {
 					continue
 				}
@@ -277,7 +254,7 @@ func genDecode[T any]() decode[T] {
 					}
 					return errs
 				})
-			case _TAG_FORM:
+			case _STRUCT_TAG_FORM:
 				if hasBody {
 					panic("cannot use both form and body")
 				}
@@ -286,7 +263,7 @@ func genDecode[T any]() decode[T] {
 				}
 				hasForm = true
 				structForm := val.FieldByName(fieldTyp.Name)
-				notionForm := genNotions(structForm, _TAG_FORM)
+				notionForm := genNotions(structForm, _STRUCT_TAG_FORM)
 				p.append(func(r *http.Request, val *T) []error {
 					errs := []error{}
 					if err := r.ParseForm(); err != nil {
@@ -302,7 +279,7 @@ func genDecode[T any]() decode[T] {
 					}
 					return errs
 				})
-			case _TAG_BODY:
+			case _STRUCT_TAG_BODY:
 				if hasForm {
 					panic("cannot use both form and body")
 				}
@@ -447,7 +424,7 @@ func enrichOperation[I any, O any](config *operationConfig) {
 			continue
 		}
 		switch tag(mizuTag) {
-		case _TAG_PATH, _TAG_QUERY, _TAG_HEADER:
+		case _STRUCT_TAG_PATH, _STRUCT_TAG_QUERY, _STRUCT_TAG_HEADER:
 			for i := range field.Type.NumField() {
 				subfield := field.Type.Field(i)
 				subTag := subfield.Tag.Get(mizuTag)
@@ -465,7 +442,7 @@ func enrichOperation[I any, O any](config *operationConfig) {
 				}
 				config.Parameters = append(config.Parameters, param)
 			}
-		case _TAG_BODY:
+		case _STRUCT_TAG_BODY:
 			config.RequestBody = &openapi3.RequestBodyRef{
 				Value: &openapi3.RequestBody{
 					Description: field.Tag.Get("desc"),
@@ -480,7 +457,7 @@ func enrichOperation[I any, O any](config *operationConfig) {
 				contentType = "application/json"
 			}
 			config.RequestBody.Value.WithSchema(createSchema(field.Type), []string{contentType})
-		case _TAG_FORM:
+		case _STRUCT_TAG_FORM:
 			config.RequestBody = &openapi3.RequestBodyRef{
 				Value: &openapi3.RequestBody{
 					Description: field.Tag.Get("desc"),
@@ -525,7 +502,7 @@ func enrichOperation[I any, O any](config *operationConfig) {
 // createSchema creates a *base.SchemaProxy from a reflect.Type
 func createSchema(typ reflect.Type) *openapi3.Schema {
 	// Dereference pointer types to get the underlying type.
-	if typ.Kind() == reflect.Ptr {
+	if typ.Kind() == reflect.Pointer {
 		typ = typ.Elem()
 	}
 

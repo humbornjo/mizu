@@ -1,0 +1,53 @@
+syntax = "proto3";
+
+package barapp.file.v1;
+
+import "google/api/annotations.proto";
+import "google/api/httpbody.proto";
+
+enum Scenario {
+  SCENARIO_UNSPECIFIED = 0;
+
+  SCENARIO_GATEWAY = 1;
+  SCENARIO_CDN = 2;
+}
+
+message GetFileRequest {
+  string id = 1;
+}
+
+message GetFileResponse {
+  string url = 1;
+}
+
+message UploadFileRequest {
+  google.api.HttpBody form = 1;
+  Scenario scenario = 2;
+}
+
+message UploadFileResponse {
+  string id = 1;
+  string url = 2;
+}
+
+message DownloadFileRequest {
+  string id = 1;
+}
+
+service FileService {
+  // GetFile is used to retrieve file meta info
+  rpc GetFile(GetFileRequest) returns (GetFileResponse);
+
+  // UploadFile is used to upload file with stream
+  rpc UploadFile(stream UploadFileRequest) returns (UploadFileResponse) {
+    option (google.api.http) = {
+      post: "/file"
+      body: "form"
+    };
+  }
+
+  // buf:lint:ignore RPC_RESPONSE_STANDARD_NAME
+  rpc DownloadFile(DownloadFileRequest) returns (stream google.api.HttpBody) {
+    option (google.api.http) = {get: "/file/{id}"};
+  }
+}

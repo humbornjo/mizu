@@ -17,14 +17,26 @@ plugins:
     out: dist
     opt:
       - paths=source_relative
+
   - remote: buf.build/protocolbuffers/go:v1.36.6
     out: dist
     opt:
       - paths=source_relative
-  - local: ./protoc-gen-connect-openapi
+
+  # google-gnostic-openapi only compile out the rpc with google
+  # api annotations. Not very friendly for Connect RPC, but still
+  # kind of make sense because OPENAPI is for HTTP, other RPCs
+  # can be detected by GRPC protoreflect. (And there is only one
+  # compiled output, save a lot work to build Go CI flow)
+  - remote: buf.build/community/google-gnostic-openapi:v0.7.1
     out: dist
-    strategy: all
-    opt:
-      # - base=base.yaml
-      - with-streaming
-      - path=openapi.yaml
+
+  # https://github.com/sudorandom/protoc-gen-connect-openapi
+  # This plugin is better for Connect RPC, however what MIZU aim
+  # for is integrating OPENAPI into Go ecosystem. This plugin
+  # support only OpenAPI v3.1.0, which is not yet supported by
+  # kin-openapi.
+  #
+  # - remote: buf.build/community/sudorandom-connect-openapi:v0.21.3
+  #   out: dist
+  #   opt: path=openapi.yaml

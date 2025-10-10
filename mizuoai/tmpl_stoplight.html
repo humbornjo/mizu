@@ -15,10 +15,13 @@
     />
   </head>
   <body>
-    <elements-api
-      apiDescriptionUrl="{{ .Path }}"
-      router="hash"
-      layout="sidebar"
-    />
+    <elements-api id="elements" router="hash" layout="sidebar" />
   </body>
+  <script>
+    (async () => {
+      let doc = document.getElementById("elements");
+      doc.apiDescriptionDocument = {{.Document}};
+      console.log(doc);
+    })();
+  </script>
 </html>

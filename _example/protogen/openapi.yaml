@@ -1,227 +1,127 @@
-openapi: 3.1.0
-info: {}
+# Generated with protoc-gen-openapi
+# https://github.com/google/gnostic/tree/master/cmd/protoc-gen-openapi
+
+openapi: 3.0.3
+info:
+    title: ""
+    version: 0.0.1
 paths:
-  /app_bar.namaste.v1.NamasteService/Namaste:
-    post:
-      tags:
-        - app_bar.namaste.v1.NamasteService
-      summary: Namaste
-      operationId: app_bar.namaste.v1.NamasteService.Namaste
-      parameters:
-        - name: Connect-Protocol-Version
-          in: header
-          required: true
-          schema:
-            $ref: '#/components/schemas/connect-protocol-version'
-        - name: Connect-Timeout-Ms
-          in: header
-          schema:
-            $ref: '#/components/schemas/connect-timeout-header'
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/app_bar.namaste.v1.NamasteRequest'
-        required: true
-      responses:
-        default:
-          description: Error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/connect.error'
-        "200":
-          description: Success
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/app_bar.namaste.v1.NamasteResponse'
-  /app_foo.ciao.v1.CiaoService/Ciao:
-    post:
-      tags:
-        - app_foo.ciao.v1.CiaoService
-      summary: Ciao
-      operationId: app_foo.ciao.v1.CiaoService.Ciao
-      parameters:
-        - name: Connect-Protocol-Version
-          in: header
-          required: true
-          schema:
-            $ref: '#/components/schemas/connect-protocol-version'
-        - name: Connect-Timeout-Ms
-          in: header
-          schema:
-            $ref: '#/components/schemas/connect-timeout-header'
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/app_foo.ciao.v1.CiaoRequest'
-        required: true
-      responses:
-        default:
-          description: Error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/connect.error'
-        "200":
-          description: Success
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/app_foo.ciao.v1.CiaoResponse'
-  /greet/{name}:
-    get:
-      tags:
-        - app_foo.greet.v1.GreetService
-      summary: Greet
-      operationId: app_foo.greet.v1.GreetService.Greet
-      parameters:
-        - name: name
-          in: path
-          required: true
-          schema:
-            type: string
-            title: name
-      responses:
-        default:
-          description: Error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/connect.error'
-        "200":
-          description: Success
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/app_foo.greet.v1.GreetResponse'
+    /file:
+        post:
+            tags:
+                - FileService
+            description: UploadFile is used to upload file with stream
+            operationId: FileService_UploadFile
+            parameters:
+                - name: scenario
+                  in: query
+                  schema:
+                    type: integer
+                    format: enum
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            type: string
+                required: true
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/UploadFileResponse'
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
+    /file/{id}:
+        get:
+            tags:
+                - FileService
+            description: buf:lint:ignore RPC_RESPONSE_STANDARD_NAME
+            operationId: FileService_DownloadFile
+            parameters:
+                - name: id
+                  in: path
+                  required: true
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        '*/*': {}
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
+    /greet/{name}:
+        get:
+            tags:
+                - GreetService
+            operationId: GreetService_Greet
+            parameters:
+                - name: name
+                  in: path
+                  required: true
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/GreetResponse'
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
 components:
-  schemas:
-    app_bar.namaste.v1.Namaste:
-      type: object
-      properties:
-        message:
-          type: string
-          title: message
-      title: Namaste
-      additionalProperties: false
-    app_bar.namaste.v1.NamasteRequest:
-      type: object
-      properties:
-        name:
-          type: string
-          title: name
-      title: NamasteRequest
-      additionalProperties: false
-    app_bar.namaste.v1.NamasteResponse:
-      type: object
-      properties:
-        message:
-          type: string
-          title: message
-      title: NamasteResponse
-      additionalProperties: false
-    connect-protocol-version:
-      type: number
-      title: Connect-Protocol-Version
-      enum:
-        - 1
-      description: Define the version of the Connect protocol
-      const: 1
-    connect-timeout-header:
-      type: number
-      title: Connect-Timeout-Ms
-      description: Define the timeout, in ms
-    connect.error:
-      type: object
-      properties:
-        code:
-          type: string
-          examples:
-            - not_found
-          enum:
-            - canceled
-            - unknown
-            - invalid_argument
-            - deadline_exceeded
-            - not_found
-            - already_exists
-            - permission_denied
-            - resource_exhausted
-            - failed_precondition
-            - aborted
-            - out_of_range
-            - unimplemented
-            - internal
-            - unavailable
-            - data_loss
-            - unauthenticated
-          description: The status code, which should be an enum value of [google.rpc.Code][google.rpc.Code].
-        message:
-          type: string
-          description: A developer-facing error message, which should be in English. Any user-facing error message should be localized and sent in the [google.rpc.Status.details][google.rpc.Status.details] field, or localized by the client.
-        detail:
-          $ref: '#/components/schemas/google.protobuf.Any'
-      title: Connect Error
-      additionalProperties: true
-      description: 'Error type returned by Connect: https://connectrpc.com/docs/go/errors/#http-representation'
-    google.protobuf.Any:
-      type: object
-      properties:
-        type:
-          type: string
-        value:
-          type: string
-          format: binary
-        debug:
-          type: object
-          additionalProperties: true
-      additionalProperties: true
-      description: Contains an arbitrary serialized message along with a @type that describes the type of the serialized message.
-    app_foo.ciao.v1.Ciao:
-      type: object
-      properties:
-        message:
-          type: string
-          title: message
-      title: Ciao
-      additionalProperties: false
-    app_foo.ciao.v1.CiaoRequest:
-      type: object
-      properties:
-        name:
-          type: string
-          title: name
-      title: CiaoRequest
-      additionalProperties: false
-    app_foo.ciao.v1.CiaoResponse:
-      type: object
-      properties:
-        message:
-          type: string
-          title: message
-      title: CiaoResponse
-      additionalProperties: false
-    app_foo.greet.v1.GreetRequest:
-      type: object
-      properties:
-        name:
-          type: string
-          title: name
-      title: GreetRequest
-      additionalProperties: false
-    app_foo.greet.v1.GreetResponse:
-      type: object
-      properties:
-        message:
-          type: string
-          title: message
-      title: GreetResponse
-      additionalProperties: false
-security: []
+    schemas:
+        GoogleProtobufAny:
+            type: object
+            properties:
+                '@type':
+                    type: string
+                    description: The type of the serialized message.
+            additionalProperties: true
+            description: Contains an arbitrary serialized message along with a @type that describes the type of the serialized message.
+        GreetResponse:
+            type: object
+            properties:
+                message:
+                    type: string
+        Status:
+            type: object
+            properties:
+                code:
+                    type: integer
+                    description: The status code, which should be an enum value of [google.rpc.Code][google.rpc.Code].
+                    format: int32
+                message:
+                    type: string
+                    description: A developer-facing error message, which should be in English. Any user-facing error message should be localized and sent in the [google.rpc.Status.details][google.rpc.Status.details] field, or localized by the client.
+                details:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/GoogleProtobufAny'
+                    description: A list of messages that carry the error details.  There is a common set of message types for APIs to use.
+            description: 'The `Status` type defines a logical error model that is suitable for different programming environments, including REST APIs and RPC APIs. It is used by [gRPC](https://github.com/grpc). Each `Status` message contains three pieces of data: error code, error message, and error details. You can find out more about this error model and how to work with it in the [API Design Guide](https://cloud.google.com/apis/design/errors).'
+        UploadFileResponse:
+            type: object
+            properties:
+                id:
+                    type: string
+                url:
+                    type: string
 tags:
-  - name: app_bar.namaste.v1.NamasteService
-  - name: app_foo.ciao.v1.CiaoService
-  - name: app_foo.greet.v1.GreetService
+    - name: FileService
+    - name: GreetService

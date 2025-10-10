@@ -1,0 +1,42 @@
+package filesvc
+
+import (
+	"github.com/humbornjo/mizu/mizuconnect"
+	"github.com/humbornjo/mizu/mizudi"
+
+	"mizu.example/config"
+	"mizu.example/package/storage"
+	"mizu.example/protogen/barapp/file/v1/filev1connect"
+)
+
+type Config struct {
+	ServePrefix string `yaml:"serve_prefix"`
+}
+
+func Initialize() {
+	// Extract service config
+	local := mizudi.Enchant[Config](nil)
+
+	// Retrieve global config
+	global := mizudi.MustRetrieve[*config.Config]()
+
+	switch global.Env {
+	case "local":
+		// do something
+	case "dev":
+		// do something
+	case "prod":
+		// do something
+	}
+
+	if global.Env != "local" {
+		panic("env not loaded")
+	}
+
+	if local.ServePrefix != "mycustomprefix" {
+		panic("serve prefix not loaded")
+	}
+
+	srv := mizudi.MustRetrieve[*mizuconnect.Scope]()
+	srv.Register(&Service{storage.NewStorage()}, filev1connect.NewFileServiceHandler)
+}

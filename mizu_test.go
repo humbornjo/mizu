@@ -6,15 +6,13 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
-	"time"
 
 	"github.com/humbornjo/mizu"
+	"github.com/stretchr/testify/assert"
 )
 
-type ctxkey string
-
 func TestMizu_NewServer(t *testing.T) {
-	tests := []struct {
+	testCases := []struct {
 		name        string
 		serviceName string
 		opts        []mizu.Option
@@ -26,20 +24,20 @@ func TestMizu_NewServer(t *testing.T) {
 		},
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			server := mizu.NewServer(tt.serviceName, tt.opts...)
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			srv := mizu.NewServer(tc.serviceName, tc.opts...)
 
-			if server == nil {
+			if srv == nil {
 				t.Fatal("NewServer returned nil")
 			}
 
 			// Test that the server can handle basic operations
-			server.HandleFunc("/test", func(w http.ResponseWriter, r *http.Request) {
+			srv.HandleFunc("/test", func(w http.ResponseWriter, r *http.Request) {
 				_, _ = w.Write([]byte("test"))
 			})
 
-			handler := server.Handler()
+			handler := srv.Handler()
 			if handler == nil {
 				t.Fatal("Handler() returned nil")
 			}
@@ -48,29 +46,20 @@ func TestMizu_NewServer(t *testing.T) {
 			req := httptest.NewRequest("GET", "/test", nil)
 			rr := httptest.NewRecorder()
 			handler.ServeHTTP(rr, req)
-
-			if rr.Code != http.StatusOK {
-				t.Errorf("expected status 200, got %d", rr.Code)
-			}
-
-			if rr.Body.String() != "test" {
-				t.Errorf("expected body 'test', got %q", rr.Body.String())
-			}
+			assert.Equal(t, http.StatusOK, rr.Code)
+			assert.Equal(t, "test", rr.Body.String())
 		})
 	}
 }
 
 func TestMizu_WithPrometheusMetrics(t *testing.T) {
-	server := mizu.NewServer("metrics-test", mizu.WithPrometheusMetrics())
+	srv := mizu.NewServer("metrics-test", mizu.WithPrometheusMetrics())
 
-	handler := server.Handler()
+	handler := srv.Handler()
 	req := httptest.NewRequest("GET", "/metrics", nil)
 	rr := httptest.NewRecorder()
 	handler.ServeHTTP(rr, req)
-
-	if rr.Code != http.StatusOK {
-		t.Errorf("expected status 200 for /metrics endpoint, got %d", rr.Code)
-	}
+	assert.Equal(t, http.StatusOK, rr.Code)
 
 	// Check that it returns Prometheus format metrics
 	body := rr.Body.String()
@@ -79,57 +68,27 @@ func TestMizu_WithPrometheusMetrics(t *testing.T) {
 	}
 }
 
-func TestMizu_WithCustomHttpServer(t *testing.T) {
-	customServer := &http.Server{
-		ReadTimeout:  5 * time.Second,
-		WriteTimeout: 10 * time.Second,
-	}
-
-	server := mizu.NewServer(
-		"custom-test",
-		mizu.WithCustomHttpServer(customServer),
-	)
-
-	// Add a test route
-	server.HandleFunc("/custom", func(w http.ResponseWriter, r *http.Request) {
-		_, _ = w.Write([]byte("custom"))
-	})
-
-	handler := server.Handler()
-	req := httptest.NewRequest("GET", "/custom", nil)
-	rr := httptest.NewRecorder()
-	handler.ServeHTTP(rr, req)
-
-	if rr.Code != http.StatusOK {
-		t.Errorf("expected status 200, got %d", rr.Code)
-	}
-
-	if rr.Body.String() != "custom" {
-		t.Errorf("expected body 'custom', got %q", rr.Body.String())
-	}
-}
-
 func TestMizu_WithWizardHandleReadiness(t *testing.T) {
-	tests := []struct {
-		name       string
-		server     *mizu.Server
-		endpoint   string
-		expected   string
-		statusCode int
+	testCases := []struct {
+		name               string
+		server             *mizu.Server
+		endpoint           string
+		expectedBody       string
+		expectedStatusCode int
 	}{
 		{
-			name:       "default healthz endpoint",
-			server:     mizu.NewServer("default-healthz"),
-			endpoint:   "/healthz",
-			expected:   "OK",
-			statusCode: http.StatusOK,
+			name:               "default healthz endpoint",
+			server:             mizu.NewServer("default-healthz"),
+			endpoint:           "/healthz",
+			expectedBody:       "OK",
+			expectedStatusCode: http.StatusOK,
 		},
 		{
 			name: "custom readiness handler",
 			server: mizu.NewServer(
 				"custom-readiness",
 				mizu.WithWizardHandleReadiness(
-					"/healthz",
+					"GET /healthz",
 					func(isShuttingDown *atomic.Bool) http.HandlerFunc {
 						return func(w http.ResponseWriter, r *http.Request) {
 							if isShuttingDown.Load() {
@@ -140,35 +99,26 @@ func TestMizu_WithWizardHandleReadiness(t *testing.T) {
 						}
 					}),
 			),
-			endpoint:   "/healthz",
-			expected:   "Custom: Ready",
-			statusCode: http.StatusOK,
+			endpoint:           "/healthz",
+			expectedBody:       "Custom: Ready",
+			expectedStatusCode: http.StatusOK,
 		},
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			handler := tt.server.Handler()
-			req := httptest.NewRequest("GET", tt.endpoint, nil)
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
 			rr := httptest.NewRecorder()
-			handler.ServeHTTP(rr, req)
-
-			if rr.Code != tt.statusCode {
-				t.Errorf("expected status %d, got %d", tt.statusCode, rr.Code)
-			}
-
-			body := strings.TrimSpace(rr.Body.String())
-			if body != tt.expected {
-				t.Errorf("expected body %q, got %q", tt.expected, body)
-			}
+			req := httptest.NewRequest(http.MethodGet, tc.endpoint, http.NoBody)
+			tc.server.Handler().ServeHTTP(rr, req)
+			assert.Equal(t, tc.expectedStatusCode, rr.Code)
+			assert.Equal(t, tc.expectedBody, strings.TrimSpace(rr.Body.String()))
 		})
 	}
 }
 
 func TestMizu_WithProfilingHandlers(t *testing.T) {
-	server := mizu.NewServer("profiling-test", mizu.WithProfilingHandlers())
-
-	handler := server.Handler()
+	srv := mizu.NewServer("profiling-test", mizu.WithProfilingHandlers())
+	handler := srv.Handler()
 
 	// Test that profiling endpoints are registered
 	profilingEndpoints := []struct {
@@ -203,12 +153,12 @@ func TestMizu_WithProfilingHandlers(t *testing.T) {
 
 func TestMizu_OptionComposition(t *testing.T) {
 	// Test that multiple options work together
-	server := mizu.NewServer("composed-test",
+	srv := mizu.NewServer("composed-test",
 		mizu.WithPrometheusMetrics(),
 		mizu.WithProfilingHandlers(),
 	)
 
-	handler := server.Handler()
+	handler := srv.Handler()
 
 	// Test default healthz endpoint (automatically mounted)
 	req1 := httptest.NewRequest("GET", "/healthz", nil)
@@ -239,23 +189,17 @@ func TestMizu_OptionComposition(t *testing.T) {
 }
 
 func TestMizu_ServerWithEmptyServiceName(t *testing.T) {
-	// Test that server works even with empty service name
-	server := mizu.NewServer("")
+	// Test that srv works even with empty service name
+	srv := mizu.NewServer("")
 
-	server.HandleFunc("/empty", func(w http.ResponseWriter, r *http.Request) {
+	srv.HandleFunc("/empty", func(w http.ResponseWriter, r *http.Request) {
 		_, _ = w.Write([]byte("empty-service"))
 	})
 
-	handler := server.Handler()
+	handler := srv.Handler()
 	req := httptest.NewRequest("GET", "/empty", nil)
 	rr := httptest.NewRecorder()
 	handler.ServeHTTP(rr, req)
-
-	if rr.Code != http.StatusOK {
-		t.Errorf("expected status 200, got %d", rr.Code)
-	}
-
-	if rr.Body.String() != "empty-service" {
-		t.Errorf("expected body 'empty-service', got %q", rr.Body.String())
-	}
+	assert.Equal(t, http.StatusOK, rr.Code)
+	assert.Equal(t, "empty-service", rr.Body.String())
 }

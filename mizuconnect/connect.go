@@ -1,12 +1,10 @@
 package mizuconnect
 
 import (
-	"context"
-	"log"
 	"net/http"
 	"reflect"
 	"strings"
-	"sync/atomic"
+	"sync"
 
 	"connectrpc.com/connect"
 	"connectrpc.com/grpchealth"
@@ -23,35 +21,27 @@ import (
 type ctxkey int
 
 const (
-	_CTXKEY_HEALTH ctxkey = iota
-	_CTXKEY_REFLECT
-	_CTXKEY_VANGUARD
-
-	_CTXKEY_HEALTH_INITIALIZED
-	_CTXKEY_REFLECT_INITIALIZED
-	_CTXKEY_VANGUARD_INITIALIZED
-
-	_CTXKEY_VANGUARD_PATTERN
-	_CTXKEY_VANGUARD_TRANSCODER_OPTS
+	_CTXKEY_GRPC_HEALTH ctxkey = iota
+	_CTXKEY_GRPC_REFLECT
+	_CTXKEY_CRPC_VANGUARD
 )
 
 var (
 	_DEFAULT_CONFIG = config{
-		enabledVanguard:     false,
-		enabledProtoHealth:  false,
-		enabledProtoReflect: false,
+		enabledCrpcVanguard: false,
+		enabledGrpcHealth:   false,
+		enabledGrpcReflect:  false,
 	}
 )
 
 type config struct {
-	enabledVanguard     bool
-	enabledProtoHealth  bool
-	enabledProtoReflect bool
+	enabledCrpcVanguard bool
+	enabledGrpcHealth   bool
+	enabledGrpcReflect  bool
 
 	connectOpts            []connect.HandlerOption
 	reflectOpts            []connect.HandlerOption
 	vanguardPattern        string
-	vanguardServiceOpts    []vanguard.ServiceOption
 	vanguardTranscoderOpts []vanguard.TranscoderOption
 }
 
@@ -62,7 +52,7 @@ type Option func(*config)
 // services.
 func WithGrpcHealth() Option {
 	return func(m *config) {
-		m.enabledProtoHealth = true
+		m.enabledGrpcHealth = true
 	}
 }
 
@@ -71,67 +61,110 @@ func WithGrpcHealth() Option {
 // at runtime.
 func WithGrpcReflect(opts ...connect.HandlerOption) Option {
 	return func(m *config) {
-		m.enabledProtoReflect = true
+		m.enabledGrpcReflect = true
 		m.reflectOpts = append(m.reflectOpts, opts...)
 	}
 }
 
-// WithValidate enables buf proto validation for the registered
+// WithCrpcValidate enables buf proto validation for the registered
 // services.
-func WithValidate() Option {
+func WithCrpcValidate() Option {
 	return func(m *config) {
-		interceptor, err := validate.NewInterceptor()
-		if err != nil {
-			panic(err)
-		}
+		interceptor := validate.NewInterceptor()
 		m.connectOpts = append(m.connectOpts, connect.WithInterceptors(interceptor))
 	}
 }
 
-// WithVanguard enables Vanguard transcoding for REST API
+// WithCrpcVanguard enables Vanguard transcoding for REST API
 // compatibility. This allows Connect RPC services to be accessed
 // via HTTP/JSON. The pattern parameter specifies the path,
 // should be mounted on "/" in most cases to achieve RESTful.
+// Service Option can be applied with
+// vanguard.WithDefaultServiceOptions or scope.Uses, therefore
+// only transcoder options are required on initializing scope.
 //
 // Example:
 //
-//	scope.WithVanguard("/", nil, nil)
-func WithVanguard(pattern string, svcOpts []vanguard.ServiceOption, transOpts []vanguard.TranscoderOption) Option {
+//	scope.WithCrpcVanguard("/")
+func WithCrpcVanguard(pattern string, transOpts ...vanguard.TranscoderOption) Option {
 	return func(m *config) {
-		m.enabledVanguard = true
+
+		m.enabledCrpcVanguard = true
 		m.vanguardPattern = pattern
-		m.vanguardServiceOpts = append(m.vanguardServiceOpts, svcOpts...)
 		m.vanguardTranscoderOpts = append(m.vanguardTranscoderOpts, transOpts...)
 	}
 }
 
-// WithHandlerOptions adds Connect handler options that will be
+// WithCrpcHandlerOptions adds Connect handler options that will be
 // applied to all registered services in this scope.
-func WithHandlerOptions(opts ...connect.HandlerOption) Option {
+func WithCrpcHandlerOptions(opts ...connect.HandlerOption) Option {
 	return func(m *config) {
 		m.connectOpts = append(m.connectOpts, opts...)
 	}
 }
 
-type scope struct {
-	*mizu.Server
-	config config
+type Scope struct {
+	srv *mizu.Server
+
+	config           *config
+	serviceNames     []string
+	vanguardServices []*vanguard.Service
 }
 
 // NewScope creates a new Connect RPC scope with the given mizu
 // server. The scope manages registration of Connect services
 // with optional features like health checks, reflection,
 // validation, and Vanguard transcoding.
-func NewScope(srv *mizu.Server, opts ...Option) *scope {
+func NewScope(srv *mizu.Server, opts ...Option) *Scope {
 	config := _DEFAULT_CONFIG
 	for _, opt := range opts {
 		opt(&config)
 	}
 
-	return &scope{
-		Server: srv,
-		config: config,
+	scope := &Scope{
+		srv:    srv,
+		config: &config,
 	}
+
+	if config.enabledGrpcReflect {
+		once := sync.Once{}
+		mizu.Hook(srv, _CTXKEY_GRPC_REFLECT, &once, mizu.WithHookHandler(func(srv *mizu.Server) {
+			once.Do(func() {
+				reflector := grpcreflect.NewStaticReflector(scope.serviceNames...)
+				srv.Handle(grpcreflect.NewHandlerV1(reflector, scope.config.reflectOpts...))
+				srv.Handle(grpcreflect.NewHandlerV1Alpha(reflector, scope.config.reflectOpts...))
+			})
+		}))
+	}
+
+	if config.enabledGrpcHealth {
+		once := sync.Once{}
+		mizu.Hook(srv, _CTXKEY_GRPC_HEALTH, &once, mizu.WithHookHandler(func(srv *mizu.Server) {
+			once.Do(func() {
+				checker := grpchealth.NewStaticChecker(scope.serviceNames...)
+				srv.Handle(grpchealth.NewHandler(checker))
+			})
+		}))
+	}
+
+	if config.enabledCrpcVanguard {
+		once := sync.Once{}
+		mizu.Hook(srv, _CTXKEY_CRPC_VANGUARD, &once, mizu.WithHookHandler(func(srv *mizu.Server) {
+			once.Do(func() {
+				pattern := "/"
+				if scope.config.vanguardPattern != "" {
+					pattern = scope.config.vanguardPattern
+				}
+				transcoder, err := vanguard.NewTranscoder(scope.vanguardServices, scope.config.vanguardTranscoderOpts...)
+				if err != nil {
+					panic(err)
+				}
+				srv.Handle(pattern, transcoder)
+			})
+		}))
+	}
+
+	return scope
 }
 
 // Register registers a Connect RPC service with the scope. impl
@@ -147,164 +180,72 @@ func NewScope(srv *mizu.Server, opts ...Option) *scope {
 //	scope := mizuconnect.NewScope(server)
 //	impl := &GreetServiceImpl{}
 //	scope.Register(impl, greetv1connect.NewGreetServiceHandler)
-func (s *scope) Register(impl any, newFunc any, opts ...connect.HandlerOption) {
+func (s *Scope) Register(impl any, newFunc any, opts ...connect.HandlerOption) {
 	opts = append(opts, s.config.connectOpts...)
 
 	pattern, handler := invoke(impl, newFunc, opts...)
 	fullyQualifiedServiceName, _ := detect(pattern)
+	s.serviceNames = append(s.serviceNames, fullyQualifiedServiceName)
 
-	// Register grpcreflect
-	if s.config.enabledProtoReflect {
-		s.InjectContext(func(ctx context.Context) context.Context {
-			once := ctx.Value(_CTXKEY_REFLECT_INITIALIZED)
-			if once == nil {
-				ctx = context.WithValue(ctx, _CTXKEY_REFLECT_INITIALIZED, &atomic.Bool{})
-			}
-
-			value := ctx.Value(_CTXKEY_REFLECT)
-			if value == nil {
-				return context.WithValue(ctx, _CTXKEY_REFLECT, &[]string{fullyQualifiedServiceName})
-			}
-			services, ok := value.(*[]string)
-			if !ok {
-				panic("invalid value in context")
-			}
-			*services = append(*services, fullyQualifiedServiceName)
-			return ctx
-		})
-
-		s.HookOnExtractHandler(func(ctx context.Context, server *mizu.Server) {
-			once, _ := ctx.Value(_CTXKEY_REFLECT_INITIALIZED).(*atomic.Bool)
-			if once.CompareAndSwap(true, false) {
-				return
-			}
-
-			value := ctx.Value(_CTXKEY_REFLECT)
-			if value == nil {
-				return
-			}
-			serviceNames, ok := value.(*[]string)
-			if !ok {
-				panic("unreachable")
-			}
-			reflector := grpcreflect.NewStaticReflector(*serviceNames...)
-			s.Handle(grpcreflect.NewHandlerV1(reflector, s.config.reflectOpts...))
-			s.Handle(grpcreflect.NewHandlerV1Alpha(reflector, s.config.reflectOpts...))
-		})
-	}
-
-	// Register grpchealth
-	if s.config.enabledProtoHealth {
-		s.InjectContext(func(ctx context.Context) context.Context {
-			once := ctx.Value(_CTXKEY_HEALTH_INITIALIZED)
-			if once == nil {
-				ctx = context.WithValue(ctx, _CTXKEY_HEALTH_INITIALIZED, &atomic.Bool{})
-			}
-
-			value := ctx.Value(_CTXKEY_HEALTH)
-			if value == nil {
-				return context.WithValue(ctx, _CTXKEY_HEALTH, &[]string{fullyQualifiedServiceName})
-			}
-			services, ok := value.(*[]string)
-			if !ok {
-				panic("invalid value in context")
-			}
-			*services = append(*services, fullyQualifiedServiceName)
-			return ctx
-		})
-
-		s.HookOnExtractHandler(func(ctx context.Context, server *mizu.Server) {
-			once, _ := ctx.Value(_CTXKEY_HEALTH_INITIALIZED).(*atomic.Bool)
-			if once.CompareAndSwap(true, false) {
-				return
-			}
-
-			value := ctx.Value(_CTXKEY_HEALTH)
-			if value == nil {
-				return
-			}
-			serviceNames, ok := value.(*[]string)
-			if !ok {
-				panic("unreachable")
-			}
-			checker := grpchealth.NewStaticChecker(*serviceNames...)
-			server.Handle(grpchealth.NewHandler(checker))
-		})
-	}
-
-	// Register vanguard transcoder
-	if s.config.enabledVanguard {
-		vanService := vanguard.NewService(pattern, handler, s.config.vanguardServiceOpts...)
-		s.InjectContext(func(ctx context.Context) context.Context {
-			valueOnce := ctx.Value(_CTXKEY_VANGUARD_INITIALIZED)
-			if valueOnce == nil {
-				ctx = context.WithValue(ctx, _CTXKEY_VANGUARD_INITIALIZED, &atomic.Bool{})
-			}
-
-			valuePattern := ctx.Value(_CTXKEY_VANGUARD_PATTERN)
-			if valuePattern == nil {
-				ctx = context.WithValue(ctx, _CTXKEY_VANGUARD_PATTERN, s.config.vanguardPattern)
-			} else {
-				log.Printf("⚠️ [WARN] Vanguard pattern get reset.")
-				ctx = context.WithValue(ctx, _CTXKEY_VANGUARD_PATTERN, s.config.vanguardPattern)
-			}
-
-			valueTransOpts := ctx.Value(_CTXKEY_VANGUARD_TRANSCODER_OPTS)
-			if valueTransOpts == nil {
-				ctx = context.WithValue(ctx, _CTXKEY_VANGUARD_TRANSCODER_OPTS, s.config.vanguardTranscoderOpts)
-			} else {
-				log.Println("⚠️ [WARN] Vanguard transcoder options get reset.")
-				ctx = context.WithValue(ctx, _CTXKEY_VANGUARD_TRANSCODER_OPTS, s.config.vanguardTranscoderOpts)
-			}
-
-			value := ctx.Value(_CTXKEY_VANGUARD)
-			if value == nil {
-				return context.WithValue(ctx, _CTXKEY_VANGUARD, &[]*vanguard.Service{vanService})
-			}
-			services, ok := value.(*[]*vanguard.Service)
-			if !ok {
-				panic("invalid value in context")
-			}
-			*services = append(*services, vanService)
-			return ctx
-		})
-
-		s.HookOnExtractHandler(func(ctx context.Context, server *mizu.Server) {
-			once, _ := ctx.Value(_CTXKEY_VANGUARD_INITIALIZED).(*atomic.Bool)
-			if once.CompareAndSwap(true, false) {
-				return
-			}
-
-			pattern := "/"
-			valuePattern := ctx.Value(_CTXKEY_VANGUARD_PATTERN)
-			if valuePattern != nil {
-				pattern = valuePattern.(string)
-			}
-
-			opts := []vanguard.TranscoderOption{}
-			valueTransOpts := ctx.Value(_CTXKEY_VANGUARD_TRANSCODER_OPTS)
-			if valueTransOpts != nil {
-				opts = valueTransOpts.([]vanguard.TranscoderOption)
-			}
-
-			value := ctx.Value(_CTXKEY_VANGUARD)
-			if value == nil {
-				return
-			}
-			services, ok := value.(*[]*vanguard.Service)
-			if !ok {
-				panic("unreachable")
-			}
-			transcoder, err := vanguard.NewTranscoder(*services, opts...)
-			if err != nil {
-				panic(err)
-			}
-			server.Handle(pattern, transcoder)
-		})
+	// Register vanguard service
+	if s.config.enabledCrpcVanguard {
+		vanService := vanguard.NewService(pattern, handler)
+		s.vanguardServices = append(s.vanguardServices, vanService)
 	}
 
 	// Register service
-	s.Handle(pattern, handler)
+	s.srv.Handle(pattern, handler)
+}
+
+type relayScope struct {
+	inner   *Scope
+	svcOpts []vanguard.ServiceOption
+}
+
+// Use creates a new relay scope with the given service option.
+// ServiceOption will not be applied to all the following
+// registered services. The Scopt level service options should be
+// configured with
+// WithCrpcVanguard("/", vanguard.WithDefaultServiceOptions(...))
+// on initialization.
+func (s *Scope) Use(svcOpt vanguard.ServiceOption) *relayScope {
+	if !s.config.enabledCrpcVanguard {
+		panic("invalid call: vanguard is not enabled")
+	}
+	return &relayScope{inner: s, svcOpts: []vanguard.ServiceOption{svcOpt}}
+}
+
+// Uses creates a new relay scope with the given service options.
+// ServiceOption will not be applied to all the following
+// registered services. The Scopt level service options should be
+// configured with
+// WithCrpcVanguard("/", vanguard.WithDefaultServiceOptions(...))
+// on initialization.
+func (s *Scope) Uses(svcOpts ...vanguard.ServiceOption) *relayScope {
+	if !s.config.enabledCrpcVanguard {
+		panic("invalid call: vanguard is not enabled")
+	}
+	return &relayScope{inner: s, svcOpts: svcOpts}
+}
+
+// Register registers a Connect RPC service with the relay scope.
+// Which will apply vanguard service options to the registered
+// service
+func (s relayScope) Register(impl any, newFunc any, opts ...connect.HandlerOption) {
+	opts = append(opts, s.inner.config.connectOpts...)
+
+	pattern, handler := invoke(impl, newFunc, opts...)
+	fullyQualifiedServiceName, _ := detect(pattern)
+	s.inner.serviceNames = append(s.inner.serviceNames, fullyQualifiedServiceName)
+
+	// Register vanguard service
+	if s.inner.config.enabledCrpcVanguard {
+		vanService := vanguard.NewService(pattern, handler, s.svcOpts...)
+		s.inner.vanguardServices = append(s.inner.vanguardServices, vanService)
+	}
+
+	// Register service
+	s.inner.srv.Handle(pattern, handler)
 }
 
 // detect extracts the protobuf service descriptor from the

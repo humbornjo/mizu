@@ -1,0 +1,19 @@
+syntax = "proto3";
+
+package fooapp.namaste.v1;
+
+message Namaste {
+  string message = 1;
+}
+
+message NamasteRequest {
+  string name = 1;
+}
+
+message NamasteResponse {
+  string message = 1;
+}
+
+service NamasteService {
+  rpc Namaste(stream NamasteRequest) returns (stream NamasteResponse);
+}
