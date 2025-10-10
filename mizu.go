@@ -88,7 +88,7 @@ func NewServer(srvName string, opts ...Option) *Server {
 	server.initialized.Store(false)
 	server.isShuttingDown.Store(false)
 
-	server.Mux = &mux{inner: http.NewServeMux(), server: server}
+	server.multiplexer = &mux{inner: http.NewServeMux(), server: server}
 	return (*config)(server)
 }
 

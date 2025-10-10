@@ -5,9 +5,26 @@ import (
 	"net/http"
 	"path"
 	"strings"
-
-	"github.com/humbornjo/mizu/internal"
 )
+
+type multiplexer interface {
+	Handle(pattern string, handler http.Handler)
+	HandleFunc(pattern string, handlerFunc http.HandlerFunc)
+
+	Handler() http.Handler
+	Use(middleware func(http.Handler) http.Handler) multiplexer
+
+	Group(prefix string) multiplexer
+	Get(pattern string, handler http.HandlerFunc)
+	Post(pattern string, handler http.HandlerFunc)
+	Put(pattern string, handler http.HandlerFunc)
+	Delete(pattern string, handler http.HandlerFunc)
+	Patch(pattern string, handler http.HandlerFunc)
+	Head(pattern string, handler http.HandlerFunc)
+	Trace(pattern string, handler http.HandlerFunc)
+	Options(pattern string, handler http.HandlerFunc)
+	Connect(pattern string, handler http.HandlerFunc)
+}
 
 type mux struct {
 	inner    *http.ServeMux
@@ -21,7 +38,7 @@ func (m *mux) Handler() http.Handler {
 	return m.inner
 }
 
-func (m *mux) Use(middleware func(http.Handler) http.Handler) internal.Mux {
+func (m *mux) Use(middleware func(http.Handler) http.Handler) multiplexer {
 	m.server.mu.Lock()
 	defer m.server.mu.Unlock()
 
@@ -88,7 +105,7 @@ func (m *mux) Connect(pattern string, handler http.HandlerFunc) {
 	m.handle(http.MethodConnect, pattern, handler)
 }
 
-func (m *mux) Group(prefix string) internal.Mux {
+func (m *mux) Group(prefix string) multiplexer {
 	m.server.mu.Lock()
 	defer m.server.mu.Unlock()
 

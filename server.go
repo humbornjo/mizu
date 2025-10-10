@@ -8,8 +8,6 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
-
-	"github.com/humbornjo/mizu/internal"
 )
 
 // Option configures the mizu server.
@@ -36,7 +34,7 @@ type serverConfig struct {
 // interface. It provides HTTP routing, middleware support, and
 // graceful shutdown capabilities.
 type Server struct {
-	internal.Mux
+	multiplexer
 
 	mu          *sync.Mutex
 	initialized atomic.Bool
@@ -120,12 +118,12 @@ func (s *Server) Handler() http.Handler {
 		hook(s.ctx, s)
 	}
 
-	return s.Mux.Handler()
+	return s.multiplexer.Handler()
 }
 
 // Uses is a shortcut for chaining multiple middlewares.
 func (s *Server) Uses(middleware func(http.Handler) http.Handler, more ...func(http.Handler) http.Handler,
-) internal.Mux {
+) multiplexer {
 	m := s.Use(middleware)
 	for _, mw := range more {
 		m = m.Use(mw)

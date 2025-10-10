@@ -7,7 +7,6 @@ import (
 	"testing"
 
 	"github.com/humbornjo/mizu"
-	"github.com/humbornjo/mizu/internal"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -22,7 +21,7 @@ func TestMux_Base_Route(t *testing.T) {
 
 	testCases := []struct {
 		name               string
-		setup              func(m internal.Mux)
+		setup              func(m *mizu.Server)
 		method             string
 		path               string
 		expectedStatusCode int
@@ -30,8 +29,8 @@ func TestMux_Base_Route(t *testing.T) {
 	}{
 		{
 			name: "Get",
-			setup: func(m internal.Mux) {
-				m.Get("/test", handler)
+			setup: func(s *mizu.Server) {
+				s.Get("/test", handler)
 			},
 			method:             http.MethodGet,
 			path:               "/test",
@@ -40,8 +39,8 @@ func TestMux_Base_Route(t *testing.T) {
 		},
 		{
 			name: "Post",
-			setup: func(m internal.Mux) {
-				m.Post("/test", handler)
+			setup: func(s *mizu.Server) {
+				s.Post("/test", handler)
 			},
 			method:             http.MethodPost,
 			path:               "/test",
@@ -50,8 +49,8 @@ func TestMux_Base_Route(t *testing.T) {
 		},
 		{
 			name: "Put",
-			setup: func(m internal.Mux) {
-				m.Put("/test", handler)
+			setup: func(s *mizu.Server) {
+				s.Put("/test", handler)
 			},
 			method:             http.MethodPut,
 			path:               "/test",
@@ -60,8 +59,8 @@ func TestMux_Base_Route(t *testing.T) {
 		},
 		{
 			name: "Delete",
-			setup: func(m internal.Mux) {
-				m.Delete("/test", handler)
+			setup: func(s *mizu.Server) {
+				s.Delete("/test", handler)
 			},
 			method:             http.MethodDelete,
 			path:               "/test",
@@ -70,8 +69,8 @@ func TestMux_Base_Route(t *testing.T) {
 		},
 		{
 			name: "Patch",
-			setup: func(m internal.Mux) {
-				m.Patch("/test", handler)
+			setup: func(s *mizu.Server) {
+				s.Patch("/test", handler)
 			},
 			method:             http.MethodPatch,
 			path:               "/test",
@@ -80,8 +79,8 @@ func TestMux_Base_Route(t *testing.T) {
 		},
 		{
 			name: "Head",
-			setup: func(m internal.Mux) {
-				m.Head("/test", func(w http.ResponseWriter, r *http.Request) {
+			setup: func(s *mizu.Server) {
+				s.Head("/test", func(w http.ResponseWriter, r *http.Request) {
 					// No body should be written for a HEAD request
 				})
 			},
@@ -92,8 +91,8 @@ func TestMux_Base_Route(t *testing.T) {
 		},
 		{
 			name: "Options",
-			setup: func(m internal.Mux) {
-				m.Options("/test", handler)
+			setup: func(s *mizu.Server) {
+				s.Options("/test", handler)
 			},
 			method:             http.MethodOptions,
 			path:               "/test",
@@ -102,8 +101,8 @@ func TestMux_Base_Route(t *testing.T) {
 		},
 		{
 			name: "Connect",
-			setup: func(m internal.Mux) {
-				m.Connect("/test", handler)
+			setup: func(s *mizu.Server) {
+				s.Connect("/test", handler)
 			},
 			method:             http.MethodConnect,
 			path:               "/test",
@@ -112,8 +111,8 @@ func TestMux_Base_Route(t *testing.T) {
 		},
 		{
 			name: "Trace",
-			setup: func(m internal.Mux) {
-				m.Trace("/test", handler)
+			setup: func(s *mizu.Server) {
+				s.Trace("/test", handler)
 			},
 			method:             http.MethodTrace,
 			path:               "/test",
@@ -122,8 +121,8 @@ func TestMux_Base_Route(t *testing.T) {
 		},
 		{
 			name: "HandleFunc",
-			setup: func(m internal.Mux) {
-				m.HandleFunc("/test", handler)
+			setup: func(s *mizu.Server) {
+				s.HandleFunc("/test", handler)
 			},
 			method:             http.MethodGet,
 			path:               "/test",
@@ -132,8 +131,8 @@ func TestMux_Base_Route(t *testing.T) {
 		},
 		{
 			name: "Handle",
-			setup: func(m internal.Mux) {
-				m.Handle("/test", handleHandler)
+			setup: func(s *mizu.Server) {
+				s.Handle("/test", handleHandler)
 			},
 			method:             http.MethodGet,
 			path:               "/test",
@@ -142,8 +141,8 @@ func TestMux_Base_Route(t *testing.T) {
 		},
 		{
 			name: "Not Found",
-			setup: func(m internal.Mux) {
-				m.Get("/other", handler)
+			setup: func(s *mizu.Server) {
+				s.Get("/other", handler)
 			},
 			method:             http.MethodGet,
 			path:               "/notfound",
