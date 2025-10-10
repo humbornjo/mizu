@@ -7,6 +7,13 @@ import (
 // Package mizu -------------------------------------------------
 
 type Mux interface {
+	Handle(pattern string, handler http.Handler)
+	HandleFunc(pattern string, handlerFunc http.HandlerFunc)
+
+	Handler() http.Handler
+	Use(middleware func(http.Handler) http.Handler) Mux
+
+	Group(prefix string) Mux
 	Get(pattern string, handler http.HandlerFunc)
 	Post(pattern string, handler http.HandlerFunc)
 	Put(pattern string, handler http.HandlerFunc)
@@ -16,8 +23,4 @@ type Mux interface {
 	Trace(pattern string, handler http.HandlerFunc)
 	Options(pattern string, handler http.HandlerFunc)
 	Connect(pattern string, handler http.HandlerFunc)
-	Handle(pattern string, handler http.Handler)
-	HandleFunc(pattern string, handlerFunc http.HandlerFunc)
-	Group(prefix string) Mux
-	Use(middleware func(http.Handler) http.Handler) Mux
 }

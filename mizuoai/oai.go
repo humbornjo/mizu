@@ -525,7 +525,7 @@ func enrichOperation[I any, O any](config *operationConfig) {
 // createSchema creates a *base.SchemaProxy from a reflect.Type
 func createSchema(typ reflect.Type) *openapi3.Schema {
 	// Dereference pointer types to get the underlying type.
-	if typ.Kind() == reflect.Ptr {
+	if typ.Kind() == reflect.Pointer {
 		typ = typ.Elem()
 	}
 

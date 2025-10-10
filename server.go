@@ -5,7 +5,6 @@ import (
 	"log"
 	"net"
 	"net/http"
-	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -18,7 +17,7 @@ type Option func(*config)
 
 type config func(*Server) *Server
 
-type middlewareBucket struct {
+type bucket struct {
 	Middlewares []func(http.Handler) http.Handler
 }
 
@@ -37,10 +36,10 @@ type serverConfig struct {
 // interface. It provides HTTP routing, middleware support, and
 // graceful shutdown capabilities.
 type Server struct {
-	mux               *http.ServeMux
-	mu                *sync.Mutex
-	initialized       bool
-	middlewareBuckets []*middlewareBucket
+	internal.Mux
+
+	mu          *sync.Mutex
+	initialized atomic.Bool
 
 	ctx                  context.Context
 	name                 string
@@ -54,89 +53,6 @@ type Server struct {
 func (s *Server) Name() string {
 	return s.name
 }
-
-// Use adds a middleware to the server and returns a new Mux
-// scoped to that middleware. Middlewares are applied in the
-// order they are added.
-func (s *Server) Use(middleware func(http.Handler) http.Handler) internal.Mux {
-	bucket := middlewareBucket{
-		Middlewares: []func(http.Handler) http.Handler{middleware},
-	}
-	s.middlewareBuckets = append(s.middlewareBuckets, &bucket)
-	return newMux("", s, &bucket)
-}
-
-// Handle registers an HTTP handler for the given pattern.
-func (s *Server) Handle(pattern string, handler http.Handler) {
-	s.HandleFunc(pattern, handler.ServeHTTP)
-}
-
-// HandleFunc registers an HTTP handler function for the given pattern.
-func (s *Server) HandleFunc(pattern string, handlerFunc http.HandlerFunc) {
-	s.InjectContext(func(ctx context.Context) context.Context {
-		value := ctx.Value(_CTXKEY)
-		if value == nil {
-			return context.WithValue(ctx, _CTXKEY, &[]string{pattern})
-		}
-
-		paths, ok := value.(*[]string)
-		if !ok {
-			panic("unreachable")
-		}
-		*paths = append(*paths, pattern)
-		return ctx
-	})
-
-	s.mux.HandleFunc(pattern, handlerFunc)
-}
-
-// Get registers handler for GET requests to given pattern.
-func (s *Server) Get(pattern string, handler http.HandlerFunc) {
-	s.HandleFunc(strings.Join([]string{http.MethodGet, pattern}, " "), handler)
-}
-
-// Post registers handler for POST requests to given pattern.
-func (s *Server) Post(pattern string, handler http.HandlerFunc) {
-	s.HandleFunc(strings.Join([]string{http.MethodPost, pattern}, " "), handler)
-}
-
-// Put registers handler for PUT requests to given pattern.
-func (s *Server) Put(pattern string, handler http.HandlerFunc) {
-	s.HandleFunc(strings.Join([]string{http.MethodPut, pattern}, " "), handler)
-}
-
-// Delete registers handler for DELETE requests to given pattern.
-func (s *Server) Delete(pattern string, handler http.HandlerFunc) {
-	s.HandleFunc(strings.Join([]string{http.MethodDelete, pattern}, " "), handler)
-}
-
-// Patch registers handler for PATCH requests to given pattern.
-func (s *Server) Patch(pattern string, handler http.HandlerFunc) {
-	s.HandleFunc(strings.Join([]string{http.MethodPatch, pattern}, " "), handler)
-}
-
-// Head registers handler for HEAD requests to given pattern.
-func (s *Server) Head(pattern string, handler http.HandlerFunc) {
-	s.HandleFunc(strings.Join([]string{http.MethodHead, pattern}, " "), handler)
-}
-
-// Options registers handler for OPTIONS requests to given pattern.
-func (s *Server) Options(pattern string, handler http.HandlerFunc) {
-	s.HandleFunc(strings.Join([]string{http.MethodOptions, pattern}, " "), handler)
-}
-
-// Connect registers handler for CONNECT requests to given pattern.
-func (s *Server) Connect(pattern string, handler http.HandlerFunc) {
-	s.HandleFunc(strings.Join([]string{http.MethodConnect, pattern}, " "), handler)
-}
-
-// Trace registers handler for TRACE requests to given pattern.
-func (s *Server) Trace(pattern string, handler http.HandlerFunc) {
-	s.HandleFunc(strings.Join([]string{http.MethodTrace, pattern}, " "), handler)
-}
-
-// Group returns a new Mux scoped to the given prefix
-func (s *Server) Group(prefix string) internal.Mux { return newGroupMux(prefix, s, nil) }
 
 // InjectContext modifies the server's initialization context
 // using the provided injector function. This context is only
@@ -188,15 +104,12 @@ func (s *Server) HookOnExtractHandler(hook func(context.Context, *Server)) {
 	s.hookOnExtractHandler = append(s.hookOnExtractHandler, hook)
 }
 
-// Handler returns the base HTTP handler (mux) without middlewares.
-// This method will be called before starting the server. It can
-// also be used to extract handlers for other purposes.
+// Handler returns the base HTTP handler (mux) without
+// middlewares. This method will be called before starting the
+// server. It can also be used to extract handlers for other
+// purposes.
 func (s *Server) Handler() http.Handler {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	if !s.initialized {
-		s.initialized = true
+	if s.initialized.CompareAndSwap(false, true) {
 		s.HandleFunc(
 			s.config.ReadinessPath,
 			s.config.WizardHandleReadiness(&s.isShuttingDown),
@@ -207,26 +120,17 @@ func (s *Server) Handler() http.Handler {
 		hook(s.ctx, s)
 	}
 
-	return s.mux
+	return s.Mux.Handler()
 }
 
-// Middleware returns a function that applies all registered
-// middlewares to a given handler and returns the final composed
-// handler.
-func (s *Server) Middleware() func(http.Handler) http.Handler {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	return func(handler http.Handler) http.Handler {
-		for i := len(s.middlewareBuckets) - 1; i >= 0; i-- {
-			bucket := s.middlewareBuckets[i]
-			for j := len(bucket.Middlewares) - 1; j >= 0; j-- {
-				m := bucket.Middlewares[j]
-				handler = m(handler)
-			}
-		}
-		return handler
+// Uses is a shortcut for chaining multiple middlewares.
+func (s *Server) Uses(middleware func(http.Handler) http.Handler, more ...func(http.Handler) http.Handler,
+) internal.Mux {
+	m := s.Use(middleware)
+	for _, mw := range more {
+		m = m.Use(mw)
 	}
+	return m
 }
 
 // ServeContext starts the HTTP server on the given address and
@@ -258,7 +162,7 @@ func (s *Server) ServeContext(ctx context.Context, addr string) error {
 	if s.config.ServerProtocols != nil {
 		server.Protocols = s.config.ServerProtocols
 	}
-	server.Handler = s.Middleware()(s.Handler())
+	server.Handler = s.Handler()
 
 	log.Println("🚀 [INFO] Starting HTTP server on", addr)
 	for _, hook := range s.hookOnStartup {
