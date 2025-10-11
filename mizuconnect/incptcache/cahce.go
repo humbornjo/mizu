@@ -1,4 +1,4 @@
-package cacheintc
+package incptcache
 
 import (
 	"context"
