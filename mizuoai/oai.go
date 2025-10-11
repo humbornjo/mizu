@@ -1,7 +1,6 @@
 package mizuoai
 
 import (
-	"context"
 	_ "embed"
 	"encoding/json"
 	"errors"
@@ -13,7 +12,7 @@ import (
 	"reflect"
 	"strconv"
 	"strings"
-	"sync/atomic"
+	"sync"
 	"text/template"
 
 	"github.com/getkin/kin-openapi/openapi3"
@@ -54,46 +53,26 @@ func NewOai(server *mizu.Server, title string, opts ...OaiOption) *oai {
 		opt(config)
 	}
 
-	server.InjectContext(func(ctx context.Context) context.Context {
-		once := ctx.Value(_CTXKEY_OAI_INITIALIZED)
-		if once == nil {
-			ctx = context.WithValue(ctx, _CTXKEY_OAI_INITIALIZED, &atomic.Bool{})
-		}
+	if config.enableDoc {
+		once := sync.Once{}
+		mizu.Hook(server, _CTXKEY_OAI_INITIALIZED, &once, mizu.WithHookHandler(func(srv *mizu.Server) {
+			oaiJson, err := renderJson(config)
+			if err != nil {
+				log.Printf("🚨 [ERROR] Failed to generate openapi.json: %s\n", err)
+				return
+			}
 
-		value := ctx.Value(_CTXKEY_OAI_CONFIG)
-		if value == nil {
-			return context.WithValue(ctx, _CTXKEY_OAI_CONFIG, config)
-		}
-		return ctx
-	})
-
-	enableDoc := config.enableDoc
-	server.HookOnExtractHandler(func(ctx context.Context, srv *mizu.Server) {
-		once, _ := ctx.Value(_CTXKEY_OAI_INITIALIZED).(*atomic.Bool)
-		if once != nil && once.CompareAndSwap(true, false) {
-			return
-		}
-
-		oaiJson, err := renderJson(config)
-		if err != nil {
-			log.Printf("failed to generate openapi.json: %s", err)
-			return
-		}
-
-		// Serve openapi.json
-		srv.Get(path.Join(config.pathDoc, "/openapi.json"), func(w http.ResponseWriter, r *http.Request) {
-			w.Header().Set("Content-Type", "application/json; charset=utf-8")
-			_, _ = w.Write(oaiJson)
-		})
-
-		// Serve Swagger UI
-		if enableDoc {
+			// Serve openapi.json
+			srv.Get(path.Join(config.pathDoc, "/openapi.json"), func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json; charset=utf-8")
+				_, _ = w.Write(oaiJson)
+			})
 			srv.Get(path.Join(config.pathDoc, "/openapi"), func(w http.ResponseWriter, r *http.Request) {
 				w.Header().Set("Content-Type", "text/html")
 				_ = _STOPLIGHT_UI_TEMPLATE.Execute(w, map[string]string{"Path": path.Join(config.pathDoc, "/openapi.json")})
 			})
-		}
-	})
+		}))
+	}
 
 	return &oai{server: server, oaiConfig: config}
 }

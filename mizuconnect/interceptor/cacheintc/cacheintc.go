@@ -4,12 +4,31 @@ import (
 	"context"
 	"fmt"
 	"math/rand/v2"
+	"reflect"
 	"sync"
 	"time"
+	"unsafe"
 
 	"connectrpc.com/connect"
 	"golang.org/x/sync/singleflight"
 )
+
+// INFO: init check the type structure of connect.Response[T] to
+// make sure the clone() method works as expected.
+func init() {
+	st := connect.Response[struct{}]{}
+	var _ connect.AnyResponse = &st
+
+	fieldHeader := reflect.ValueOf(st).Type().Field(1)
+	if fieldHeader.Name != "header" || fieldHeader.Type.Name() != "Header" {
+		panic("Breaking change in current version of Connect RPC, header field not found")
+	}
+
+	fieldTrailer := reflect.ValueOf(st).Type().Field(2)
+	if fieldTrailer.Name != "trailer" || fieldTrailer.Type.Name() != "Header" {
+		panic("Breaking change in current version of Connect RPC, trailer field not found")
+	}
+}
 
 type interceptor struct {
 	cache
@@ -17,7 +36,7 @@ type interceptor struct {
 
 	enableSingleFlight bool
 	keyFunc            func(context.Context, connect.AnyRequest) (any, time.Duration)
-	cleanupChecker     func(context.Context, connect.AnyResponse) bool
+	cleanupArbiter     func(context.Context, connect.AnyResponse) bool
 }
 
 type option func(*config)
@@ -52,12 +71,30 @@ func WithSingleFlight(val bool) option {
 	}
 }
 
-func WithJitter(f func(expiry time.Duration) time.Duration) option {
+func WithKeyFunc(f func(context.Context, connect.AnyRequest) (any, time.Duration)) option {
+	return func(c *config) {
+		if f == nil {
+			return
+		}
+		c.keyFunc = f
+	}
+}
+
+func WithJitterFunc(f func(expiry time.Duration) time.Duration) option {
 	return func(c *config) {
 		if f == nil {
 			return
 		}
 		c.jitterFunc = f
+	}
+}
+
+func WithCleanupArbiter(f func(context.Context, connect.AnyResponse) bool) option {
+	return func(c *config) {
+		if f == nil {
+			return
+		}
+		c.cleanupArbiter = f
 	}
 }
 
@@ -83,41 +120,70 @@ func (i *interceptor) WrapUnary(next connect.UnaryFunc) connect.UnaryFunc {
 		}
 
 		if resp, ok := i.Get(key); ok {
-			return resp, nil
+			return clone(resp), nil
 		}
 
 		var resp connect.AnyResponse
 		var err error
+
+		defer func() {
+			if i.cleanupArbiter(ctx, resp) {
+				for key, val := range i.mp.Range {
+					if e := val.(*entry); e.expiration.Before(time.Now()) {
+						i.mp.Delete(key)
+					}
+				}
+			}
+		}()
+
 		if !i.enableSingleFlight {
 			resp, err = next(ctx, ar)
 			if err != nil {
 				return resp, err
 			}
 			i.Set(key, resp, expiry)
-		} else {
-			_, _, _ = i.Do(fmt.Sprintf("%T:%v", key, key), func() (any, error) {
-				resp, err = next(ctx, ar)
-				if err != nil {
-					return resp, err
-				}
-				i.Set(key, resp, expiry)
-				return resp, nil
-			})
+			return resp, nil
+		}
+
+		_, err, _ = i.Do(fmt.Sprintf("%T:%v", key, key), func() (any, error) {
+			resp, err = next(ctx, ar)
 			if err != nil {
 				return resp, err
 			}
+			i.Set(key, resp, expiry)
+			return resp, nil
+		})
+		if err != nil {
+			return clone(resp), err
 		}
-
-		if i.cleanupChecker(ctx, resp) {
-			for key, val := range i.mp.Range {
-				if e := val.(*entry); e.expiration.Before(time.Now()) {
-					i.mp.Delete(key)
-				}
-			}
-		}
-
-		return resp, err
+		return clone(resp), nil
 	}
+}
+
+func clone(response connect.AnyResponse) connect.AnyResponse {
+	st := reflect.ValueOf(response).Elem()
+	if st.IsZero() {
+		return response
+	}
+
+	newResp := reflect.New(st.Type())
+	newResp.Elem().Set(st)
+
+	fieldHeader := newResp.Elem().Field(1)
+	settableHeader := reflect.NewAt(
+		fieldHeader.Type(),
+		unsafe.Pointer(fieldHeader.UnsafeAddr()), // nolint: gosec
+	).Elem()
+	settableHeader.Set(reflect.ValueOf(response.Header().Clone()))
+
+	fieldTrailer := newResp.Elem().Field(2)
+	settableTrailer := reflect.NewAt(
+		fieldTrailer.Type(),
+		unsafe.Pointer(fieldTrailer.UnsafeAddr()), // nolint: gosec
+	).Elem()
+	settableTrailer.Set(reflect.ValueOf(response.Trailer().Clone()))
+
+	return newResp.Interface().(connect.AnyResponse)
 }
 
 type entry struct {

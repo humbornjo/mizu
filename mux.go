@@ -1,7 +1,6 @@
 package mizu
 
 import (
-	"context"
 	"net/http"
 	"path"
 	"strings"
@@ -39,8 +38,8 @@ func (m *mux) Handler() http.Handler {
 }
 
 func (m *mux) Use(middleware func(http.Handler) http.Handler) multiplexer {
-	m.server.mu.Lock()
-	defer m.server.mu.Unlock()
+	m.server.mmu.Lock()
+	defer m.server.mmu.Unlock()
 
 	if m.volatile != nil {
 		m.volatile.Middlewares = append(m.volatile.Middlewares, middleware)
@@ -106,8 +105,8 @@ func (m *mux) Connect(pattern string, handler http.HandlerFunc) {
 }
 
 func (m *mux) Group(prefix string) multiplexer {
-	m.server.mu.Lock()
-	defer m.server.mu.Unlock()
+	m.server.mmu.Lock()
+	defer m.server.mmu.Unlock()
 
 	mm := &mux{
 		inner:   m.inner,
@@ -142,23 +141,12 @@ func (m *mux) drain() []func(http.Handler) http.Handler {
 
 // handle registers the handler for the given pattern
 func (m *mux) handle(method string, pattern string, handler http.Handler) {
-	m.server.mu.Lock()
-	defer m.server.mu.Unlock()
+	m.server.mmu.Lock()
+	defer m.server.mmu.Unlock()
 
 	// Record the registered paths
-	m.server.InjectContext(func(ctx context.Context) context.Context {
-		value := ctx.Value(_CTXKEY)
-		if value == nil {
-			return context.WithValue(ctx, _CTXKEY, &[]string{pattern})
-		}
-
-		paths, ok := value.(*[]string)
-		if !ok {
-			panic("unreachable")
-		}
-		*paths = append(*paths, pattern)
-		return ctx
-	})
+	paths := Hook[ctxkey, []string](m.server, _CTXKEY, nil)
+	*paths = append(*paths, pattern)
 
 	for _, mw := range m.drain() {
 		handler = mw(handler)

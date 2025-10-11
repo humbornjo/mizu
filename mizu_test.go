@@ -11,10 +11,8 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-type ctxkey string
-
 func TestMizu_NewServer(t *testing.T) {
-	tests := []struct {
+	testCases := []struct {
 		name        string
 		serviceName string
 		opts        []mizu.Option
@@ -26,9 +24,9 @@ func TestMizu_NewServer(t *testing.T) {
 		},
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			srv := mizu.NewServer(tt.serviceName, tt.opts...)
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			srv := mizu.NewServer(tc.serviceName, tc.opts...)
 
 			if srv == nil {
 				t.Fatal("NewServer returned nil")
@@ -71,7 +69,7 @@ func TestMizu_WithPrometheusMetrics(t *testing.T) {
 }
 
 func TestMizu_WithWizardHandleReadiness(t *testing.T) {
-	tests := []struct {
+	testCases := []struct {
 		name               string
 		server             *mizu.Server
 		endpoint           string
@@ -107,13 +105,13 @@ func TestMizu_WithWizardHandleReadiness(t *testing.T) {
 		},
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
 			rr := httptest.NewRecorder()
-			req := httptest.NewRequest(http.MethodGet, tt.endpoint, http.NoBody)
-			tt.server.Handler().ServeHTTP(rr, req)
-			assert.Equal(t, tt.expectedStatusCode, rr.Code)
-			assert.Equal(t, tt.expectedBody, strings.TrimSpace(rr.Body.String()))
+			req := httptest.NewRequest(http.MethodGet, tc.endpoint, http.NoBody)
+			tc.server.Handler().ServeHTTP(rr, req)
+			assert.Equal(t, tc.expectedStatusCode, rr.Code)
+			assert.Equal(t, tc.expectedBody, strings.TrimSpace(rr.Body.String()))
 		})
 	}
 }

@@ -88,7 +88,7 @@ func main() {
 	serviceName := "example-app"
 	server := mizu.NewServer(
 		serviceName,
-		mizu.WithRevealRoutesOnStartup(),
+		mizu.WithRevealRoutes(),
 		mizu.WithProfilingHandlers(),
 		mizu.WithReadinessDrainDelay(0*time.Second),
 		// Force Protocol can useful when dev locally (Go use HTTP/1 by default when TLS is disabled)
@@ -110,8 +110,8 @@ func main() {
 	crpcScope := mizuconnect.NewScope(server,
 		mizuconnect.WithGrpcHealth(),
 		mizuconnect.WithGrpcReflect(),
-		mizuconnect.WithValidate(),
-		mizuconnect.WithVanguard("/", nil, nil),
+		mizuconnect.WithCrpcValidate(),
+		mizuconnect.WithCrpcVanguard("/", nil, nil),
 	)
 	crpcService := svc.NewService()
 	crpcScope.Register(crpcService, greetv1connect.NewGreetServiceHandler)

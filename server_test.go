@@ -1,7 +1,6 @@
 package mizu_test
 
 import (
-	"context"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -12,13 +11,8 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-const (
-	key1 ctxkey = "key1"
-	key2 ctxkey = "key2"
-)
-
 func TestServer_HTTPMethods(t *testing.T) {
-	tests := []struct {
+	testCases := []struct {
 		name           string
 		method         string
 		pattern        string
@@ -126,35 +120,35 @@ func TestServer_HTTPMethods(t *testing.T) {
 		},
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
 			srv := mizu.NewServer("test-server")
 
 			handler := func(w http.ResponseWriter, r *http.Request) {
-				if tt.method == "HEAD" {
+				if tc.method == "HEAD" {
 					w.WriteHeader(http.StatusOK)
 					return
 				}
 				w.WriteHeader(http.StatusOK)
-				_, _ = w.Write([]byte(tt.method + " " + tt.pattern))
+				_, _ = w.Write([]byte(tc.method + " " + tc.pattern))
 			}
 
-			tt.setupHandler(srv, tt.pattern, handler)
+			tc.setupHandler(srv, tc.pattern, handler)
 
-			req := httptest.NewRequest(tt.requestMethod, tt.requestPath, nil)
+			req := httptest.NewRequest(tc.requestMethod, tc.requestPath, nil)
 			rr := httptest.NewRecorder()
 
 			srv.Handler().ServeHTTP(rr, req)
-			assert.Equal(t, tt.expectedStatus, rr.Code)
-			if tt.expectedBody != "" {
-				assert.Contains(t, rr.Body.String(), tt.expectedBody)
+			assert.Equal(t, tc.expectedStatus, rr.Code)
+			if tc.expectedBody != "" {
+				assert.Contains(t, rr.Body.String(), tc.expectedBody)
 			}
 		})
 	}
 }
 
 func TestServer_Handle_And_HandleFunc(t *testing.T) {
-	tests := []struct {
+	testCases := []struct {
 		name         string
 		useHandle    bool
 		pattern      string
@@ -174,27 +168,27 @@ func TestServer_Handle_And_HandleFunc(t *testing.T) {
 		},
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
 			srv := mizu.NewServer("test-server")
 
-			if tt.useHandle {
+			if tc.useHandle {
 				handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 					_, _ = w.Write([]byte("handled"))
 				})
-				srv.Handle(tt.pattern, handler)
+				srv.Handle(tc.pattern, handler)
 			} else {
-				srv.HandleFunc(tt.pattern, func(w http.ResponseWriter, r *http.Request) {
+				srv.HandleFunc(tc.pattern, func(w http.ResponseWriter, r *http.Request) {
 					_, _ = w.Write([]byte("handled func"))
 				})
 			}
 
-			req := httptest.NewRequest("GET", tt.pattern, nil)
+			req := httptest.NewRequest("GET", tc.pattern, nil)
 			rr := httptest.NewRecorder()
 
 			srv.Handler().ServeHTTP(rr, req)
 			assert.Equal(t, http.StatusOK, rr.Code)
-			assert.Equal(t, tt.expectedBody, rr.Body.String())
+			assert.Equal(t, tc.expectedBody, rr.Body.String())
 		})
 	}
 }
@@ -228,7 +222,7 @@ func TestServer_Middleware_Mux(t *testing.T) {
 			_, _ = w.Write([]byte("public-content"))
 		})
 
-		tests := []struct {
+		testCases := []struct {
 			name              string
 			path              string
 			expectedBody      string
@@ -252,19 +246,19 @@ func TestServer_Middleware_Mux(t *testing.T) {
 			},
 		}
 
-		for _, tt := range tests {
-			t.Run(tt.name, func(t *testing.T) {
-				req := httptest.NewRequest("GET", tt.path, nil)
+		for _, tc := range testCases {
+			t.Run(tc.name, func(t *testing.T) {
+				req := httptest.NewRequest("GET", tc.path, nil)
 				rr := httptest.NewRecorder()
 
 				srv.Handler().ServeHTTP(rr, req)
 				assert.Equal(t, http.StatusOK, rr.Code)
-				assert.Equal(t, tt.expectedBody, rr.Body.String())
+				assert.Equal(t, tc.expectedBody, rr.Body.String())
 
 				// Test middleware headers
-				if tt.shouldHaveHeaders {
-					assert.Equal(t, tt.expectedAuthHdr, rr.Header().Get("X-Auth"))
-					assert.Equal(t, tt.expectedLogHdr, rr.Header().Get("X-Log"))
+				if tc.shouldHaveHeaders {
+					assert.Equal(t, tc.expectedAuthHdr, rr.Header().Get("X-Auth"))
+					assert.Equal(t, tc.expectedLogHdr, rr.Header().Get("X-Log"))
 				} else {
 					assert.Empty(t, rr.Header().Get("X-Auth"))
 					assert.Empty(t, rr.Header().Get("X-Log"))
@@ -406,207 +400,6 @@ func TestServer_Middleware_Server(t *testing.T) {
 	})
 }
 
-func TestServer_InjectContext(t *testing.T) {
-	tests := []struct {
-		name           string
-		injectors      []func(context.Context) context.Context
-		expectedValues map[ctxkey]any
-	}{
-		{
-			name: "single context injection",
-			injectors: []func(context.Context) context.Context{
-				func(ctx context.Context) context.Context {
-					return context.WithValue(ctx, key1, "value1")
-				},
-			},
-			expectedValues: map[ctxkey]any{
-				key1: "value1",
-			},
-		},
-		{
-			name: "multiple context injections",
-			injectors: []func(context.Context) context.Context{
-				func(ctx context.Context) context.Context {
-					return context.WithValue(ctx, key1, "value1")
-				},
-				func(ctx context.Context) context.Context {
-					return context.WithValue(ctx, key2, "value2")
-				},
-			},
-			expectedValues: map[ctxkey]any{
-				key1: "value1",
-				key2: "value2",
-			},
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			srv := mizu.NewServer("test-server")
-
-			for _, injector := range tt.injectors {
-				srv.InjectContext(injector)
-			}
-
-			var capturedContext context.Context
-			srv.HookOnExtractHandler(func(ctx context.Context, s *mizu.Server) {
-				capturedContext = ctx
-			})
-
-			// Trigger handler extraction
-			srv.Handler()
-			for key, expected := range tt.expectedValues {
-				assert.Equal(t, expected, capturedContext.Value(key))
-			}
-		})
-	}
-}
-
-func TestServer_Hooks(t *testing.T) {
-	tests := []struct {
-		name                        string
-		numStartupHooks             int
-		numExtractHandlerHooks      int
-		expectedStartupCalls        int
-		expectedExtractHandlerCalls int
-	}{
-		{
-			name:                        "no hooks",
-			numStartupHooks:             0,
-			numExtractHandlerHooks:      0,
-			expectedStartupCalls:        0,
-			expectedExtractHandlerCalls: 0,
-		},
-		{
-			name:                        "single hooks",
-			numStartupHooks:             1,
-			numExtractHandlerHooks:      1,
-			expectedStartupCalls:        1,
-			expectedExtractHandlerCalls: 1,
-		},
-		{
-			name:                        "multiple hooks",
-			numStartupHooks:             3,
-			numExtractHandlerHooks:      2,
-			expectedStartupCalls:        3,
-			expectedExtractHandlerCalls: 2,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			srv := mizu.NewServer("test-server")
-
-			var startupCalls, extractHandlerCalls int
-			var mu sync.Mutex
-
-			for i := 0; i < tt.numStartupHooks; i++ {
-				srv.HookOnStartup(func(ctx context.Context, s *mizu.Server) {
-					mu.Lock()
-					startupCalls++
-					mu.Unlock()
-				})
-			}
-
-			for i := 0; i < tt.numExtractHandlerHooks; i++ {
-				srv.HookOnExtractHandler(func(ctx context.Context, s *mizu.Server) {
-					mu.Lock()
-					extractHandlerCalls++
-					mu.Unlock()
-				})
-			}
-
-			// Trigger extract handler hooks
-			srv.Handler()
-
-			mu.Lock()
-			gotExtractHandlerCalls := extractHandlerCalls
-			mu.Unlock()
-
-			assert.Equal(t, tt.expectedExtractHandlerCalls, gotExtractHandlerCalls)
-		})
-	}
-}
-
-func TestServer_Handler_CallsHooksEveryTime(t *testing.T) {
-	srv := mizu.NewServer("test-server")
-
-	srv.HandleFunc("/test", func(w http.ResponseWriter, r *http.Request) {
-		_, _ = w.Write([]byte("test"))
-	})
-
-	var hookCalls int
-	srv.HookOnExtractHandler(func(ctx context.Context, s *mizu.Server) {
-		hookCalls++
-	})
-
-	// Call Handler multiple times
-	handler1 := srv.Handler()
-	handler2 := srv.Handler()
-
-	// Extract handler hooks are called every time Handler() is called
-	if hookCalls != 2 {
-		t.Errorf("expected extract handler hooks to be called twice, got %d calls", hookCalls)
-	}
-
-	// Both handlers should work the same
-	req := httptest.NewRequest("GET", "/test", nil)
-
-	rr1 := httptest.NewRecorder()
-	handler1.ServeHTTP(rr1, req)
-
-	rr2 := httptest.NewRecorder()
-	handler2.ServeHTTP(rr2, req)
-
-	assert.Equal(t, rr1.Body.String(), rr2.Body.String())
-}
-
-func TestServer_ConcurrentAccess(t *testing.T) {
-	srv := mizu.NewServer("test-server")
-
-	// Simulate concurrent access to server methods
-	var wg sync.WaitGroup
-	numGoroutines := 100
-
-	wg.Add(numGoroutines)
-	for i := range numGoroutines {
-		go func(id int) {
-			defer wg.Done()
-
-			// Different operations that might race
-			switch id % 4 {
-			case 0:
-				// Use unique paths to avoid conflicts
-				srv.HandleFunc(fmt.Sprintf("/concurrent/%d", id), func(w http.ResponseWriter, r *http.Request) {
-					_, _ = w.Write([]byte("concurrent"))
-				})
-			case 1:
-				srv.InjectContext(func(ctx context.Context) context.Context {
-					return context.WithValue(ctx, ctxkey(fmt.Sprintf("concurrent_%d", id)), id)
-				})
-			case 2:
-				srv.HookOnStartup(func(ctx context.Context, s *mizu.Server) {})
-			case 3:
-				srv.HookOnExtractHandler(func(ctx context.Context, s *mizu.Server) {})
-			}
-		}(i)
-	}
-
-	wg.Wait()
-
-	// Add a test handler after concurrent access
-	srv.HandleFunc("/test-after-concurrent", func(w http.ResponseWriter, r *http.Request) {
-		_, _ = w.Write([]byte("test"))
-	})
-
-	req := httptest.NewRequest("GET", "/test-after-concurrent", nil)
-	rr := httptest.NewRecorder()
-
-	// Handler should still work after concurrent access
-	srv.Handler().ServeHTTP(rr, req)
-	assert.Equal(t, http.StatusOK, rr.Code)
-}
-
 func TestServer_RootPattern(t *testing.T) {
 	srv := mizu.NewServer("test-server")
 
@@ -620,4 +413,113 @@ func TestServer_RootPattern(t *testing.T) {
 	srv.Handler().ServeHTTP(rr, req)
 	assert.Equal(t, http.StatusOK, rr.Code)
 	assert.Equal(t, "root", rr.Body.String())
+}
+
+func TestServer_Hook_StoreAndRetrieveValue(t *testing.T) {
+	srv := mizu.NewServer("test-server")
+	type testKey string
+	type testValue struct {
+		data string
+	}
+
+	key := testKey("test-key")
+	expectedValue := &testValue{data: "test-data"}
+
+	// Test storing and retrieving a value
+	retrievedValue := mizu.Hook(srv, key, expectedValue)
+
+	assert.NotNil(t, retrievedValue)
+	assert.Equal(t, expectedValue, retrievedValue)
+	assert.Equal(t, "test-data", retrievedValue.data)
+}
+
+func TestServer_Hook_PanicOnNonExistentKey(t *testing.T) {
+	srv := mizu.NewServer("test-server")
+
+	type testKey string
+	key := testKey("non-existent-key")
+	// Should panic when trying to retrieve non-existent key
+	assert.Panics(t, func() { mizu.Hook(srv, key, (*struct{})(nil)) })
+}
+
+func TestServer_Hook_WithHookHandler(t *testing.T) {
+	srv := mizu.NewServer("test-server")
+	handlerCalled := false
+	type testKey string
+	type testValue struct {
+		data string
+	}
+
+	key := testKey("handler-key")
+	value := &testValue{data: "handler-data"}
+
+	// Register hook with WithHookHandler option
+	_ = mizu.Hook(srv, key, value, mizu.WithHookHandler(func(s *mizu.Server) {
+		handlerCalled = true
+		assert.Equal(t, srv.Name(), "test-server")
+	}))
+
+	// Handler() should trigger the hookHandler
+	_ = srv.Handler()
+
+	assert.True(t, handlerCalled, "WithHookHandler should have been called")
+}
+
+func TestServer_Hook_MultipleHooks(t *testing.T) {
+	srv := mizu.NewServer("test-server")
+	handler1Called := false
+	handler2Called := false
+
+	type testKey string
+	type testValue struct {
+		data string
+	}
+
+	key1 := testKey("key1")
+	key2 := testKey("key2")
+	value1 := &testValue{data: "value1"}
+	value2 := &testValue{data: "value2"}
+
+	// Register multiple hooks with handler options
+	_ = mizu.Hook(srv, key1, value1,
+		mizu.WithHookHandler(func(s *mizu.Server) {
+			handler1Called = true
+		}),
+	)
+
+	_ = mizu.Hook(srv, key2, value2,
+		mizu.WithHookHandler(func(s *mizu.Server) {
+			handler2Called = true
+		}),
+	)
+
+	// Trigger handler hooks
+	_ = srv.Handler()
+	assert.True(t, handler1Called, "handler1 should be called")
+	assert.True(t, handler2Called, "handler2 should be called")
+}
+
+func TestServer_Hook_Concurrent(t *testing.T) {
+	srv := mizu.NewServer("test-server")
+	type testKey string
+	type testValue struct {
+		data string
+	}
+
+	const numGoroutines = 10
+	wg := sync.WaitGroup{}
+
+	// Launch multiple goroutines to register hooks concurrently
+	for i := range numGoroutines {
+		wg.Add(1)
+		go func(goroutineID int) {
+			defer wg.Done()
+			key := testKey(fmt.Sprintf("concurrent-key-%d", goroutineID))
+			value := &testValue{data: fmt.Sprintf("concurrent-value-%d", goroutineID)}
+
+			// Store the value
+			mizu.Hook(srv, key, value)
+		}(i)
+	}
+	wg.Wait()
 }

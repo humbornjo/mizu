@@ -79,8 +79,12 @@ func NewServer(srvName string, opts ...Option) *Server {
 	}
 
 	server := &Server{
-		mu:             &sync.Mutex{},
-		ctx:            context.Background(),
+		mu:  &sync.Mutex{},
+		mmu: &sync.Mutex{},
+		ctx: context.WithValue(
+			context.Background(),
+			_CTXKEY, new([]string),
+		),
 		name:           srvName,
 		initialized:    atomic.Bool{},
 		isShuttingDown: atomic.Bool{},
@@ -226,24 +230,18 @@ func WithProfilingHandlers() Option {
 // WithDisplayRoutesOnStartup enables logging of all registered
 // routes when the server starts. This is useful for debugging
 // and development to see what endpoints are available.
-func WithRevealRoutesOnStartup() Option {
+func WithRevealRoutes() Option {
 	return func(m *config) {
 		old := *m
 		new := func(s *Server) *Server {
 			s = old(s)
-			s.HookOnStartup(func(ctx context.Context, s *Server) {
-				value := ctx.Value(_CTXKEY)
-				if value == nil {
-					return
-				}
-				paths, ok := value.(*[]string)
-				if !ok {
-					panic("unreachable")
-				}
+
+			routes := new([]string)
+			Hook(s, _CTXKEY, routes, WithHookStartup(func(s *Server) {
 				log.Println("📦 [INFO] Available routes:")
 
-				slices.Sort(*paths)
-				for _, path := range *paths {
+				slices.Sort(*routes)
+				for _, path := range *routes {
 					method := ""
 					uri := path
 					if fields := strings.Fields(path); len(fields) == 2 {
@@ -255,7 +253,7 @@ func WithRevealRoutesOnStartup() Option {
 						log.Printf("  ➤ 📍 %-7s %s\n", method, uri)
 					}
 				}
-			})
+			}))
 			return s
 		}
 		*m = new

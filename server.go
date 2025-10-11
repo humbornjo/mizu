@@ -36,15 +36,17 @@ type serverConfig struct {
 type Server struct {
 	multiplexer
 
-	mu          *sync.Mutex
-	initialized atomic.Bool
+	mu  *sync.Mutex // mutex for server initialization
+	mmu *sync.Mutex // mutex for the mux that server binds to
 
-	ctx                  context.Context
-	name                 string
-	config               serverConfig
-	isShuttingDown       atomic.Bool
-	hookOnStartup        []func(context.Context, *Server)
-	hookOnExtractHandler []func(context.Context, *Server)
+	initialized    atomic.Bool
+	isShuttingDown atomic.Bool
+
+	ctx         context.Context
+	name        string
+	config      serverConfig
+	hookStartup []func(*Server)
+	hookHandler []func(*Server)
 }
 
 // Name returns the name of the server.
@@ -52,54 +54,63 @@ func (s *Server) Name() string {
 	return s.name
 }
 
-// InjectContext modifies the server's initialization context
-// using the provided injector function. This context is only
-// used during server setup and lifecycle hooks - it has nothing
-// to do with request contexts at runtime.
-//
-// NOTE: This is an advanced function that most users won't need.
-// It's primarily used by sub-packages like mizuconnect for
-// managing initialization state.
-func (s *Server) InjectContext(injector func(context.Context) context.Context) {
-	s.ctx = injector(s.ctx)
+type hookOption func(*hookConfig)
+
+type hookConfig struct {
+	hookStartup func(*Server)
+	hookHandler func(*Server)
 }
 
-// HookOnStartup registers a hook function that will be called
-// right before server starts. Hooks are executed in the order
-// they are registered. Useful for logging startup completion,
-// displaying registered routes, or performing final
-// initialization tasks.
-func (s *Server) HookOnStartup(hook func(context.Context, *Server)) {
-	s.hookOnStartup = append(s.hookOnStartup, hook)
+// WithHookStartup registers a hook function when Calling
+// ServeContext.
+func WithHookStartup(hook func(*Server)) hookOption {
+	return func(config *hookConfig) {
+		config.hookStartup = hook
+	}
 }
 
-// HookOnExtractHandler registers a hook function that will be
-// called when Handler() is invoked. This is useful for
-// registering services that need to be available before the
-// server starts, or for logging handler extraction phase.
+// WithHookHandler registers a hook function when Calling
+// Handler.
+func WithHookHandler(hook func(*Server)) hookOption {
+	return func(config *hookConfig) {
+		config.hookHandler = hook
+	}
+}
+
+// Hook registers a hook function for the given key. If value is
+// not nil, it will be registered as the value for the key.
+// HookOption offer customization options for performing
+// additional actions on different phases in server lifecycle.
+// Returned value is the registered value for the key if value is
+// not nil, otherwise triggers panic.
 //
-// WARNING: Duplicate path registrations will cause panics. Use
-// InjectContext with a sync.Once or atomic.Bool to ensure
-// idempotent registration.
-//
-// Example:
-//
-//	s.InjectContext(func(ctx context.Context) context.Context {
-//		once := ctx.Value(ONCE_KEY)
-//		if once == nil {
-//			ctx = context.WithValue(ctx, ONCE_KEY, &atomic.Bool{})
-//		}
-//		return ctx
-//	})
-//	s.HookOnExtractHandler(func(ctx context.Context, srv *Server) {
-//		once, _ := ctx.Value(ONCE_KEY).(*atomic.Bool)
-//		if once.CompareAndSwap(false, true) {
-//			return // Already registered
-//		}
-//		srv.HandleFunc("/path", handler) // Safe to register
-//	})
-func (s *Server) HookOnExtractHandler(hook func(context.Context, *Server)) {
-	s.hookOnExtractHandler = append(s.hookOnExtractHandler, hook)
+// WARN: This is a advanced function which in most cases should
+// not be used.
+func Hook[K any, V any](s *Server, key K, val *V, opts ...hookOption) *V {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if val != nil {
+		s.ctx = context.WithValue(s.ctx, key, val)
+	}
+
+	if v := s.ctx.Value(key); v != nil {
+		val = v.(*V)
+	} else {
+		panic("value not found")
+	}
+
+	config := &hookConfig{}
+	for _, opt := range opts {
+		opt(config)
+	}
+	if config.hookHandler != nil {
+		s.hookHandler = append(s.hookHandler, config.hookHandler)
+	}
+	if config.hookStartup != nil {
+		s.hookStartup = append(s.hookStartup, config.hookStartup)
+	}
+
+	return val
 }
 
 // Handler returns the base HTTP handler (mux) without
@@ -114,8 +125,8 @@ func (s *Server) Handler() http.Handler {
 		)
 	}
 
-	for _, hook := range s.hookOnExtractHandler {
-		hook(s.ctx, s)
+	for _, hook := range s.hookHandler {
+		hook(s)
 	}
 
 	return s.multiplexer.Handler()
@@ -163,8 +174,8 @@ func (s *Server) ServeContext(ctx context.Context, addr string) error {
 	server.Handler = s.Handler()
 
 	log.Println("🚀 [INFO] Starting HTTP server on", addr)
-	for _, hook := range s.hookOnStartup {
-		hook(s.ctx, s)
+	for _, hook := range s.hookStartup {
+		hook(s)
 	}
 
 	errChan := make(chan error, 1)
