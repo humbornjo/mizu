@@ -8,6 +8,7 @@ import (
 	connect "connectrpc.com/connect"
 	context "context"
 	errors "errors"
+	httpbody "google.golang.org/genproto/googleapis/api/httpbody"
 	v1 "mizu.example/protogen/app_foo/file/v1"
 	http "net/http"
 	strings "strings"
@@ -37,12 +38,19 @@ const (
 	FileServiceGetFileProcedure = "/app_foo.file.v1.FileService/GetFile"
 	// FileServiceUploadFileProcedure is the fully-qualified name of the FileService's UploadFile RPC.
 	FileServiceUploadFileProcedure = "/app_foo.file.v1.FileService/UploadFile"
+	// FileServiceDownloadFileProcedure is the fully-qualified name of the FileService's DownloadFile
+	// RPC.
+	FileServiceDownloadFileProcedure = "/app_foo.file.v1.FileService/DownloadFile"
 )
 
 // FileServiceClient is a client for the app_foo.file.v1.FileService service.
 type FileServiceClient interface {
+	// GetFile is used to retrieve file meta info
 	GetFile(context.Context, *connect.Request[v1.GetFileRequest]) (*connect.Response[v1.GetFileResponse], error)
+	// UploadFile is used to upload file with stream
 	UploadFile(context.Context) *connect.ClientStreamForClient[v1.UploadFileRequest, v1.UploadFileResponse]
+	// buf:lint:ignore RPC_RESPONSE_STANDARD_NAME
+	DownloadFile(context.Context, *connect.Request[v1.DownloadFileRequest]) (*connect.ServerStreamForClient[httpbody.HttpBody], error)
 }
 
 // NewFileServiceClient constructs a client for the app_foo.file.v1.FileService service. By default,
@@ -68,13 +76,20 @@ func NewFileServiceClient(httpClient connect.HTTPClient, baseURL string, opts ..
 			connect.WithSchema(fileServiceMethods.ByName("UploadFile")),
 			connect.WithClientOptions(opts...),
 		),
+		downloadFile: connect.NewClient[v1.DownloadFileRequest, httpbody.HttpBody](
+			httpClient,
+			baseURL+FileServiceDownloadFileProcedure,
+			connect.WithSchema(fileServiceMethods.ByName("DownloadFile")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
 // fileServiceClient implements FileServiceClient.
 type fileServiceClient struct {
-	getFile    *connect.Client[v1.GetFileRequest, v1.GetFileResponse]
-	uploadFile *connect.Client[v1.UploadFileRequest, v1.UploadFileResponse]
+	getFile      *connect.Client[v1.GetFileRequest, v1.GetFileResponse]
+	uploadFile   *connect.Client[v1.UploadFileRequest, v1.UploadFileResponse]
+	downloadFile *connect.Client[v1.DownloadFileRequest, httpbody.HttpBody]
 }
 
 // GetFile calls app_foo.file.v1.FileService.GetFile.
@@ -87,10 +102,19 @@ func (c *fileServiceClient) UploadFile(ctx context.Context) *connect.ClientStrea
 	return c.uploadFile.CallClientStream(ctx)
 }
 
+// DownloadFile calls app_foo.file.v1.FileService.DownloadFile.
+func (c *fileServiceClient) DownloadFile(ctx context.Context, req *connect.Request[v1.DownloadFileRequest]) (*connect.ServerStreamForClient[httpbody.HttpBody], error) {
+	return c.downloadFile.CallServerStream(ctx, req)
+}
+
 // FileServiceHandler is an implementation of the app_foo.file.v1.FileService service.
 type FileServiceHandler interface {
+	// GetFile is used to retrieve file meta info
 	GetFile(context.Context, *connect.Request[v1.GetFileRequest]) (*connect.Response[v1.GetFileResponse], error)
+	// UploadFile is used to upload file with stream
 	UploadFile(context.Context, *connect.ClientStream[v1.UploadFileRequest]) (*connect.Response[v1.UploadFileResponse], error)
+	// buf:lint:ignore RPC_RESPONSE_STANDARD_NAME
+	DownloadFile(context.Context, *connect.Request[v1.DownloadFileRequest], *connect.ServerStream[httpbody.HttpBody]) error
 }
 
 // NewFileServiceHandler builds an HTTP handler from the service implementation. It returns the path
@@ -112,12 +136,20 @@ func NewFileServiceHandler(svc FileServiceHandler, opts ...connect.HandlerOption
 		connect.WithSchema(fileServiceMethods.ByName("UploadFile")),
 		connect.WithHandlerOptions(opts...),
 	)
+	fileServiceDownloadFileHandler := connect.NewServerStreamHandler(
+		FileServiceDownloadFileProcedure,
+		svc.DownloadFile,
+		connect.WithSchema(fileServiceMethods.ByName("DownloadFile")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/app_foo.file.v1.FileService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case FileServiceGetFileProcedure:
 			fileServiceGetFileHandler.ServeHTTP(w, r)
 		case FileServiceUploadFileProcedure:
 			fileServiceUploadFileHandler.ServeHTTP(w, r)
+		case FileServiceDownloadFileProcedure:
+			fileServiceDownloadFileHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -133,4 +165,8 @@ func (UnimplementedFileServiceHandler) GetFile(context.Context, *connect.Request
 
 func (UnimplementedFileServiceHandler) UploadFile(context.Context, *connect.ClientStream[v1.UploadFileRequest]) (*connect.Response[v1.UploadFileResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("app_foo.file.v1.FileService.UploadFile is not implemented"))
+}
+
+func (UnimplementedFileServiceHandler) DownloadFile(context.Context, *connect.Request[v1.DownloadFileRequest], *connect.ServerStream[httpbody.HttpBody]) error {
+	return connect.NewError(connect.CodeUnimplemented, errors.New("app_foo.file.v1.FileService.DownloadFile is not implemented"))
 }

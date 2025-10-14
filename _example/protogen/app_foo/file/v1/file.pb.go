@@ -264,6 +264,50 @@ func (x *UploadFileResponse) GetUrl() string {
 	return ""
 }
 
+type DownloadFileRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Id            string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *DownloadFileRequest) Reset() {
+	*x = DownloadFileRequest{}
+	mi := &file_app_foo_file_v1_file_proto_msgTypes[4]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DownloadFileRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DownloadFileRequest) ProtoMessage() {}
+
+func (x *DownloadFileRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_app_foo_file_v1_file_proto_msgTypes[4]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DownloadFileRequest.ProtoReflect.Descriptor instead.
+func (*DownloadFileRequest) Descriptor() ([]byte, []int) {
+	return file_app_foo_file_v1_file_proto_rawDescGZIP(), []int{4}
+}
+
+func (x *DownloadFileRequest) GetId() string {
+	if x != nil {
+		return x.Id
+	}
+	return ""
+}
+
 var File_app_foo_file_v1_file_proto protoreflect.FileDescriptor
 
 const file_app_foo_file_v1_file_proto_rawDesc = "" +
@@ -278,15 +322,18 @@ const file_app_foo_file_v1_file_proto_rawDesc = "" +
 	"\bscenario\x18\x02 \x01(\x0e2\x19.app_foo.file.v1.ScenarioR\bscenario\"6\n" +
 	"\x12UploadFileResponse\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x10\n" +
-	"\x03url\x18\x02 \x01(\tR\x03url*L\n" +
+	"\x03url\x18\x02 \x01(\tR\x03url\"%\n" +
+	"\x13DownloadFileRequest\x12\x0e\n" +
+	"\x02id\x18\x01 \x01(\tR\x02id*L\n" +
 	"\bScenario\x12\x18\n" +
 	"\x14SCENARIO_UNSPECIFIED\x10\x00\x12\x14\n" +
 	"\x10SCENARIO_GATEWAY\x10\x01\x12\x10\n" +
-	"\fSCENARIO_CDN\x10\x022\xd0\x01\n" +
+	"\fSCENARIO_CDN\x10\x022\xb6\x02\n" +
 	"\vFileService\x12L\n" +
 	"\aGetFile\x12\x1f.app_foo.file.v1.GetFileRequest\x1a .app_foo.file.v1.GetFileResponse\x12s\n" +
 	"\n" +
-	"UploadFile\x12\".app_foo.file.v1.UploadFileRequest\x1a#.app_foo.file.v1.UploadFileResponse\"\x1a\x82\xd3\xe4\x93\x02\x14:\x04form\"\f/file:upload(\x01B\xa8\x01\n" +
+	"UploadFile\x12\".app_foo.file.v1.UploadFileRequest\x1a#.app_foo.file.v1.UploadFileResponse\"\x1a\x82\xd3\xe4\x93\x02\x14:\x04form\"\f/file:upload(\x01\x12d\n" +
+	"\fDownloadFile\x12$.app_foo.file.v1.DownloadFileRequest\x1a\x14.google.api.HttpBody\"\x16\x82\xd3\xe4\x93\x02\x10\x12\x0e/file:download0\x01B\xa8\x01\n" +
 	"\x13com.app_foo.file.v1B\tFileProtoP\x01Z,mizu.example/protogen/app_foo/file/v1;filev1\xa2\x02\x03AFX\xaa\x02\x0eAppFoo.File.V1\xca\x02\x0eAppFoo\\File\\V1\xe2\x02\x1aAppFoo\\File\\V1\\GPBMetadata\xea\x02\x10AppFoo::File::V1b\x06proto3"
 
 var (
@@ -302,24 +349,27 @@ func file_app_foo_file_v1_file_proto_rawDescGZIP() []byte {
 }
 
 var file_app_foo_file_v1_file_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
-var file_app_foo_file_v1_file_proto_msgTypes = make([]protoimpl.MessageInfo, 4)
+var file_app_foo_file_v1_file_proto_msgTypes = make([]protoimpl.MessageInfo, 5)
 var file_app_foo_file_v1_file_proto_goTypes = []any{
-	(Scenario)(0),              // 0: app_foo.file.v1.Scenario
-	(*GetFileRequest)(nil),     // 1: app_foo.file.v1.GetFileRequest
-	(*GetFileResponse)(nil),    // 2: app_foo.file.v1.GetFileResponse
-	(*UploadFileRequest)(nil),  // 3: app_foo.file.v1.UploadFileRequest
-	(*UploadFileResponse)(nil), // 4: app_foo.file.v1.UploadFileResponse
-	(*httpbody.HttpBody)(nil),  // 5: google.api.HttpBody
+	(Scenario)(0),               // 0: app_foo.file.v1.Scenario
+	(*GetFileRequest)(nil),      // 1: app_foo.file.v1.GetFileRequest
+	(*GetFileResponse)(nil),     // 2: app_foo.file.v1.GetFileResponse
+	(*UploadFileRequest)(nil),   // 3: app_foo.file.v1.UploadFileRequest
+	(*UploadFileResponse)(nil),  // 4: app_foo.file.v1.UploadFileResponse
+	(*DownloadFileRequest)(nil), // 5: app_foo.file.v1.DownloadFileRequest
+	(*httpbody.HttpBody)(nil),   // 6: google.api.HttpBody
 }
 var file_app_foo_file_v1_file_proto_depIdxs = []int32{
-	5, // 0: app_foo.file.v1.UploadFileRequest.form:type_name -> google.api.HttpBody
+	6, // 0: app_foo.file.v1.UploadFileRequest.form:type_name -> google.api.HttpBody
 	0, // 1: app_foo.file.v1.UploadFileRequest.scenario:type_name -> app_foo.file.v1.Scenario
 	1, // 2: app_foo.file.v1.FileService.GetFile:input_type -> app_foo.file.v1.GetFileRequest
 	3, // 3: app_foo.file.v1.FileService.UploadFile:input_type -> app_foo.file.v1.UploadFileRequest
-	2, // 4: app_foo.file.v1.FileService.GetFile:output_type -> app_foo.file.v1.GetFileResponse
-	4, // 5: app_foo.file.v1.FileService.UploadFile:output_type -> app_foo.file.v1.UploadFileResponse
-	4, // [4:6] is the sub-list for method output_type
-	2, // [2:4] is the sub-list for method input_type
+	5, // 4: app_foo.file.v1.FileService.DownloadFile:input_type -> app_foo.file.v1.DownloadFileRequest
+	2, // 5: app_foo.file.v1.FileService.GetFile:output_type -> app_foo.file.v1.GetFileResponse
+	4, // 6: app_foo.file.v1.FileService.UploadFile:output_type -> app_foo.file.v1.UploadFileResponse
+	6, // 7: app_foo.file.v1.FileService.DownloadFile:output_type -> google.api.HttpBody
+	5, // [5:8] is the sub-list for method output_type
+	2, // [2:5] is the sub-list for method input_type
 	2, // [2:2] is the sub-list for extension type_name
 	2, // [2:2] is the sub-list for extension extendee
 	0, // [0:2] is the sub-list for field type_name
@@ -336,7 +386,7 @@ func file_app_foo_file_v1_file_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_app_foo_file_v1_file_proto_rawDesc), len(file_app_foo_file_v1_file_proto_rawDesc)),
 			NumEnums:      1,
-			NumMessages:   4,
+			NumMessages:   5,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

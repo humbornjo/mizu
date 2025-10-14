@@ -11,6 +11,7 @@ import (
 
 	"connectrpc.com/connect"
 	"github.com/humbornjo/mizu/mizuconnect/restful/upload"
+	"google.golang.org/genproto/googleapis/api/httpbody"
 
 	filev1 "mizu.example/protogen/app_foo/file/v1"
 	"mizu.example/protogen/app_foo/file/v1/filev1connect"
@@ -88,4 +89,14 @@ func (s *Service) uploadFile(file io.ReadCloser) (string, error) {
 	id := hex.EncodeToString(hash.Sum(nil))
 	s.storage.Store(id, hash.Sum(nil))
 	return "http://" + id, nil
+}
+
+func (s *Service) DownloadFile(
+	ctx context.Context, req *connect.Request[filev1.DownloadFileRequest], stream *connect.ServerStream[httpbody.HttpBody],
+) error {
+
+	stream.Send(&httpbody.HttpBody{
+		ContentType: "application/octet-stream",
+	})
+	return nil
 }

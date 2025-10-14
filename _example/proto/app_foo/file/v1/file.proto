@@ -30,12 +30,24 @@ message UploadFileResponse {
   string url = 2;
 }
 
+message DownloadFileRequest {
+  string id = 1;
+}
+
 service FileService {
+  // GetFile is used to retrieve file meta info
   rpc GetFile(GetFileRequest) returns (GetFileResponse);
+
+  // UploadFile is used to upload file with stream
   rpc UploadFile(stream UploadFileRequest) returns (UploadFileResponse) {
     option (google.api.http) = {
       post: "/file:upload"
       body: "form"
     };
+  }
+
+  // buf:lint:ignore RPC_RESPONSE_STANDARD_NAME
+  rpc DownloadFile(DownloadFileRequest) returns (stream google.api.HttpBody) {
+    option (google.api.http) = {get: "/file:download"};
   }
 }
