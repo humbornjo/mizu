@@ -1,4 +1,4 @@
-package incptcache
+package cache
 
 import (
 	"context"
@@ -65,12 +65,21 @@ var defaultConfig = config{
 	},
 }
 
+// WithSingleFlight enables or disables single-flight request
+// deduplication. When enabled, concurrent identical requests
+// will be coalesced into a single request to prevent duplicate
+// work. Default is disabled (false).
 func WithSingleFlight(val bool) option {
 	return func(c *config) {
 		c.enableSingleFlight = val
 	}
 }
 
+// WithKeyFunc sets a custom function to generate cache keys and
+// determine cache expiration time from requests. The function
+// should return nil key and 0 duration for requests that should
+// not be cached. Default function returns nil key and 0 duration
+// (no caching).
 func WithKeyFunc(f func(context.Context, connect.AnyRequest) (any, time.Duration)) option {
 	return func(c *config) {
 		if f == nil {
@@ -80,6 +89,11 @@ func WithKeyFunc(f func(context.Context, connect.AnyRequest) (any, time.Duration
 	}
 }
 
+// WithJitterFunc sets a custom function to add jitter to cache
+// expiration times. This helps prevent cache stampedes by
+// spreading out expiration times. The function receives the
+// original expiry duration and should return the adjusted
+// duration. Default function reduces expiry by up to 10%.
 func WithJitterFunc(f func(expiry time.Duration) time.Duration) option {
 	return func(c *config) {
 		if f == nil {
@@ -89,6 +103,11 @@ func WithJitterFunc(f func(expiry time.Duration) time.Duration) option {
 	}
 }
 
+// WithCleanupArbiter sets a custom function to determine when
+// cache cleanup should occur. The function receives the response
+// and should return true to trigger cleanup of expired entries.
+// Default function triggers cleanup randomly with 0.1%
+// probability (1 in 1000 requests).
 func WithCleanupArbiter(f func(context.Context, connect.AnyResponse) bool) option {
 	return func(c *config) {
 		if f == nil {
@@ -98,6 +117,10 @@ func WithCleanupArbiter(f func(context.Context, connect.AnyResponse) bool) optio
 	}
 }
 
+// New creates a new cache interceptor with the given options. The interceptor
+// provides response caching for Connect RPC unary calls with support for
+// single-flight deduplication, custom key generation, jittered expiration,
+// and automatic cleanup of expired entries.
 func New(opts ...option) connect.Interceptor {
 	config := defaultConfig
 	for _, opt := range opts {

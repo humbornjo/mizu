@@ -1,4 +1,4 @@
-package filesvc
+package upload
 
 import (
 	"bytes"
@@ -11,6 +11,7 @@ import (
 	"hash"
 	"io"
 	"log/slog"
+	"math"
 	"mime"
 	"mime/multipart"
 	"net/http"
@@ -30,39 +31,120 @@ import (
 )
 
 var (
-	ErrNilStream       = errors.New("nil stream")
-	ErrMissingBoundary = errors.New("missing boundary")
-	ErrMismatchProto   = errors.New("mismatched proto")
+	ErrNilStream     = errors.New("nil stream")
+	ErrNoBoundary    = errors.New("no boundary")
+	ErrFileTooLarge  = errors.New("file too large")
+	ErrMismatchProto = errors.New("mismatched proto")
 )
 
+// FileReader wraps an io.ReadCloser to provide file upload
+// functionality with size limiting, checksum calculation, and
+// MIME type detection. It tracks read bytes and enforces size
+// limits while calculating SHA256 checksum.
 type FileReader struct {
-	hash   hash.Hash
-	inner  io.Reader
-	closer io.Closer
+	readBytes  int64
+	limitBytes int64
+
+	hash        hash.Hash
+	inner       io.Reader
+	closer      io.Closer
+	large       bool
+	sniffSize   int
+	mimeSniffer [512]byte
 }
 
-func NewFileReader(rx io.ReadCloser) *FileReader {
+// FileReaderOption configures a FileReader.
+type FileReaderOption func(*FileReader)
+
+// WithLimitBytes sets the maximum number of bytes that can be
+// read from the file. Files larger than this limit will result
+// in ErrFileTooLarge. Default is math.MaxInt64 (no limit).
+func WithLimitBytes(limit int64) FileReaderOption {
+	return func(r *FileReader) {
+		r.limitBytes = limit
+	}
+}
+
+// NewFileReader creates a new FileReader that wraps the given
+// ReadCloser. It calculates SHA256 checksum while reading and
+// can enforce size limits. Options can be provided to configure
+// behavior like size limits.
+func NewFileReader(rx io.ReadCloser, opts ...FileReaderOption) *FileReader {
 	hash := sha256.New()
-	return &FileReader{inner: io.TeeReader(rx, hash), hash: hash, closer: rx}
+	reader := &FileReader{
+		inner:  io.TeeReader(rx, hash),
+		hash:   hash,
+		closer: rx,
+	}
+
+	for _, opt := range opts {
+		opt(reader)
+	}
+
+	if reader.limitBytes <= 0 {
+		reader.limitBytes = math.MaxInt64
+	}
+
+	return reader
 }
 
+// Checksum returns the SHA256 checksum of the data read so far
+// as a hex string.
 func (r *FileReader) Checksum() string {
 	return hex.EncodeToString(r.hash.Sum(nil))
 }
 
+// Read implements io.Reader. It reads data while tracking bytes
+// read and calculating checksum. If size limit is exceeded, it
+// returns ErrFileTooLarge.
 func (r *FileReader) Read(p []byte) (int, error) {
-	return r.inner.Read(p)
+	if r.large {
+		return 0, fmt.Errorf("%w: %d > %d", ErrFileTooLarge, r.readBytes, r.limitBytes)
+	}
+	nbyte, err := r.inner.Read(p)
+	r.readBytes += int64(nbyte)
+
+	if r.sniffSize < 512 {
+		r.sniffSize += copy(r.mimeSniffer[r.sniffSize:], p)
+	}
+
+	if r.readBytes > r.limitBytes {
+		r.large = true
+		return nbyte, fmt.Errorf("%w: %d > %d", ErrFileTooLarge, r.readBytes, r.limitBytes)
+	}
+	return nbyte, err
 }
 
+// ContentType returns the detected MIME type of the file content
+// based on the first 512 bytes read. Uses http.DetectContentType
+// for detection.
+func (r *FileReader) ContentType() string {
+	return http.DetectContentType(r.mimeSniffer[:r.sniffSize])
+}
+
+// ReadSize returns the total number of bytes read so far.
+func (r *FileReader) ReadSize() int64 {
+	return r.readBytes
+}
+
+// Close closes the underlying ReadCloser.
 func (r *FileReader) Close() error {
 	return r.closer.Close()
 }
 
+// HttpForm represents a protobuf message that contains HTTP form
+// data. It must implement proto.Message and provide access to
+// HttpBody content.
 type HttpForm interface {
 	proto.Message
 	GetForm() *httpbody.HttpBody
 }
 
+// StreamForm represents a Connect RPC client stream that can
+// receive HttpForm messages. It embeds the standard Connect
+// stream interface methods while ensuring the message type
+// satisfies the HttpForm interface for HTTP body content
+// handling.
 type StreamForm[T HttpForm] interface {
 	Msg() T
 	Err() error
@@ -73,6 +155,9 @@ type StreamForm[T HttpForm] interface {
 	Conn() connect.StreamingHandlerConn
 }
 
+// FormReader provides an interface for reading multipart form
+// parts from HTTP form data. It abstracts the multipart.Reader
+// functionality for processing form uploads.
 type FormReader interface {
 	NextPart() (*multipart.Part, error)
 }
@@ -84,6 +169,13 @@ type formReader[T HttpForm] struct {
 	inner     *multipart.Reader
 }
 
+// NewFormReader creates a new FormReader for processing
+// multipart form data from a Connect RPC stream. It validates
+// the stream and message types, extracts the content type and
+// boundary from the first HttpForm message, and sets up a
+// multipart reader. The fileField parameter specifies which form
+// field contains the file data, while other fields can be mapped
+// to the provided proto.Message.
 func NewFormReader[T HttpForm](fileField string, stream StreamForm[T], msg proto.Message) (FormReader, error) {
 	if stream == nil {
 		return nil, ErrNilStream
@@ -109,7 +201,7 @@ func NewFormReader[T HttpForm](fileField string, stream StreamForm[T], msg proto
 	}
 	boundary := params["boundary"]
 	if boundary == "" {
-		return nil, ErrMissingBoundary
+		return nil, ErrNoBoundary
 	}
 
 	rx := &formReader[T]{
@@ -122,6 +214,16 @@ func NewFormReader[T HttpForm](fileField string, stream StreamForm[T], msg proto
 	return rx, nil
 }
 
+// NextPart returns the next multipart form part. It
+// automatically handles non-file fields by attempting to map
+// them to the provided proto.Message. File field data is
+// returned as-is for processing.
+//
+// WARN: If msg in NewFormReader is not nil, all the part except
+// file will be automatically consumed and mapped to msg. Comsume
+// the part will trigger error on setting msg. If you want to
+// manually handle the part, pass a nil value to msg when
+// creating FormReader.
 func (r *formReader[T]) NextPart() (*multipart.Part, error) {
 	part, err := r.inner.NextPart()
 	if err != nil {
