@@ -21,10 +21,12 @@ plugins:
     out: dist
     opt:
       - paths=source_relative
-  - local: ./protoc-gen-connect-openapi
+  - remote: buf.build/community/google-gnostic-openapi:v0.7.1
     out: dist
-    strategy: all
-    opt:
-      # - base=base.yaml
-      - with-streaming
-      - path=openapi.yaml
+  # - local: ./protoc-gen-connect-openapi
+  #   out: dist
+  #   strategy: all
+  #   opt:
+  #     # - base=base.yaml
+  #     - with-streaming
+  #     - path=openapi.yaml

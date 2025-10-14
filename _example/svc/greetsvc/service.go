@@ -1,9 +1,10 @@
-package svc
+package greetsvc
 
 import (
 	"context"
 
 	"connectrpc.com/connect"
+
 	greetv1 "mizu.example/protogen/app_foo/greet/v1"
 	"mizu.example/protogen/app_foo/greet/v1/greetv1connect"
 )

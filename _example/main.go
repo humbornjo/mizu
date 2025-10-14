@@ -14,8 +14,12 @@ import (
 
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 
+	"mizu.example/protogen/app_bar/namaste/v1/namastev1connect"
+	"mizu.example/protogen/app_foo/file/v1/filev1connect"
 	"mizu.example/protogen/app_foo/greet/v1/greetv1connect"
-	"mizu.example/svc"
+	"mizu.example/svc/filesvc"
+	"mizu.example/svc/greetsvc"
+	"mizu.example/svc/namastesvc"
 )
 
 type InputOaiScrape struct {
@@ -113,8 +117,12 @@ func main() {
 		mizuconnect.WithCrpcValidate(),
 		mizuconnect.WithCrpcVanguard("/", nil, nil),
 	)
-	crpcService := svc.NewService()
-	crpcScope.Register(crpcService, greetv1connect.NewGreetServiceHandler)
+	fileSvc := filesvc.NewService()
+	crpcScope.Register(fileSvc, filev1connect.NewFileServiceHandler)
+	greetSvc := greetsvc.NewService()
+	crpcScope.Register(greetSvc, greetv1connect.NewGreetServiceHandler)
+	namasteSvc := namastesvc.NewService()
+	crpcScope.Register(namasteSvc, namastev1connect.NewNamasteServiceHandler)
 
 	// Create Openapi register instance
 	oai := mizuoai.NewOai(
