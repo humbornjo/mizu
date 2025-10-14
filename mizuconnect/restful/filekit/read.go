@@ -1,6 +1,7 @@
-package upload
+package filekit
 
 import (
+	"bufio"
 	"bytes"
 	"crypto/sha256"
 	"encoding/base64"
@@ -203,8 +204,8 @@ func NewFormReader[T HttpForm](fileField string, stream StreamForm[T], msg proto
 
 	if msg != nil {
 		var temp T
-		cur := msg.ProtoReflect()
-		if name, want := cur.Descriptor().FullName(), temp.ProtoReflect().Descriptor().FullName(); name != want {
+		cur := msg.ProtoReflect().Descriptor()
+		if name, want := cur.FullName(), temp.ProtoReflect().Descriptor().FullName(); name != want {
 			return nil, ErrMismatchProto
 		}
 	}
@@ -221,11 +222,12 @@ func NewFormReader[T HttpForm](fileField string, stream StreamForm[T], msg proto
 		return nil, ErrNoBoundary
 	}
 
+	sr := &streamReader[T]{stream, prologue.GetForm().GetData()}
 	rx := &formReader[T]{
 		fileField: fileField,
 		message:   msg,
 		stream:    stream,
-		inner:     multipart.NewReader(&streamReader[T]{stream, prologue.GetForm().GetData()}, boundary),
+		inner:     multipart.NewReader(bufio.NewReaderSize(sr, 64*1024), boundary),
 	}
 
 	return rx, nil

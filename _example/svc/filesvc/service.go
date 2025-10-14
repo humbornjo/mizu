@@ -1,58 +1,61 @@
 package filesvc
 
 import (
+	"bytes"
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
+	_ "embed"
+	"encoding/base64"
 	"errors"
 	"io"
 	"log/slog"
-	"sync"
 
 	"connectrpc.com/connect"
-	"github.com/humbornjo/mizu/mizuconnect/restful/upload"
+	"github.com/humbornjo/mizu/mizuconnect/restful/filekit"
+	"google.golang.org/genproto/googleapis/api/httpbody"
 
 	filev1 "mizu.example/protogen/app_foo/file/v1"
 	"mizu.example/protogen/app_foo/file/v1/filev1connect"
 )
 
 type Service struct {
-	storage sync.Map
+	storage Storage
 }
 
 var _ filev1connect.FileServiceHandler = (*Service)(nil)
 
-const FILE_FIELD = "file"
+var (
+	//go:embed file.json
+	FILE_DATA []byte
+	FILE_MIME = "application/json"
+
+	FILE_FIELD = "file"
+)
 
 func NewService() filev1connect.FileServiceHandler {
-	return &Service{}
+	return &Service{storage: NewStorage()}
 }
 
 func (s *Service) GetFile(ctx context.Context, req *connect.Request[filev1.GetFileRequest],
 ) (*connect.Response[filev1.GetFileResponse], error) {
 	id := req.Msg.GetId()
 
-	data, ok := s.storage.Load(id)
-	if !ok {
+	file, err := s.storage.Retrieve(ctx, id)
+	if err != nil {
 		return nil, connect.NewError(connect.CodeInvalidArgument, nil)
 	}
 
-	bytes, ok := data.([]byte)
-	if !ok {
-		return nil, connect.NewError(connect.CodeInternal, nil)
-	}
-	return connect.NewResponse(&filev1.GetFileResponse{Url: "http://" + hex.EncodeToString(bytes[:])}), nil
+	return connect.NewResponse(&filev1.GetFileResponse{Url: s.genPublicUrl(file.Checksum())}), nil
 }
 
 func (s *Service) UploadFile(ctx context.Context, stream *connect.ClientStream[filev1.UploadFileRequest],
 ) (*connect.Response[filev1.UploadFileResponse], error) {
 	msg := filev1.UploadFileRequest{}
-	rxForm, err := upload.NewFormReader(FILE_FIELD, stream, &msg)
+	rxForm, err := filekit.NewFormReader(FILE_FIELD, stream, &msg)
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInternal, err)
 	}
 
-	var url, checksum string
+	var id, url string
 	for {
 		part, err := rxForm.NextPart()
 		if err != nil {
@@ -62,30 +65,54 @@ func (s *Service) UploadFile(ctx context.Context, stream *connect.ClientStream[f
 			return nil, connect.NewError(connect.CodeInternal, err)
 		}
 		if part.FormName() == FILE_FIELD {
-			rxFile := upload.NewFileReader(part, upload.WithLimitBytes(1024*64))
+			rxFile := filekit.NewFileReader(part, filekit.WithLimitBytes(1024*64))
 			defer rxFile.Close() // nolint: errcheck
-			url, err = s.uploadFile(rxFile)
+			id, err = s.storage.Store(ctx, rxFile)
 			if err != nil {
 				return nil, connect.NewError(connect.CodeInternal, err)
 			}
-			checksum = rxFile.Checksum()
+			url = s.genPublicUrl(rxFile.Checksum())
 			slog.InfoContext(
-				ctx, "file uploaded", "url", url, "checksum", checksum,
+				ctx, "file uploaded",
+				"id", id, "checksum", rxFile.Checksum(),
 				"content-type", rxFile.ContentType(), "file-size", rxFile.ReadSize(),
 			)
 		}
 	}
 
-	return connect.NewResponse(&filev1.UploadFileResponse{Id: checksum, Url: url}), nil
+	return connect.NewResponse(&filev1.UploadFileResponse{Id: id, Url: url}), nil
 }
 
-func (s *Service) uploadFile(file io.ReadCloser) (string, error) {
-	hash := sha256.New()
-
-	if _, err := io.Copy(hash, file); err != nil {
-		return "", err
+func (s *Service) DownloadFile(
+	ctx context.Context, req *connect.Request[filev1.DownloadFileRequest], stream *connect.ServerStream[httpbody.HttpBody],
+) error {
+	id := req.Msg.GetId()
+	file, err := s.storage.Retrieve(ctx, id)
+	if err == nil {
+		txFile, err := filekit.NewWriter(stream, &httpbody.HttpBody{ContentType: file.ContentType()})
+		if err != nil {
+			slog.ErrorContext(ctx, "failed to create writer", "err", err)
+			return connect.NewError(connect.CodeInternal, err)
+		}
+		defer txFile.Close() // nolint: errcheck
+		nbyte, err := io.Copy(txFile, file)
+		slog.DebugContext(ctx, "file send", "nbyte", nbyte, "err", err)
+		return err
 	}
-	id := hex.EncodeToString(hash.Sum(nil))
-	s.storage.Store(id, hash.Sum(nil))
-	return "http://" + id, nil
+	slog.WarnContext(ctx, "file not found, deliver default content", "id", id, "err", err)
+
+	txFile, err := filekit.NewWriter(stream, &httpbody.HttpBody{ContentType: FILE_MIME})
+	if err != nil {
+		slog.ErrorContext(ctx, "failed to create writer", "err", err)
+		return connect.NewError(connect.CodeInternal, err)
+	}
+	defer txFile.Close() // nolint: errcheck
+
+	nbyte, err := io.Copy(txFile, bytes.NewReader(FILE_DATA))
+	slog.DebugContext(ctx, "file send", "nbyte", nbyte, "err", err)
+	return err
+}
+
+func (s *Service) genPublicUrl(checksum string) string {
+	return "http://supercool/" + base64.URLEncoding.EncodeToString([]byte(checksum))
 }
