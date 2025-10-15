@@ -15,6 +15,7 @@ import (
 	"mime"
 	"mime/multipart"
 	"net/http"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -122,6 +123,12 @@ func (r *FileReader) ContentType() string {
 	return http.DetectContentType(r.mimeSniffer[:r.sniffSize])
 }
 
+// MimeSniffer returns the first up to 512 bytes read from the
+// file. (Refer to http.DetectContentType for details.)
+func (r *FileReader) MimeSniffer() []byte {
+	return slices.Clone(r.mimeSniffer[:r.sniffSize])
+}
+
 // ReadSize returns the total number of bytes read so far.
 func (r *FileReader) ReadSize() int64 {
 	return r.readBytes
@@ -159,6 +166,16 @@ type StreamForm[T HttpForm] interface {
 // parts from HTTP form data. It abstracts the multipart.Reader
 // functionality for processing form uploads.
 type FormReader interface {
+	// NextPart returns the next multipart form part. It
+	// automatically handles non-file fields by attempting to map
+	// them to the provided proto.Message. File field data is
+	// returned as-is for processing.
+	//
+	// WARN: If msg in NewFormReader is not nil, all the part except
+	// file will be automatically consumed and mapped to msg. Comsume
+	// the part will trigger error on setting msg. If you want to
+	// manually handle the part, pass a nil value to msg when
+	// creating FormReader.
 	NextPart() (*multipart.Part, error)
 }
 
