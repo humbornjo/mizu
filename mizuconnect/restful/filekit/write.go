@@ -8,6 +8,20 @@ import (
 	"google.golang.org/genproto/googleapis/api/httpbody"
 )
 
+// StreamResponse represents a Connect RPC server stream that can
+// send HttpForm messages. It embeds the standard Connect stream
+// interface methods.
+//
+// INFO: This interface is equivalent to
+// *connect.ServerStream[httpbody.HttpBody]. It is provided for
+// test purposes.
+type StreamResponse interface {
+	Send(msg *httpbody.HttpBody) error
+	Conn() connect.StreamingHandlerConn
+	ResponseHeader() http.Header
+	ResponseTrailer() http.Header
+}
+
 type Writer struct {
 	writeBytes int64
 	inner      *bufio.Writer
@@ -16,7 +30,7 @@ type Writer struct {
 // NewWriter returns a new io.Writer that writes to the provided
 // connect.ServerStream. Response heaser must be set before
 // writing to the returned io.WriteCloser.
-func NewWriter(stream *connect.ServerStream[httpbody.HttpBody], prologue *httpbody.HttpBody,
+func NewWriter(stream StreamResponse, prologue *httpbody.HttpBody,
 ) (*Writer, error) {
 	sw := &streamWriter{
 		virgin:      true,
@@ -57,7 +71,7 @@ func (w *Writer) WriteSize() int64 {
 type streamWriter struct {
 	virgin      bool
 	contentType string
-	inner       *connect.ServerStream[httpbody.HttpBody]
+	inner       StreamResponse
 }
 
 func (w *streamWriter) Write(p []byte) (n int, err error) {

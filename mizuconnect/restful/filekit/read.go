@@ -153,6 +153,10 @@ type HttpForm interface {
 // stream interface methods while ensuring the message type
 // satisfies the HttpForm interface for HTTP body content
 // handling.
+//
+// INFO: This interface is equivalent to
+// *connect.ClientStream[T HttpForm]. It is provided for test
+// purposes.
 type StreamForm[T HttpForm] interface {
 	Msg() T
 	Err() error
@@ -185,6 +189,45 @@ type formReader[T HttpForm] struct {
 	stream    StreamForm[T]
 	message   proto.Message
 	inner     *multipart.Reader
+}
+
+type enumProtoSetMode int
+
+const (
+	// MODE_PROTO_TEXT is the default mode for field detection.
+	MODE_PROTO_TEXT enumProtoSetMode = iota
+	// MODE_PROTO_JSON uses JSON name for proto field detection.
+	MODE_PROTO_JSON
+	// MODE_PROTO_HYBRID uses Text name if available, if got nil,
+	// will return result by JSON name.
+	MODE_PROTO_HYBRID
+)
+
+var protoDetect = func(md protoreflect.MessageDescriptor, name string) protoreflect.FieldDescriptor {
+	return md.Fields().ByTextName(name)
+}
+
+// UseProtoSetMode sets the default proto field detection mode.
+// ModeProtoText is used by default.
+func UseProtoSetMode(mode enumProtoSetMode) {
+	switch mode {
+	case MODE_PROTO_TEXT:
+		protoDetect = func(md protoreflect.MessageDescriptor, name string) protoreflect.FieldDescriptor {
+			return md.Fields().ByTextName(name)
+		}
+	case MODE_PROTO_JSON:
+		protoDetect = func(md protoreflect.MessageDescriptor, name string) protoreflect.FieldDescriptor {
+			return md.Fields().ByJSONName(name)
+		}
+	case MODE_PROTO_HYBRID:
+		protoDetect = func(md protoreflect.MessageDescriptor, name string) protoreflect.FieldDescriptor {
+			nameText := md.Fields().ByTextName(name)
+			if nameText == nil {
+				return md.Fields().ByJSONName(name)
+			}
+			return nameText
+		}
+	}
 }
 
 // NewFormReader creates a new FormReader for processing
@@ -298,7 +341,7 @@ func trySetMessage(msg proto.Message, rx *multipart.Part) {
 		return
 	}
 
-	fd := msg.ProtoReflect().Descriptor().Fields().ByJSONName(rx.FormName())
+	fd := protoDetect(msg.ProtoReflect().Descriptor(), rx.FormName())
 	val, err := parse(fd, bytes)
 	if err != nil {
 		return
