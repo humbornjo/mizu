@@ -117,10 +117,11 @@ func WithCleanupArbiter(f func(context.Context, connect.AnyResponse) bool) optio
 	}
 }
 
-// New creates a new cache interceptor with the given options. The interceptor
-// provides response caching for Connect RPC unary calls with support for
-// single-flight deduplication, custom key generation, jittered expiration,
-// and automatic cleanup of expired entries.
+// New creates a new cache interceptor with the given options.
+// The interceptor provides response caching for Connect RPC
+// unary calls with support for single-flight deduplication,
+// custom key generation, jittered expiration, and automatic
+// cleanup of expired entries.
 func New(opts ...option) connect.Interceptor {
 	config := defaultConfig
 	for _, opt := range opts {

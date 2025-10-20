@@ -11,7 +11,7 @@ import (
 	"fmt"
 	"hash"
 	"io"
-	"log/slog"
+	"iter"
 	"math"
 	"mime"
 	"mime/multipart"
@@ -182,6 +182,10 @@ type FormReader interface {
 	// manually handle the part, pass a nil value to msg when
 	// creating FormReader.
 	NextPart() (*multipart.Part, error)
+
+	// AsIterator returns a sequence of multipart form parts. It
+	// calls NextPart until EOF is reached.
+	AsIterator() iter.Seq2[*multipart.Part, error]
 }
 
 type formReader[T HttpForm] struct {
@@ -189,46 +193,20 @@ type formReader[T HttpForm] struct {
 	stream    StreamForm[T]
 	message   proto.Message
 	inner     *multipart.Reader
+	detect    func(protoreflect.MessageDescriptor, string) protoreflect.FieldDescriptor
 }
 
-type enumProtoSetMode int
+type enumProtoDetectMode int
 
 const (
 	// MODE_PROTO_TEXT is the default mode for field detection.
-	MODE_PROTO_TEXT enumProtoSetMode = iota
+	MODE_PROTO_TEXT enumProtoDetectMode = iota
 	// MODE_PROTO_JSON uses JSON name for proto field detection.
 	MODE_PROTO_JSON
 	// MODE_PROTO_HYBRID uses Text name if available, if got nil,
 	// will return result by JSON name.
 	MODE_PROTO_HYBRID
 )
-
-var protoDetect = func(md protoreflect.MessageDescriptor, name string) protoreflect.FieldDescriptor {
-	return md.Fields().ByTextName(name)
-}
-
-// UseProtoSetMode sets the default proto field detection mode.
-// ModeProtoText is used by default.
-func UseProtoSetMode(mode enumProtoSetMode) {
-	switch mode {
-	case MODE_PROTO_TEXT:
-		protoDetect = func(md protoreflect.MessageDescriptor, name string) protoreflect.FieldDescriptor {
-			return md.Fields().ByTextName(name)
-		}
-	case MODE_PROTO_JSON:
-		protoDetect = func(md protoreflect.MessageDescriptor, name string) protoreflect.FieldDescriptor {
-			return md.Fields().ByJSONName(name)
-		}
-	case MODE_PROTO_HYBRID:
-		protoDetect = func(md protoreflect.MessageDescriptor, name string) protoreflect.FieldDescriptor {
-			nameText := md.Fields().ByTextName(name)
-			if nameText == nil {
-				return md.Fields().ByJSONName(name)
-			}
-			return nameText
-		}
-	}
-}
 
 // NewFormReader creates a new FormReader for processing
 // multipart form data from a Connect RPC stream. It validates
@@ -237,7 +215,8 @@ func UseProtoSetMode(mode enumProtoSetMode) {
 // multipart reader. The fileField parameter specifies which form
 // field contains the file data, while other fields can be mapped
 // to the provided proto.Message.
-func NewFormReader[T HttpForm](fileField string, stream StreamForm[T], msg proto.Message) (FormReader, error) {
+func NewFormReader[T HttpForm](fileField string, stream StreamForm[T], msg proto.Message, mode ...enumProtoDetectMode,
+) (FormReader, error) {
 	if stream == nil {
 		return nil, ErrNilStream
 	}
@@ -253,11 +232,15 @@ func NewFormReader[T HttpForm](fileField string, stream StreamForm[T], msg proto
 		}
 	}
 
+	detectMode := MODE_PROTO_TEXT
+	if len(mode) > 0 {
+		detectMode = mode[0]
+	}
+
 	prologue := stream.Msg()
 	contentType := prologue.GetForm().GetContentType()
 	_, params, err := mime.ParseMediaType(contentType)
 	if err != nil {
-		slog.Error("failed to parse media type", "content_type", contentType, "error", err)
 		return nil, err
 	}
 	boundary := params["boundary"]
@@ -271,6 +254,25 @@ func NewFormReader[T HttpForm](fileField string, stream StreamForm[T], msg proto
 		message:   msg,
 		stream:    stream,
 		inner:     multipart.NewReader(bufio.NewReaderSize(sr, 64*1024), boundary),
+	}
+
+	switch detectMode {
+	case MODE_PROTO_TEXT:
+		rx.detect = func(md protoreflect.MessageDescriptor, name string) protoreflect.FieldDescriptor {
+			return md.Fields().ByTextName(name)
+		}
+	case MODE_PROTO_JSON:
+		rx.detect = func(md protoreflect.MessageDescriptor, name string) protoreflect.FieldDescriptor {
+			return md.Fields().ByJSONName(name)
+		}
+	case MODE_PROTO_HYBRID:
+		rx.detect = func(md protoreflect.MessageDescriptor, name string) protoreflect.FieldDescriptor {
+			nameText := md.Fields().ByTextName(name)
+			if nameText == nil {
+				return md.Fields().ByJSONName(name)
+			}
+			return nameText
+		}
 	}
 
 	return rx, nil
@@ -293,10 +295,25 @@ func (r *formReader[T]) NextPart() (*multipart.Part, error) {
 	}
 
 	if part.FormName() != r.fileField {
-		trySetMessage(r.message, part)
+		r.trySetMessage(r.message, part)
 	}
 
 	return part, nil
+}
+
+// AsIterator returns a sequence of multipart form parts.
+func (r *formReader[T]) AsIterator() iter.Seq2[*multipart.Part, error] {
+	return func(yield func(*multipart.Part, error) bool) {
+		for {
+			part, err := r.NextPart()
+			if errors.Is(err, io.EOF) {
+				return
+			}
+			if !yield(part, err) {
+				return
+			}
+		}
+	}
 }
 
 type streamReader[T HttpForm] struct {
@@ -331,7 +348,7 @@ func (r *streamReader[T]) Read(p []byte) (int, error) {
 	return nbyte, nil
 }
 
-func trySetMessage(msg proto.Message, rx *multipart.Part) {
+func (r *formReader[T]) trySetMessage(msg proto.Message, rx *multipart.Part) {
 	if msg == nil {
 		return
 	}
@@ -341,7 +358,7 @@ func trySetMessage(msg proto.Message, rx *multipart.Part) {
 		return
 	}
 
-	fd := protoDetect(msg.ProtoReflect().Descriptor(), rx.FormName())
+	fd := r.detect(msg.ProtoReflect().Descriptor(), rx.FormName())
 	val, err := parse(fd, bytes)
 	if err != nil {
 		return

@@ -8,18 +8,20 @@ import (
 	"os/signal"
 	"time"
 
+	"connectrpc.com/connect"
 	"github.com/humbornjo/mizu"
 	"github.com/humbornjo/mizu/mizuconnect"
 	"github.com/humbornjo/mizu/mizuoai"
 
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 
-	"mizu.example/protogen/app_bar/namaste/v1/namastev1connect"
-	"mizu.example/protogen/app_foo/file/v1/filev1connect"
-	"mizu.example/protogen/app_foo/greet/v1/greetv1connect"
-	"mizu.example/svc/filesvc"
-	"mizu.example/svc/greetsvc"
-	"mizu.example/svc/namastesvc"
+	"mizu.example/package/debug"
+	"mizu.example/protogen/barapp/file/v1/filev1connect"
+	"mizu.example/protogen/barapp/greet/v1/greetv1connect"
+	"mizu.example/protogen/fooapp/namaste/v1/namastev1connect"
+	"mizu.example/service/filesvc"
+	"mizu.example/service/greetsvc"
+	"mizu.example/service/namastesvc"
 )
 
 type InputOaiScrape struct {
@@ -96,7 +98,7 @@ func main() {
 		mizu.WithProfilingHandlers(),
 		mizu.WithReadinessDrainDelay(0*time.Second),
 		// Force Protocol can useful when dev locally (Go use HTTP/1 by default when TLS is disabled)
-		mizu.WithServerProtocols(mizu.PROTOCOLS_HTTP2),
+		mizu.WithServerProtocols(mizu.PROTOCOLS_HTTP2_UNENCRYPTED),
 	)
 
 	// Apply middleware to all handlers
@@ -116,6 +118,9 @@ func main() {
 		mizuconnect.WithGrpcReflect(),
 		mizuconnect.WithCrpcValidate(),
 		mizuconnect.WithCrpcVanguard("/", nil, nil),
+		mizuconnect.WithCrpcHandlerOptions(
+			connect.WithInterceptors(debug.NewInterceptor()),
+		),
 	)
 	fileSvc := filesvc.NewService()
 	crpcScope.Register(fileSvc, filev1connect.NewFileServiceHandler)
