@@ -47,10 +47,10 @@ type FileReader struct {
 	readBytes  int64
 	limitBytes int64
 
+	large       bool
 	hash        hash.Hash
 	inner       io.Reader
 	closer      io.Closer
-	large       bool
 	sniffSize   int
 	mimeSniffer [512]byte
 }
@@ -87,6 +87,11 @@ func NewFileReader(rx io.ReadCloser, opts ...FileReaderOption) *FileReader {
 		reader.limitBytes = math.MaxInt64
 	}
 
+	n, _ := reader.inner.Read(reader.mimeSniffer[:])
+	if reader.sniffSize = n; n > 0 {
+		reader.inner = io.MultiReader(bytes.NewReader(reader.mimeSniffer[:n]), reader.inner)
+	}
+
 	return reader
 }
 
@@ -103,12 +108,9 @@ func (r *FileReader) Read(p []byte) (int, error) {
 	if r.large {
 		return 0, fmt.Errorf("%w: %d > %d", ErrFileTooLarge, r.readBytes, r.limitBytes)
 	}
+
 	nbyte, err := r.inner.Read(p)
 	r.readBytes += int64(nbyte)
-
-	if r.sniffSize < 512 {
-		r.sniffSize += copy(r.mimeSniffer[r.sniffSize:], p)
-	}
 
 	if r.readBytes > r.limitBytes {
 		r.large = true

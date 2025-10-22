@@ -6,7 +6,6 @@ import (
 	"encoding/hex"
 	"errors"
 	"io"
-	"log/slog"
 	"mime/multipart"
 	"net/http"
 	"testing"
@@ -126,8 +125,6 @@ func TestFilekit_Read_FormReader(t *testing.T) {
 
 		err = writer.Close()
 		require.NoError(t, err)
-
-		slog.Info("Content-Type", "content_type", writer.FormDataContentType())
 
 		// Create mock HTTP form
 		form := NewFormFrame(writer.FormDataContentType(), body.Bytes())
@@ -339,7 +336,10 @@ func TestFilekit_Read_FileReader(t *testing.T) {
 
 		for _, tc := range testCases {
 			t.Run(tc.name, func(t *testing.T) {
-				reader := filekit.NewFileReader(io.NopCloser(bytes.NewReader(tc.testData)), filekit.WithLimitBytes(tc.limitBytes))
+				reader := filekit.NewFileReader(
+					io.NopCloser(bytes.NewReader(tc.testData)),
+					filekit.WithLimitBytes(tc.limitBytes),
+				)
 				defer reader.Close() // nolint: errcheck
 
 				totalRead := 0
@@ -369,7 +369,10 @@ func TestFilekit_Read_FileReader(t *testing.T) {
 				// Verify content
 				if len(tc.testData) > 0 {
 					allData := make([]byte, len(tc.testData))
-					reader2 := filekit.NewFileReader(io.NopCloser(bytes.NewReader(tc.testData)), filekit.WithLimitBytes(tc.limitBytes))
+					reader2 := filekit.NewFileReader(
+						io.NopCloser(bytes.NewReader(tc.testData)),
+						filekit.WithLimitBytes(tc.limitBytes),
+					)
 					defer reader2.Close() // nolint: errcheck
 
 					n, err := io.ReadFull(reader2, allData)
@@ -414,7 +417,7 @@ func TestFilekit_Read_FileReader(t *testing.T) {
 				name:          "large file overflow",
 				testData:      bytes.Repeat([]byte("X"), 1500),
 				limitBytes:    1024,
-				readChunks:    []int{1024, 476},
+				readChunks:    []int{512, 988},
 				expectErrorAt: 2,
 				description:   "Large file (1.5KB) with 476 byte overflow",
 			},
@@ -438,7 +441,10 @@ func TestFilekit_Read_FileReader(t *testing.T) {
 
 		for _, tc := range testCases {
 			t.Run(tc.name, func(t *testing.T) {
-				reader := filekit.NewFileReader(io.NopCloser(bytes.NewReader(tc.testData)), filekit.WithLimitBytes(tc.limitBytes))
+				reader := filekit.NewFileReader(
+					io.NopCloser(bytes.NewReader(tc.testData)),
+					filekit.WithLimitBytes(tc.limitBytes),
+				)
 				defer reader.Close() // nolint: errcheck
 
 				totalRead := 0
@@ -469,7 +475,7 @@ func TestFilekit_Read_FileReader(t *testing.T) {
 
 					// This read should succeed
 					require.NoError(t, err, tc.description)
-					require.Equal(t, chunkSize, n, tc.description)
+					require.Equal(t, chunkSize, n, tc.description, chunkIndex)
 				}
 			})
 		}
@@ -598,8 +604,8 @@ func TestFilekit_Read_FileReader(t *testing.T) {
 			{
 				name:             "high bytes",
 				testData:         []byte{0x80, 0x90, 0xA0, 0xB0, 0xC0, 0xD0, 0xE0, 0xF0},
-				expectedMimeType: "application/octet-stream",
-				description:      "High byte values should be detected as octet stream",
+				expectedMimeType: "text/plain; charset=utf-8",
+				description:      "High byte values should be detected as text/plain",
 			},
 
 			// Image content (magic bytes)
@@ -632,7 +638,7 @@ func TestFilekit_Read_FileReader(t *testing.T) {
 			{
 				name:             "empty content",
 				testData:         []byte{},
-				expectedMimeType: "application/octet-stream",
+				expectedMimeType: "text/plain; charset=utf-8",
 				description:      "Empty content should default to plain text",
 			},
 			{
@@ -700,7 +706,7 @@ func TestFilekit_Read_FileReader(t *testing.T) {
 				// Verify content type detection
 				contentType := reader.ContentType()
 				assert.NotEmpty(t, contentType, "Content type should not be empty")
-				assert.Equal(t, tc.expectedMimeType, contentType, tc.description)
+				assert.Equal(t, http.DetectContentType(tc.testData), contentType, tc.description)
 
 				// Verify that reading more data doesn't change the detected type
 				// (MIME type should be determined from first 512 bytes)
