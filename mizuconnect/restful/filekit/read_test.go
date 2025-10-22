@@ -338,7 +338,7 @@ func TestFilekit_Read_FileReader(t *testing.T) {
 			t.Run(tc.name, func(t *testing.T) {
 				reader := filekit.NewFileReader(
 					io.NopCloser(bytes.NewReader(tc.testData)),
-					filekit.WithLimitBytes(tc.limitBytes),
+					filekit.WithFileLimitBytes(tc.limitBytes),
 				)
 				defer reader.Close() // nolint: errcheck
 
@@ -371,7 +371,7 @@ func TestFilekit_Read_FileReader(t *testing.T) {
 					allData := make([]byte, len(tc.testData))
 					reader2 := filekit.NewFileReader(
 						io.NopCloser(bytes.NewReader(tc.testData)),
-						filekit.WithLimitBytes(tc.limitBytes),
+						filekit.WithFileLimitBytes(tc.limitBytes),
 					)
 					defer reader2.Close() // nolint: errcheck
 
@@ -443,7 +443,7 @@ func TestFilekit_Read_FileReader(t *testing.T) {
 			t.Run(tc.name, func(t *testing.T) {
 				reader := filekit.NewFileReader(
 					io.NopCloser(bytes.NewReader(tc.testData)),
-					filekit.WithLimitBytes(tc.limitBytes),
+					filekit.WithFileLimitBytes(tc.limitBytes),
 				)
 				defer reader.Close() // nolint: errcheck
 

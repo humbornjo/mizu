@@ -49,31 +49,39 @@ func (s *Service) GetFile(ctx context.Context, req *connect.Request[filev1.GetFi
 func (s *Service) UploadFile(ctx context.Context, stream *connect.ClientStream[filev1.UploadFileRequest],
 ) (*connect.Response[filev1.UploadFileResponse], error) {
 	msg := filev1.UploadFileRequest{}
-	rxForm, err := filekit.NewFormReader(FILE_FIELD, stream, &msg)
+	rxForm, err := filekit.NewFormReader(
+		FILE_FIELD, stream, &msg,
+		filekit.WithFormProtoMode[*filev1.UploadFileRequest](filekit.MODE_PROTO_HYBRID),
+	)
 	if err != nil {
+		slog.ErrorContext(ctx, "failed create form reader", "err", err)
 		return nil, connect.NewError(connect.CodeInternal, err)
 	}
 
-	var id, url string
-
-	for part, err := range rxForm.AsIterator() {
-		if err != nil {
-			return nil, connect.NewError(connect.CodeInternal, err)
-		}
-		if part.FormName() == FILE_FIELD {
-			rxFile := filekit.NewFileReader(part, filekit.WithLimitBytes(1024*64))
-			id, err = s.storage.Store(ctx, rxFile)
-			if err != nil {
-				return nil, connect.NewError(connect.CodeInternal, err)
-			}
-			url = s.genPublicUrl(rxFile.Checksum())
-			slog.InfoContext(
-				ctx, "file uploaded",
-				"id", id, "checksum", rxFile.Checksum(),
-				"content-type", rxFile.ContentType(), "file-size", rxFile.ReadSize(),
-			)
-		}
+	fpart, purge, err := rxForm.File()
+	if err != nil {
+		slog.ErrorContext(ctx, "failed get file part", "err", err)
+		return nil, connect.NewError(connect.CodeInternal, err)
 	}
+
+	rxFile := filekit.NewFileReader(fpart, filekit.WithFileLimitBytes(64*1024*1024))
+	id, err := s.storage.Store(ctx, rxFile)
+	if err != nil {
+		slog.ErrorContext(ctx, "failed store file", "err", err)
+		return nil, connect.NewError(connect.CodeInternal, err)
+	}
+
+	if err := purge(); err != nil {
+		slog.ErrorContext(ctx, "failed drain form data", "err", err)
+		return nil, connect.NewError(connect.CodeInternal, err)
+	}
+
+	url := s.genPublicUrl(rxFile.Checksum())
+	slog.InfoContext(
+		ctx, "file uploaded",
+		"id", id, "checksum", rxFile.Checksum(), "scenario", msg.GetScenario(),
+		"content-type", rxFile.ContentType(), "file-size", rxFile.ReadSize(),
+	)
 
 	return connect.NewResponse(&filev1.UploadFileResponse{Id: id, Url: url}), nil
 }

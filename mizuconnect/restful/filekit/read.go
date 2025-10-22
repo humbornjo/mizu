@@ -11,7 +11,6 @@ import (
 	"fmt"
 	"hash"
 	"io"
-	"iter"
 	"math"
 	"mime"
 	"mime/multipart"
@@ -58,10 +57,10 @@ type FileReader struct {
 // FileReaderOption configures a FileReader.
 type FileReaderOption func(*FileReader)
 
-// WithLimitBytes sets the maximum number of bytes that can be
-// read from the file. Files larger than this limit will result
-// in ErrFileTooLarge. Default is math.MaxInt64 (no limit).
-func WithLimitBytes(limit int64) FileReaderOption {
+// WithFileLimitBytes sets the maximum number of bytes that can
+// be read from the file. Files larger than this limit will
+// result in ErrFileTooLarge. Default math.MaxInt64 (no limit).
+func WithFileLimitBytes(limit int64) FileReaderOption {
 	return func(r *FileReader) {
 		r.limitBytes = limit
 	}
@@ -178,24 +177,29 @@ type FormReader interface {
 	// them to the provided proto.Message. File field data is
 	// returned as-is for processing.
 	//
-	// WARN: If msg in NewFormReader is not nil, all the part except
-	// file will be automatically consumed and mapped to msg. Comsume
-	// the part will trigger error on setting msg. If you want to
-	// manually handle the part, pass a nil value to msg when
-	// creating FormReader.
-	NextPart() (*multipart.Part, error)
+	// WARN: If msg in NewFormReader is not nil, all the part
+	// except file will be automatically consumed and mapped to
+	// msg. Comsume the part will trigger error on setting msg. If
+	// you want to manually handle the part, pass a nil value to
+	// msg when creating FormReader.
+	NextPart() (part *multipart.Part, err error)
 
-	// AsIterator returns a sequence of multipart form parts. It
-	// calls NextPart until EOF is reached.
-	AsIterator() iter.Seq2[*multipart.Part, error]
+	// File returns the file part in the form. Fields after file
+	// part can either be accessed with NextPart or be drained by
+	// calling the purge function. This function internally
+	// calls NextPart until the file part is found.
+	//
+	// purge internally calls NextPart and return nil on EOF.
+	File() (filePart *multipart.Part, purge func() error, err error)
 }
 
 type formReader[T HttpForm] struct {
-	fileField string
-	stream    StreamForm[T]
-	message   proto.Message
-	inner     *multipart.Reader
-	detect    func(protoreflect.MessageDescriptor, string) protoreflect.FieldDescriptor
+	fileField  string
+	bufferSize int64
+	stream     StreamForm[T]
+	message    proto.Message
+	inner      *multipart.Reader
+	detect     func(protoreflect.MessageDescriptor, string) protoreflect.FieldDescriptor
 }
 
 type enumProtoDetectMode int
@@ -210,6 +214,42 @@ const (
 	MODE_PROTO_HYBRID
 )
 
+type FormReaderOption[T HttpForm] func(*formReader[T])
+
+// WithFormProtoMode sets the mode for proto field detection.
+// Default is MODE_PROTO_TEXT.
+func WithFormProtoMode[T HttpForm](mode enumProtoDetectMode) FormReaderOption[T] {
+	return func(rx *formReader[T]) {
+		switch mode {
+		case MODE_PROTO_TEXT:
+			rx.detect = func(md protoreflect.MessageDescriptor, name string) protoreflect.FieldDescriptor {
+				return md.Fields().ByTextName(name)
+			}
+		case MODE_PROTO_JSON:
+			rx.detect = func(md protoreflect.MessageDescriptor, name string) protoreflect.FieldDescriptor {
+				return md.Fields().ByJSONName(name)
+			}
+		case MODE_PROTO_HYBRID:
+			rx.detect = func(md protoreflect.MessageDescriptor, name string) protoreflect.FieldDescriptor {
+				nameText := md.Fields().ByTextName(name)
+				if nameText == nil {
+					return md.Fields().ByJSONName(name)
+				}
+				return nameText
+			}
+		}
+	}
+}
+
+// WithFormFieldLimitBytes sets the maximum number of bytes that
+// can be allocated for read the field other than file field.
+// the exceeding bytes will be discarded.
+func WithFormFieldLimitBytes[T HttpForm](limit int64) FormReaderOption[T] {
+	return func(rx *formReader[T]) {
+		rx.bufferSize = limit
+	}
+}
+
 // NewFormReader creates a new FormReader for processing
 // multipart form data from a Connect RPC stream. It validates
 // the stream and message types, extracts the content type and
@@ -217,7 +257,7 @@ const (
 // multipart reader. The fileField parameter specifies which form
 // field contains the file data, while other fields can be mapped
 // to the provided proto.Message.
-func NewFormReader[T HttpForm](fileField string, stream StreamForm[T], msg proto.Message, mode ...enumProtoDetectMode,
+func NewFormReader[T HttpForm](fileField string, stream StreamForm[T], msg proto.Message, opts ...FormReaderOption[T],
 ) (FormReader, error) {
 	if stream == nil {
 		return nil, ErrNilStream
@@ -234,11 +274,6 @@ func NewFormReader[T HttpForm](fileField string, stream StreamForm[T], msg proto
 		}
 	}
 
-	detectMode := MODE_PROTO_TEXT
-	if len(mode) > 0 {
-		detectMode = mode[0]
-	}
-
 	prologue := stream.Msg()
 	contentType := prologue.GetForm().GetContentType()
 	_, params, err := mime.ParseMediaType(contentType)
@@ -252,29 +287,18 @@ func NewFormReader[T HttpForm](fileField string, stream StreamForm[T], msg proto
 
 	sr := &streamReader[T]{stream, prologue.GetForm().GetData()}
 	rx := &formReader[T]{
-		fileField: fileField,
-		message:   msg,
-		stream:    stream,
-		inner:     multipart.NewReader(bufio.NewReaderSize(sr, 64*1024), boundary),
+		fileField:  fileField,
+		bufferSize: 4 * 1024,
+		message:    msg,
+		stream:     stream,
+		inner:      multipart.NewReader(bufio.NewReaderSize(sr, 64*1024), boundary),
+		detect: func(md protoreflect.MessageDescriptor, name string) protoreflect.FieldDescriptor {
+			return md.Fields().ByTextName(name)
+		},
 	}
 
-	switch detectMode {
-	case MODE_PROTO_TEXT:
-		rx.detect = func(md protoreflect.MessageDescriptor, name string) protoreflect.FieldDescriptor {
-			return md.Fields().ByTextName(name)
-		}
-	case MODE_PROTO_JSON:
-		rx.detect = func(md protoreflect.MessageDescriptor, name string) protoreflect.FieldDescriptor {
-			return md.Fields().ByJSONName(name)
-		}
-	case MODE_PROTO_HYBRID:
-		rx.detect = func(md protoreflect.MessageDescriptor, name string) protoreflect.FieldDescriptor {
-			nameText := md.Fields().ByTextName(name)
-			if nameText == nil {
-				return md.Fields().ByJSONName(name)
-			}
-			return nameText
-		}
+	for _, opt := range opts {
+		opt(rx)
 	}
 
 	return rx, nil
@@ -303,19 +327,37 @@ func (r *formReader[T]) NextPart() (*multipart.Part, error) {
 	return part, nil
 }
 
-// AsIterator returns a sequence of multipart form parts.
-func (r *formReader[T]) AsIterator() iter.Seq2[*multipart.Part, error] {
-	return func(yield func(*multipart.Part, error) bool) {
+// File returns the file part in the form. Fields after file
+// part can be accessed with NextPart. This function internally
+// calls NextPart until the file part is found.
+func (r *formReader[T]) File() (*multipart.Part, func() error, error) {
+	var fpart *multipart.Part
+	var err error
+	for {
+		var part *multipart.Part
+		part, err = r.NextPart()
+		if err != nil {
+			break
+		}
+		if part.FormName() == r.fileField {
+			fpart = part
+			break
+		}
+	}
+
+	purge := func() error {
 		for {
-			part, err := r.NextPart()
-			if errors.Is(err, io.EOF) {
-				return
-			}
-			if !yield(part, err) {
-				return
+			_, err := r.NextPart()
+			if err != nil {
+				if errors.Is(err, io.EOF) {
+					return nil
+				}
+				return err
 			}
 		}
 	}
+
+	return fpart, purge, err
 }
 
 type streamReader[T HttpForm] struct {
@@ -354,14 +396,22 @@ func (r *formReader[T]) trySetMessage(msg proto.Message, rx *multipart.Part) {
 	if msg == nil {
 		return
 	}
-
-	bytes, err := io.ReadAll(rx)
-	if err != nil {
+	fd := r.detect(msg.ProtoReflect().Descriptor(), rx.FormName())
+	if fd == nil {
 		return
 	}
 
-	fd := r.detect(msg.ProtoReflect().Descriptor(), rx.FormName())
-	val, err := parse(fd, bytes)
+	buffer := make([]byte, r.bufferSize)
+	n, err := rx.Read(buffer)
+	if err != nil {
+		if !errors.Is(err, io.EOF) {
+			return
+		}
+	} else {
+		_, _ = io.Copy(io.Discard, io.LimitReader(rx, int64(n)))
+	}
+
+	val, err := parse(fd, buffer[:n])
 	if err != nil {
 		return
 	}
@@ -371,10 +421,6 @@ func (r *formReader[T]) trySetMessage(msg proto.Message, rx *multipart.Part) {
 
 // nolint: gocyclo
 func parse(fd protoreflect.FieldDescriptor, raw []byte) (protoreflect.Value, error) {
-	if fd == nil {
-		return protoreflect.ValueOf(nil), fmt.Errorf("nil field")
-	}
-
 	switch kind := fd.Kind(); kind {
 	case protoreflect.BoolKind:
 		var b bool
