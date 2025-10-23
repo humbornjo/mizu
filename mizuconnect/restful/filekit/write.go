@@ -32,6 +32,7 @@ type Writer struct {
 // writing to the returned io.WriteCloser.
 func NewBodyWriter(stream StreamResponse, prologue *httpbody.HttpBody,
 ) (*Writer, error) {
+	stream.ResponseHeader().Set("Transfer-Encoding", "chunked")
 	sw := &streamWriter{
 		virgin:      true,
 		inner:       stream,
@@ -43,11 +44,6 @@ func NewBodyWriter(stream StreamResponse, prologue *httpbody.HttpBody,
 	if len(data) == 0 {
 		return tx, nil
 	}
-
-	stream.ResponseHeader().Add("Connection", "keep-alive")
-	stream.ResponseHeader().Add("Cache-Control", "no-cache")
-	stream.ResponseHeader().Add("Transfer-Encoding", "chunked")
-	stream.ResponseHeader().Add("Content-Disposition", "attachment")
 
 	if _, err := tx.Write(data); err != nil {
 		return nil, err

@@ -117,7 +117,7 @@ func main() {
 		mizuconnect.WithGrpcHealth(),
 		mizuconnect.WithGrpcReflect(),
 		mizuconnect.WithCrpcValidate(),
-		mizuconnect.WithCrpcVanguard("/", nil, nil),
+		mizuconnect.WithCrpcVanguard("/"),
 		mizuconnect.WithCrpcHandlerOptions(
 			connect.WithInterceptors(debug.NewInterceptor()),
 		),

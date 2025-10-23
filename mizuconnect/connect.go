@@ -42,7 +42,6 @@ type config struct {
 	connectOpts            []connect.HandlerOption
 	reflectOpts            []connect.HandlerOption
 	vanguardPattern        string
-	vanguardServiceOpts    []vanguard.ServiceOption
 	vanguardTranscoderOpts []vanguard.TranscoderOption
 }
 
@@ -83,15 +82,18 @@ func WithCrpcValidate() Option {
 // compatibility. This allows Connect RPC services to be accessed
 // via HTTP/JSON. The pattern parameter specifies the path,
 // should be mounted on "/" in most cases to achieve RESTful.
+// Service Option can be applied with
+// vanguard.WithDefaultServiceOptions or scope.Uses, therefore
+// only transcoder options are required on initializing scope.
 //
 // Example:
 //
-//	scope.WithCrpcVanguard("/", nil, nil)
-func WithCrpcVanguard(pattern string, svcOpts []vanguard.ServiceOption, transOpts []vanguard.TranscoderOption) Option {
+//	scope.WithCrpcVanguard("/")
+func WithCrpcVanguard(pattern string, transOpts ...vanguard.TranscoderOption) Option {
 	return func(m *config) {
+
 		m.enabledCrpcVanguard = true
 		m.vanguardPattern = pattern
-		m.vanguardServiceOpts = append(m.vanguardServiceOpts, svcOpts...)
 		m.vanguardTranscoderOpts = append(m.vanguardTranscoderOpts, transOpts...)
 	}
 }
@@ -107,7 +109,7 @@ func WithCrpcHandlerOptions(opts ...connect.HandlerOption) Option {
 type scope struct {
 	*mizu.Server
 
-	config           config
+	config           *config
 	serviceNames     []string
 	vanguardServices []*vanguard.Service
 }
@@ -124,7 +126,7 @@ func NewScope(srv *mizu.Server, opts ...Option) *scope {
 
 	scope := &scope{
 		Server: srv,
-		config: config,
+		config: &config,
 	}
 
 	if config.enabledGrpcReflect {
@@ -190,12 +192,45 @@ func (s *scope) Register(impl any, newFunc any, opts ...connect.HandlerOption) {
 
 	// Register vanguard service
 	if s.config.enabledCrpcVanguard {
-		vanService := vanguard.NewService(pattern, handler, s.config.vanguardServiceOpts...)
+		vanService := vanguard.NewService(pattern, handler)
 		s.vanguardServices = append(s.vanguardServices, vanService)
 	}
 
 	// Register service
 	s.Handle(pattern, handler)
+}
+
+// Uses creates a new relay scope with the given service options
+func (s *scope) Uses(svcOpts ...vanguard.ServiceOption) *relayScope {
+	if !s.config.enabledCrpcVanguard {
+		panic("invalid Uses: vanguard is not enabled")
+	}
+	return &relayScope{inner: s, svcOpts: svcOpts}
+}
+
+type relayScope struct {
+	inner   *scope
+	svcOpts []vanguard.ServiceOption
+}
+
+// Register registers a Connect RPC service with the relay scope.
+// Which will apply vanguard service options to the registered
+// service
+func (s relayScope) Register(impl any, newFunc any, opts ...connect.HandlerOption) {
+	opts = append(opts, s.inner.config.connectOpts...)
+
+	pattern, handler := invoke(impl, newFunc, opts...)
+	fullyQualifiedServiceName, _ := detect(pattern)
+	s.inner.serviceNames = append(s.inner.serviceNames, fullyQualifiedServiceName)
+
+	// Register vanguard service
+	if s.inner.config.enabledCrpcVanguard {
+		vanService := vanguard.NewService(pattern, handler, s.svcOpts...)
+		s.inner.vanguardServices = append(s.inner.vanguardServices, vanService)
+	}
+
+	// Register service
+	s.inner.Handle(pattern, handler)
 }
 
 // detect extracts the protobuf service descriptor from the
