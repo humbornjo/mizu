@@ -6,29 +6,7 @@ info:
     title: ""
     version: 0.0.1
 paths:
-    /file:download:
-        get:
-            tags:
-                - FileService
-            description: buf:lint:ignore RPC_RESPONSE_STANDARD_NAME
-            operationId: FileService_DownloadFile
-            parameters:
-                - name: id
-                  in: query
-                  schema:
-                    type: string
-            responses:
-                "200":
-                    description: OK
-                    content:
-                        '*/*': {}
-                default:
-                    description: Default error response
-                    content:
-                        application/json:
-                            schema:
-                                $ref: '#/components/schemas/Status'
-    /file:upload:
+    /file:
         post:
             tags:
                 - FileService
@@ -53,6 +31,29 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/UploadFileResponse'
+                default:
+                    description: Default error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Status'
+    /file/{id}:
+        get:
+            tags:
+                - FileService
+            description: buf:lint:ignore RPC_RESPONSE_STANDARD_NAME
+            operationId: FileService_DownloadFile
+            parameters:
+                - name: id
+                  in: path
+                  required: true
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        '*/*': {}
                 default:
                     description: Default error response
                     content:

@@ -103,7 +103,7 @@ func TestFilekit_Write_Writer(t *testing.T) {
 		}
 
 		// Create writer
-		writer, err := filekit.NewWriter(stream, prologue)
+		writer, err := filekit.NewBodyWriter(stream, prologue)
 		require.NoError(t, err)
 		assert.NotNil(t, writer)
 
@@ -137,7 +137,7 @@ func TestFilekit_Write_Writer(t *testing.T) {
 			Data:        []byte{},
 		}
 
-		writer, err := filekit.NewWriter(stream, prologue)
+		writer, err := filekit.NewBodyWriter(stream, prologue)
 		require.NoError(t, err)
 		assert.NotNil(t, writer)
 
@@ -165,7 +165,7 @@ func TestFilekit_Write_Writer(t *testing.T) {
 			Data:        []byte(`{"start": true}`),
 		}
 
-		writer, err := filekit.NewWriter(stream, prologue)
+		writer, err := filekit.NewBodyWriter(stream, prologue)
 		require.NoError(t, err)
 
 		// Multiple writes
@@ -202,7 +202,7 @@ func TestFilekit_Write_Writer(t *testing.T) {
 			Data:        []byte{},
 		}
 
-		writer, err := filekit.NewWriter(stream, prologue)
+		writer, err := filekit.NewBodyWriter(stream, prologue)
 		require.NoError(t, err)
 
 		// Write large data (larger than buffer size)
@@ -338,7 +338,7 @@ func TestFilekit_Write_WriterMimeDetection(t *testing.T) {
 				Data:        []byte{},
 			}
 
-			writer, err := filekit.NewWriter(stream, prologue)
+			writer, err := filekit.NewBodyWriter(stream, prologue)
 			require.NoError(t, err)
 			assert.NotNil(t, writer)
 
@@ -372,7 +372,7 @@ func TestFilekit_Write_WriterEdgeCases(t *testing.T) {
 	t.Run("test writer with nil prologue", func(t *testing.T) {
 		stream := NewMockServerStream()
 
-		writer, err := filekit.NewWriter(stream, nil)
+		writer, err := filekit.NewBodyWriter(stream, nil)
 		require.NoError(t, err)
 		assert.NotNil(t, writer)
 
@@ -393,7 +393,7 @@ func TestFilekit_Write_WriterEdgeCases(t *testing.T) {
 			Data:        []byte{},
 		}
 
-		writer, err := filekit.NewWriter(stream, prologue)
+		writer, err := filekit.NewBodyWriter(stream, prologue)
 		require.NoError(t, err)
 		assert.NotNil(t, writer)
 
@@ -419,7 +419,7 @@ func TestFilekit_Write_WriterEdgeCases(t *testing.T) {
 			Data:        []byte("initial"),
 		}
 
-		writer, err := filekit.NewWriter(stream, prologue)
+		writer, err := filekit.NewBodyWriter(stream, prologue)
 		require.NoError(t, err)
 
 		// Write zero bytes
@@ -441,7 +441,7 @@ func TestFilekit_Write_WriterEdgeCases(t *testing.T) {
 			Data:        []byte("only data"),
 		}
 
-		writer, err := filekit.NewWriter(stream, prologue)
+		writer, err := filekit.NewBodyWriter(stream, prologue)
 		require.NoError(t, err)
 
 		// Close without any additional writes

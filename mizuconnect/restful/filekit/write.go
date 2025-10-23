@@ -27,10 +27,10 @@ type Writer struct {
 	inner      *bufio.Writer
 }
 
-// NewWriter returns a new io.Writer that writes to the provided
+// NewBodyWriter returns a new io.Writer that writes to the provided
 // connect.ServerStream. Response heaser must be set before
 // writing to the returned io.WriteCloser.
-func NewWriter(stream StreamResponse, prologue *httpbody.HttpBody,
+func NewBodyWriter(stream StreamResponse, prologue *httpbody.HttpBody,
 ) (*Writer, error) {
 	sw := &streamWriter{
 		virgin:      true,
@@ -44,9 +44,15 @@ func NewWriter(stream StreamResponse, prologue *httpbody.HttpBody,
 		return tx, nil
 	}
 
+	stream.ResponseHeader().Add("Connection", "keep-alive")
+	stream.ResponseHeader().Add("Cache-Control", "no-cache")
+	stream.ResponseHeader().Add("Transfer-Encoding", "chunked")
+	stream.ResponseHeader().Add("Content-Disposition", "attachment")
+
 	if _, err := tx.Write(data); err != nil {
 		return nil, err
 	}
+
 	return tx, nil
 }
 

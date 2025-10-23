@@ -41,13 +41,13 @@ service FileService {
   // UploadFile is used to upload file with stream
   rpc UploadFile(stream UploadFileRequest) returns (UploadFileResponse) {
     option (google.api.http) = {
-      post: "/file:upload"
+      post: "/file"
       body: "form"
     };
   }
 
   // buf:lint:ignore RPC_RESPONSE_STANDARD_NAME
   rpc DownloadFile(DownloadFileRequest) returns (stream google.api.HttpBody) {
-    option (google.api.http) = {get: "/file:download"};
+    option (google.api.http) = {get: "/file/{id}"};
   }
 }

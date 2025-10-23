@@ -328,12 +328,13 @@ const file_barapp_file_v1_file_proto_rawDesc = "" +
 	"\bScenario\x12\x18\n" +
 	"\x14SCENARIO_UNSPECIFIED\x10\x00\x12\x14\n" +
 	"\x10SCENARIO_GATEWAY\x10\x01\x12\x10\n" +
-	"\fSCENARIO_CDN\x10\x022\xb1\x02\n" +
+	"\fSCENARIO_CDN\x10\x022\xa6\x02\n" +
 	"\vFileService\x12J\n" +
-	"\aGetFile\x12\x1e.barapp.file.v1.GetFileRequest\x1a\x1f.barapp.file.v1.GetFileResponse\x12q\n" +
+	"\aGetFile\x12\x1e.barapp.file.v1.GetFileRequest\x1a\x1f.barapp.file.v1.GetFileResponse\x12j\n" +
 	"\n" +
-	"UploadFile\x12!.barapp.file.v1.UploadFileRequest\x1a\".barapp.file.v1.UploadFileResponse\"\x1a\x82\xd3\xe4\x93\x02\x14:\x04form\"\f/file:upload(\x01\x12c\n" +
-	"\fDownloadFile\x12#.barapp.file.v1.DownloadFileRequest\x1a\x14.google.api.HttpBody\"\x16\x82\xd3\xe4\x93\x02\x10\x12\x0e/file:download0\x01B\xa6\x01\n" +
+	"UploadFile\x12!.barapp.file.v1.UploadFileRequest\x1a\".barapp.file.v1.UploadFileResponse\"\x13\x82\xd3\xe4\x93\x02\r:\x04form\"\x05/file(\x01\x12_\n" +
+	"\fDownloadFile\x12#.barapp.file.v1.DownloadFileRequest\x1a\x14.google.api.HttpBody\"\x12\x82\xd3\xe4\x93\x02\f\x12\n" +
+	"/file/{id}0\x01B\xa6\x01\n" +
 	"\x12com.barapp.file.v1B\tFileProtoP\x01Z+mizu.example/protogen/barapp/file/v1;filev1\xa2\x02\x03BFX\xaa\x02\x0eBarapp.File.V1\xca\x02\x0eBarapp\\File\\V1\xe2\x02\x1aBarapp\\File\\V1\\GPBMetadata\xea\x02\x10Barapp::File::V1b\x06proto3"
 
 var (

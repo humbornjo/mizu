@@ -27,6 +27,9 @@ type sfile struct {
 }
 
 func (f *sfile) Read(p []byte) (int, error) {
+	if len(f.data) == 0 {
+		return 0, io.EOF
+	}
 	n := copy(p, f.data)
 	f.data = f.data[n:]
 	return n, nil
