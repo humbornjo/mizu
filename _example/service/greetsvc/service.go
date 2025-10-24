@@ -19,5 +19,5 @@ func NewService() greetv1connect.GreetServiceHandler {
 
 func (s *Service) Greet(ctx context.Context, req *connect.Request[greetv1.GreetRequest],
 ) (*connect.Response[greetv1.GreetResponse], error) {
-	return connect.NewResponse(&greetv1.GreetResponse{Message: "Hello, " + req.Msg.Name}), nil
+	return connect.NewResponse(&greetv1.GreetResponse{Message: config.Greet + ", " + req.Msg.Name}), nil
 }

@@ -5,14 +5,21 @@ import (
 	"errors"
 	"io"
 	"log/slog"
+	// "os"
 
 	"connectrpc.com/connect"
 	"github.com/humbornjo/mizu/mizuconnect/restful/filekit"
+	// "github.com/humbornjo/mizu/mizudi"
 	"google.golang.org/genproto/googleapis/api/httpbody"
 
 	filev1 "mizu.example/protogen/barapp/file/v1"
 	"mizu.example/protogen/barapp/file/v1/filev1connect"
 )
+
+func init() {
+	// mizudi.Enchant[string]()
+	// os.Exit(0)
+}
 
 type Service struct {
 	storage Storage
