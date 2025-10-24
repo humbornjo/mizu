@@ -3,16 +3,22 @@ package filesvc
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 
 	"connectrpc.com/connect"
 	"github.com/humbornjo/mizu/mizuconnect/restful/filekit"
+	"github.com/humbornjo/mizu/mizudi"
 	"google.golang.org/genproto/googleapis/api/httpbody"
 
 	filev1 "mizu.example/protogen/barapp/file/v1"
 	"mizu.example/protogen/barapp/file/v1/filev1connect"
 )
+
+func init() {
+	fmt.Println(mizudi.PackagePath())
+}
 
 type Service struct {
 	storage Storage
