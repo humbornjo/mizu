@@ -70,10 +70,7 @@ func WithGrpcReflect(opts ...connect.HandlerOption) Option {
 // services.
 func WithCrpcValidate() Option {
 	return func(m *config) {
-		interceptor, err := validate.NewInterceptor()
-		if err != nil {
-			panic(err)
-		}
+		interceptor := validate.NewInterceptor()
 		m.connectOpts = append(m.connectOpts, connect.WithInterceptors(interceptor))
 	}
 }

@@ -25,7 +25,7 @@ HELP_ICON := 💬
 
 all: gen ## Generate all files (default)
 
-gen: clean ## $(GENERATE_ICON) Generate protocol buffer files
+gen: clean ## Generate protocol buffer files
 	@echo "$(GENERATE_ICON) Generating protocol buffer files..."
 	@buf generate
 	@mkdir -p ./${PREFIX}
@@ -33,12 +33,15 @@ gen: clean ## $(GENERATE_ICON) Generate protocol buffer files
 	@echo "$(DONE_ICON) Protobuf generation complete."
 	@rm -r dist
 
-clean: ## $(CLEAN_ICON) Clean up generated files
+clean: ## Clean up generated files
 	@echo "$(CLEAN_ICON) Cleaning up generated files..."
 	@rm -rf dist
 	@rm -rf ./${PREFIX}
 
-help: ## $(HELP_ICON) Show this help message
+run: ## Run example
+	@go run -trimpath .
+
+help: ## Show this help message
 	@echo "Usage: make [target]"
 	@echo ""
 	@echo "Available targets:"
