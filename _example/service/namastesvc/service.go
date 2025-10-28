@@ -6,6 +6,7 @@ import (
 
 	"connectrpc.com/connect"
 	"github.com/humbornjo/mizu/mizuconnect/restful/bidikit"
+	"github.com/humbornjo/mizu/mizudi"
 
 	namastev1 "mizu.example/protogen/fooapp/namaste/v1"
 	"mizu.example/protogen/fooapp/namaste/v1/namastev1connect"
@@ -15,9 +16,7 @@ type Service struct{}
 
 var _ namastev1connect.NamasteServiceHandler = (*Service)(nil)
 
-func NewService() namastev1connect.NamasteServiceHandler {
-	return &Service{}
-}
+var NewService = mizudi.MustRetrieve[namastev1connect.NamasteServiceHandler]
 
 func (s *Service) Namaste(
 	ctx context.Context,

@@ -1,0 +1,13 @@
+# config is the app level config
+config:
+  env: local
+
+# service is the service level config
+service:
+  # register per service config
+  filesvc:
+    serve_prefix: mycustomprefix
+  greetsvc:
+    greet: "Nihao"
+  gutssvc:
+    berserk: Guts

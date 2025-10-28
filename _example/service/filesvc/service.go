@@ -6,13 +6,21 @@ import (
 	"io"
 	"log/slog"
 
+	// "os"
+
 	"connectrpc.com/connect"
 	"github.com/humbornjo/mizu/mizuconnect/restful/filekit"
+	"github.com/humbornjo/mizu/mizudi"
 	"google.golang.org/genproto/googleapis/api/httpbody"
 
 	filev1 "mizu.example/protogen/barapp/file/v1"
 	"mizu.example/protogen/barapp/file/v1/filev1connect"
 )
+
+func init() {
+	// mizudi.Enchant[string]()
+	// os.Exit(0)
+}
 
 type Service struct {
 	storage Storage
@@ -26,9 +34,7 @@ func (s *Service) genPublicUrl(id string) string {
 	return "http://localhost:18080/file/" + id
 }
 
-func NewService() filev1connect.FileServiceHandler {
-	return &Service{storage: NewStorage()}
-}
+var NewService = mizudi.MustRetrieve[filev1connect.FileServiceHandler]
 
 func (s *Service) GetFile(ctx context.Context, req *connect.Request[filev1.GetFileRequest],
 ) (*connect.Response[filev1.GetFileResponse], error) {
