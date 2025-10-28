@@ -9,3 +9,5 @@ service:
     serve_prefix: mycustomprefix
   greetsvc:
     greet: "Nihao"
+  gutssvc:
+    berserk: Guts

@@ -18,6 +18,7 @@ import (
 	"os"
 	"path"
 	"runtime"
+	"slices"
 	"strings"
 
 	"github.com/knadh/koanf/parsers/yaml"
@@ -30,34 +31,35 @@ import (
 const _PATH_SEPARATOR = string(os.PathSeparator)
 
 var (
-	_K        *koanf.Koanf
+	_ROOT     string
 	_INJECTOR = do.New()
-
-	_ROOT        string
-	_PATHS       []string
-	_SUBS_MAP    = make(map[string]string)
-	_TRIM_TARGET = make([]string, 0, 1)
+	_KOANF    *koanf.Koanf
 )
 
 // Option represents a configuration option for mizudi package.
-// Options can be used to customize the behavior of Init.
-type Option func()
+// Options can be used to customize the behavior of Enchant.
+type Option func(*config)
 
-func WithLoadPath(path string) Option {
-	return func() {
-		_PATHS = append(_PATHS, path)
-	}
+type config struct {
+	substituteMap map[string]string
 }
 
+// WithSubstitutePrefix is an option that allows you to specify a
+// mapping of strings to be replaced in configuration paths. An
+// empty second input parameter is with the trim semantics.
+//
+// Example:
+//
+//	# service/greetsvc/config/config.go
+//	mizudi.Enchant[Config](nil,
+//	  mizudi.WithSubstitutePrefix("service/greetsvc/config", "service/greet"),
+//	)
+//
+// The configuration under path "service/greetsvc" will be loaded
+// even if the current directory is "service/greetsvc/config/".
 func WithSubstitutePrefix(from string, to string) Option {
-	return func() {
-		_SUBS_MAP[from] = to
-	}
-}
-
-func WithTrimPrefix(prefix string) Option {
-	return func() {
-		_TRIM_TARGET = append(_TRIM_TARGET, prefix)
+	return func(c *config) {
+		c.substituteMap[from] = to
 	}
 }
 
@@ -82,7 +84,7 @@ func WithTrimPrefix(prefix string) Option {
 // Environment variables with prefix "MIZU_" are automatically
 // loaded and mapped to configuration paths (e.g., MIZU_DB_HOST
 // becomes db.host).
-func Init(opts ...Option) {
+func Init(loadPaths ...string) {
 	// Extract compiling root directory
 	_, runtimePath, _, ok := runtime.Caller(1)
 	if !ok {
@@ -92,18 +94,15 @@ func Init(opts ...Option) {
 
 	// Load config
 	k, parser := koanf.New("/"), yaml.Parser()
-	_K = k
-	for _, opt := range opts {
-		opt()
-	}
-	if len(_PATHS) == 0 {
+	_KOANF = k
+	if len(loadPaths) == 0 {
 		wd, err := os.Getwd()
 		if err != nil {
 			panic(err)
 		}
-		_PATHS = []string{path.Join(wd, "local.yaml")}
+		loadPaths = []string{path.Join(wd, "local.yaml")}
 	}
-	for _, path := range _PATHS {
+	for _, path := range loadPaths {
 		if err := k.Load(file.Provider(path), parser); err != nil {
 			panic(err)
 		}
@@ -138,7 +137,7 @@ func Init(opts ...Option) {
 //	}
 //
 //	config := mizudi.Enchant[MyConfig]()
-func Enchant[T any](defaultConfig *T) *T {
+func Enchant[T any](defaultConfig *T, opts ...Option) *T {
 	_, runtimePath, _, ok := runtime.Caller(1)
 	if !ok {
 		panic("failed to get runtime caller")
@@ -149,10 +148,32 @@ func Enchant[T any](defaultConfig *T) *T {
 	}
 	unmarshalConf := koanf.UnmarshalConf{Tag: "yaml"}
 
-	unmarshalPath := strings.TrimPrefix(path.Dir(runtimePath), _ROOT)
-	qualifiedPath := strings.TrimPrefix(unmarshalPath, _PATH_SEPARATOR)
+	config := &config{substituteMap: make(map[string]string)}
+	for _, opt := range opts {
+		opt(config)
+	}
 
-	if err := _K.UnmarshalWithConf(qualifiedPath, defaultConfig, unmarshalConf); err != nil {
+	unmarshalPath := strings.TrimPrefix(path.Dir(runtimePath), _ROOT)
+	unmarshalPath = strings.TrimPrefix(unmarshalPath, _PATH_SEPARATOR)
+
+	{ // Apply trim prefix and substitution
+		blocks := strings.Split(unmarshalPath, _PATH_SEPARATOR)
+		for from, to := range config.substituteMap {
+			matchBlocks := strings.Split(from, _PATH_SEPARATOR)
+			if len(matchBlocks) > len(blocks) {
+				continue
+			}
+			if slices.Equal(matchBlocks, blocks[:len(matchBlocks)]) {
+				subedBlocks := append(strings.Split(to, _PATH_SEPARATOR), blocks[len(matchBlocks):]...)
+				unmarshalPath = strings.Join(subedBlocks, _PATH_SEPARATOR)
+
+				goto load
+			}
+		}
+	}
+
+load:
+	if err := _KOANF.UnmarshalWithConf(unmarshalPath, defaultConfig, unmarshalConf); err != nil {
 		panic(err)
 	}
 	return defaultConfig
