@@ -12,6 +12,9 @@ import (
 	"github.com/humbornjo/mizu"
 	"github.com/humbornjo/mizu/mizuconnect"
 	"github.com/humbornjo/mizu/mizuoai"
+	"github.com/humbornjo/mizu/mizuotel"
+	"go.opentelemetry.io/otel/exporters/stdout/stdouttrace"
+	"go.opentelemetry.io/otel/sdk/trace"
 
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 
@@ -91,28 +94,26 @@ func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
+	// Server -----------------------------------------------------
 	serviceName := "example-app"
 	server := mizu.NewServer(
 		serviceName,
 		mizu.WithRevealRoutes(),
 		mizu.WithProfilingHandlers(),
-		mizu.WithReadinessDrainDelay(0*time.Second),
+		mizu.WithReadinessDrainDelay(10*time.Millisecond),
 		// Force Protocol can useful when dev locally (Go use HTTP/1 by default when TLS is disabled)
 		mizu.WithServerProtocols(mizu.PROTOCOLS_HTTP2_UNENCRYPTED),
 	)
 
-	// Apply middleware to all handlers
-	server.Use(MiddlewareOtelHttp)
-
-	// Chain middleware on one handler only
-	server.Use(MiddlewareLogging).Get(
-		"/scrape",
+	// HTTP -------------------------------------------------------
+	server.Use(MiddlewareOtelHttp)               // Apply middleware to all handlers
+	server.Use(MiddlewareLogging).Get("/scrape", // Chain middleware on one handler only
 		func(w http.ResponseWriter, r *http.Request) {
 			_, _ = w.Write([]byte(`{"message": "Hello, world!"}`))
 		},
 	)
 
-	// Create Connect RPC register scope
+	// Connect RPC ------------------------------------------------
 	crpcScope := mizuconnect.NewScope(server,
 		mizuconnect.WithGrpcHealth(),
 		mizuconnect.WithGrpcReflect(),
@@ -129,21 +130,35 @@ func main() {
 	namasteSvc := namastesvc.NewService()
 	crpcScope.Register(namasteSvc, namastev1connect.NewNamasteServiceHandler)
 
-	// Create Openapi register instance
-	oai := mizuoai.NewOai(
+	// OPENAPI ----------------------------------------------------
+	oaiScope := mizuoai.NewOai(
 		server, "mizu_example",
 		mizuoai.WithOaiDocumentation(),
 	)
-	mizuoai.Get(oai, "/oai/scrape", HandleOaiScrape,
+	mizuoai.Get(oaiScope, "/oai/scrape", HandleOaiScrape,
 		mizuoai.WithOperationTags("scrape"),
 		mizuoai.WithOperationSummary("mizu_example http scrape"),
 		mizuoai.WithOperationDescription("nobody knows scrape more than I do"),
 	)
-	mizuoai.Post(oai, "/oai/user/{user_id}/order", HandleOaiOrder,
+	mizuoai.Post(oaiScope, "/oai/user/{user_id}/order", HandleOaiOrder,
 		mizuoai.WithOperationTags("bisiness", "order"),
 		mizuoai.WithOperationSummary("mizu_example order service"),
 		mizuoai.WithOperationDescription("nobody knows order more than I do"),
 	)
+
+	// Opentelemetry ----------------------------------------------
+	te, err := stdouttrace.New(stdouttrace.WithPrettyPrint())
+	if err != nil {
+		panic(err)
+	}
+	tp := trace.NewTracerProvider(
+		trace.WithBatcher(te, trace.WithBatchTimeout(time.Second)),
+	)
+	if err := mizuotel.Initialize(mizuotel.WithTracerProvider(tp)); err != nil {
+		panic(err)
+	}
+	// Done Ctx is fine, server is already shutdown when mizuotel.Shutdown is defer-ed
+	defer mizuotel.Shutdown(ctx) // nolint: errcheck
 
 	errChan := make(chan error, 1)
 	ctx, stop := signal.NotifyContext(ctx, os.Interrupt)
@@ -158,6 +173,7 @@ func main() {
 
 	<-ctx.Done()
 	stop()
+
 	if err := <-errChan; err != nil {
 		slog.ErrorContext(ctx, serviceName+" exit unexpectedly", "error", err)
 	}

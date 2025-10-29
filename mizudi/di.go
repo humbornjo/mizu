@@ -110,6 +110,10 @@ func Initialize(loadPaths ...string) {
 		loadPaths = []string{path.Join(wd, "local.yaml")}
 	}
 	for _, path := range loadPaths {
+		_, err := os.Stat(path)
+		if os.IsNotExist(err) {
+			continue
+		}
 		if err := k.Load(file.Provider(path), parser); err != nil {
 			panic(err)
 		}
@@ -122,7 +126,8 @@ func Initialize(loadPaths ...string) {
 }
 
 // Reveal prints the loaded configuration to the provided
-// io.Writer.
+// io.Writer. This function should be used after calling
+// Initialize.
 func RevealConfig(tx io.Writer) error {
 	if _KOANF == nil {
 		return ErrNotInitialized

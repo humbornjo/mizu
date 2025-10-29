@@ -6,13 +6,18 @@ replace github.com/humbornjo/mizu => ../
 
 replace github.com/humbornjo/mizu/mizudi => ../mizudi/
 
+replace github.com/humbornjo/mizu/mizuotel => ../mizuotel/
+
 require (
 	connectrpc.com/connect v1.19.1
 	github.com/humbornjo/mizu v0.0.0-20251028144032-c8e95fbda45c
 	github.com/humbornjo/mizu/mizuconnect v0.0.0-20251028142926-633981b80da7
 	github.com/humbornjo/mizu/mizudi v0.0.0-20251028144032-c8e95fbda45c
 	github.com/humbornjo/mizu/mizuoai v0.0.0-20251028142926-633981b80da7
+	github.com/humbornjo/mizu/mizuotel v0.0.0-20251028144032-c8e95fbda45c
 	go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.62.0
+	go.opentelemetry.io/otel/exporters/stdout/stdouttrace v1.38.0
+	go.opentelemetry.io/otel/sdk v1.38.0
 	google.golang.org/genproto/googleapis/api v0.0.0-20251022142026-3a174f9686a8
 	google.golang.org/protobuf v1.36.10
 )
@@ -37,6 +42,7 @@ require (
 	github.com/go-openapi/swag v0.23.0 // indirect
 	github.com/go-viper/mapstructure/v2 v2.4.0 // indirect
 	github.com/google/cel-go v0.26.1 // indirect
+	github.com/google/uuid v1.6.0 // indirect
 	github.com/josharian/intern v1.0.0 // indirect
 	github.com/knadh/koanf/maps v0.1.2 // indirect
 	github.com/knadh/koanf/parsers/yaml v1.1.0 // indirect
@@ -60,9 +66,10 @@ require (
 	github.com/stoewer/go-strcase v1.3.1 // indirect
 	github.com/woodsbury/decimal128 v1.3.0 // indirect
 	go.opentelemetry.io/auto/sdk v1.1.0 // indirect
-	go.opentelemetry.io/otel v1.37.0 // indirect
-	go.opentelemetry.io/otel/metric v1.37.0 // indirect
-	go.opentelemetry.io/otel/trace v1.37.0 // indirect
+	go.opentelemetry.io/otel v1.38.0 // indirect
+	go.opentelemetry.io/otel/metric v1.38.0 // indirect
+	go.opentelemetry.io/otel/sdk/metric v1.38.0 // indirect
+	go.opentelemetry.io/otel/trace v1.38.0 // indirect
 	go.yaml.in/yaml/v2 v2.4.3 // indirect
 	go.yaml.in/yaml/v3 v3.0.4 // indirect
 	golang.org/x/exp v0.0.0-20250911091902-df9299821621 // indirect

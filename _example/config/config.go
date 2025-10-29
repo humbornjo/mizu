@@ -12,6 +12,7 @@ type Config struct {
 }
 
 func init() {
+	// Dependency Injection ---------------------------------------
 	mizudi.Initialize()
 
 	if err := mizudi.RevealConfig(os.Stdout); err != nil {
@@ -26,4 +27,6 @@ func init() {
 
 	// e.g. Register Default Database using mizudi.Register and use
 	// them across services.
+	// ...
+
 }
