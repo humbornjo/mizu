@@ -104,7 +104,7 @@ func WithCrpcHandlerOptions(opts ...connect.HandlerOption) Option {
 }
 
 type scope struct {
-	*mizu.Server
+	mux mizu.Mux
 
 	config           *config
 	serviceNames     []string
@@ -122,7 +122,7 @@ func NewScope(srv *mizu.Server, opts ...Option) *scope {
 	}
 
 	scope := &scope{
-		Server: srv,
+		mux:    srv,
 		config: &config,
 	}
 
@@ -194,20 +194,38 @@ func (s *scope) Register(impl any, newFunc any, opts ...connect.HandlerOption) {
 	}
 
 	// Register service
-	s.Handle(pattern, handler)
-}
-
-// Uses creates a new relay scope with the given service options
-func (s *scope) Uses(svcOpts ...vanguard.ServiceOption) *relayScope {
-	if !s.config.enabledCrpcVanguard {
-		panic("invalid Uses: vanguard is not enabled")
-	}
-	return &relayScope{inner: s, svcOpts: svcOpts}
+	s.mux.Handle(pattern, handler)
 }
 
 type relayScope struct {
 	inner   *scope
 	svcOpts []vanguard.ServiceOption
+}
+
+// Use creates a new relay scope with the given service option.
+// ServiceOption will not be applied to all the following
+// registered services. The Scopt level service options should be
+// configured with
+// WithCrpcVanguard("/", vanguard.WithDefaultServiceOptions(...))
+// on initialization.
+func (s *scope) Use(svcOpt vanguard.ServiceOption) *relayScope {
+	if !s.config.enabledCrpcVanguard {
+		panic("invalid call: vanguard is not enabled")
+	}
+	return &relayScope{inner: s, svcOpts: []vanguard.ServiceOption{svcOpt}}
+}
+
+// Uses creates a new relay scope with the given service options.
+// ServiceOption will not be applied to all the following
+// registered services. The Scopt level service options should be
+// configured with
+// WithCrpcVanguard("/", vanguard.WithDefaultServiceOptions(...))
+// on initialization.
+func (s *scope) Uses(svcOpts ...vanguard.ServiceOption) *relayScope {
+	if !s.config.enabledCrpcVanguard {
+		panic("invalid call: vanguard is not enabled")
+	}
+	return &relayScope{inner: s, svcOpts: svcOpts}
 }
 
 // Register registers a Connect RPC service with the relay scope.
@@ -227,7 +245,7 @@ func (s relayScope) Register(impl any, newFunc any, opts ...connect.HandlerOptio
 	}
 
 	// Register service
-	s.inner.Handle(pattern, handler)
+	s.inner.mux.Handle(pattern, handler)
 }
 
 // detect extracts the protobuf service descriptor from the

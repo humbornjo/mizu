@@ -30,11 +30,13 @@ type serverConfig struct {
 	WizardHandleReadiness func(isShuttingDown *atomic.Bool) http.HandlerFunc
 }
 
+var _ Mux = (*Server)(nil)
+
 // Server is the main HTTP server that implements the Mux
 // interface. It provides HTTP routing, middleware support, and
 // graceful shutdown capabilities.
 type Server struct {
-	multiplexer
+	inner Mux
 
 	mu  *sync.Mutex // mutex for server initialization
 	mmu *sync.Mutex // mutex for the mux that server binds to
@@ -119,7 +121,7 @@ func Hook[K any, V any](s *Server, key K, val *V, opts ...hookOption) *V {
 // purposes.
 func (s *Server) Handler() http.Handler {
 	if s.initialized.CompareAndSwap(false, true) {
-		s.HandleFunc(
+		s.inner.HandleFunc(
 			s.config.ReadinessPath,
 			s.config.WizardHandleReadiness(&s.isShuttingDown),
 		)
@@ -129,17 +131,7 @@ func (s *Server) Handler() http.Handler {
 		hook(s)
 	}
 
-	return s.multiplexer.Handler()
-}
-
-// Uses is a shortcut for chaining multiple middlewares.
-func (s *Server) Uses(middleware func(http.Handler) http.Handler, more ...func(http.Handler) http.Handler,
-) multiplexer {
-	m := s.Use(middleware)
-	for _, mw := range more {
-		m = m.Use(mw)
-	}
-	return m
+	return s.inner.Handler()
 }
 
 // ServeContext starts the HTTP server on the given address and
@@ -223,4 +215,66 @@ func (s *Server) ServeContext(ctx context.Context, addr string) error {
 	}
 
 	return nil
+}
+
+func (s *Server) HandleFunc(pattern string, handlerFunc http.HandlerFunc) {
+	s.inner.HandleFunc(pattern, handlerFunc)
+}
+
+func (s *Server) Handle(pattern string, handler http.Handler) {
+	s.inner.Handle(pattern, handler)
+}
+
+func (s *Server) Get(pattern string, handler http.HandlerFunc) {
+	s.inner.Get(pattern, handler)
+}
+
+func (s *Server) Post(pattern string, handler http.HandlerFunc) {
+	s.inner.Post(pattern, handler)
+}
+
+func (s *Server) Put(pattern string, handler http.HandlerFunc) {
+	s.inner.Put(pattern, handler)
+}
+
+func (s *Server) Delete(pattern string, handler http.HandlerFunc) {
+	s.inner.Delete(pattern, handler)
+}
+
+func (s *Server) Patch(pattern string, handler http.HandlerFunc) {
+	s.inner.Patch(pattern, handler)
+}
+
+func (s *Server) Head(pattern string, handler http.HandlerFunc) {
+	s.inner.Head(pattern, handler)
+}
+
+func (s *Server) Trace(pattern string, handler http.HandlerFunc) {
+	s.inner.Trace(pattern, handler)
+}
+
+func (s *Server) Options(pattern string, handler http.HandlerFunc) {
+	s.inner.Options(pattern, handler)
+}
+
+func (s *Server) Connect(pattern string, handler http.HandlerFunc) {
+	s.inner.Connect(pattern, handler)
+}
+
+func (s *Server) Group(prefix string) Mux {
+	return s.inner.Group(prefix)
+}
+
+func (s *Server) Use(middleware func(http.Handler) http.Handler) Mux {
+	return s.inner.Use(middleware)
+}
+
+// Uses is a shortcut for chaining multiple middlewares.
+func (s *Server) Uses(middleware func(http.Handler) http.Handler, more ...func(http.Handler) http.Handler,
+) Mux {
+	m := s.inner.Use(middleware)
+	for _, mw := range more {
+		m = m.Use(mw)
+	}
+	return m
 }

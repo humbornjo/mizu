@@ -15,6 +15,7 @@ package mizudi
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"path"
 	"runtime"
@@ -34,6 +35,8 @@ var (
 	_ROOT     string
 	_INJECTOR = do.New()
 	_KOANF    *koanf.Koanf
+
+	ErrNotInitialized = fmt.Errorf("mizudi is not initialized")
 )
 
 // Option represents a configuration option for mizudi package.
@@ -69,8 +72,8 @@ func WithSubstitutePrefix(from string, to string) Option {
 // returns full absolute file paths that include the build
 // machine's directory structure
 // (e.g., "/app/src/project/service/config.go"). This makes the
-// configuration path extraction unreliable across different
-// development environments and deployment scenarios.
+// configuration path extraction unreliable across compilation
+// environment and deployment.
 //
 // Init initializes the mizudi package with the provided options.
 // It sets up the configuration system by loading YAML files and
@@ -84,7 +87,11 @@ func WithSubstitutePrefix(from string, to string) Option {
 // Environment variables with prefix "MIZU_" are automatically
 // loaded and mapped to configuration paths (e.g., MIZU_DB_HOST
 // becomes db.host).
-func Init(loadPaths ...string) {
+func Initialize(loadPaths ...string) {
+	if _KOANF != nil {
+		panic("mizudi already initialized")
+	}
+
 	// Extract compiling root directory
 	_, runtimePath, _, ok := runtime.Caller(1)
 	if !ok {
@@ -114,6 +121,24 @@ func Init(loadPaths ...string) {
 	}
 }
 
+// Reveal prints the loaded configuration to the provided
+// io.Writer.
+func RevealConfig(tx io.Writer) error {
+	if _KOANF == nil {
+		return ErrNotInitialized
+	}
+
+	bytes, err := _KOANF.Marshal(yaml.Parser())
+	if err != nil {
+		return err
+	}
+
+	bytes = append(bytes, byte('\n'))
+	_, err = tx.Write(bytes)
+
+	return err
+}
+
 // Enchant extracts configuration for a specific type T from the
 // loaded configuration files.
 //
@@ -121,10 +146,10 @@ func Init(loadPaths ...string) {
 // configuration path within the YAML structure.
 //
 // The function automatically determines the configuration path
-// based on the caller's file location relative to the project
-// root. For example, if called from "service/greetsvc/config.go",
-// it will look for configuration under the "service/greetsvc"
-// path in the YAML files.
+// based on the caller's file location relative to project root.
+// For example, if called from "service/greetsvc/config.go", it
+// will look for configuration under the "service/greetsvc" path
+// in the YAML files.
 //
 // The configuration is unmarshaled into the provided type T
 // using YAML tags.

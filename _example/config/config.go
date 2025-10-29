@@ -1,13 +1,24 @@
 package config
 
-import "github.com/humbornjo/mizu/mizudi"
+import (
+	"errors"
+	"os"
+
+	"github.com/humbornjo/mizu/mizudi"
+)
 
 type Config struct {
 	Env string `yaml:"env"`
 }
 
 func init() {
-	mizudi.Init()
+	mizudi.Initialize()
+
+	if err := mizudi.RevealConfig(os.Stdout); err != nil {
+		if !errors.Is(err, mizudi.ErrNotInitialized) {
+			panic(err)
+		}
+	}
 
 	c := mizudi.Enchant[Config](nil)
 

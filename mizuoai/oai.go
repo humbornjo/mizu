@@ -27,8 +27,8 @@ var (
 	_STOPLIGHT_UI_TEMPLATE         = template.Must(template.New("oai_ui").Parse(_STOPLIGHT_UI_TEMPLATE_CONTENT))
 )
 
-type oai struct {
-	server    *mizu.Server
+type scope struct {
+	mux       mizu.Mux
 	oaiConfig *oaiConfig
 }
 
@@ -42,7 +42,7 @@ const (
 // NewOai creates a new scope with the given path and options.
 // openapi.json will be served at /{path}/openapi.json. HTML will
 // be served at /{path}/openapi if enabled.
-func NewOai(server *mizu.Server, title string, opts ...OaiOption) *oai {
+func NewOai(server *mizu.Server, title string, opts ...OaiOption) *scope {
 	if title == "" {
 		panic("title is required")
 	}
@@ -74,7 +74,7 @@ func NewOai(server *mizu.Server, title string, opts ...OaiOption) *oai {
 		}))
 	}
 
-	return &oai{server: server, oaiConfig: config}
+	return &scope{mux: server, oaiConfig: config}
 }
 
 // Path registers a new path in the OpenAPI spec. It can be used
@@ -82,7 +82,7 @@ func NewOai(server *mizu.Server, title string, opts ...OaiOption) *oai {
 // etc.
 //
 // See: https://spec.openapis.org/oas/v3.0.4.html#path-item-object
-func (oai *oai) Path(pattern string, opts ...PathOption) {
+func (oai *scope) Path(pattern string, opts ...PathOption) {
 	config := new(pathConfig)
 	for _, opt := range opts {
 		opt(config)
