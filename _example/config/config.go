@@ -5,10 +5,13 @@ import (
 	"os"
 
 	"github.com/humbornjo/mizu/mizudi"
+	"github.com/humbornjo/mizu/mizulog"
 )
 
 type Config struct {
-	Env string `yaml:"env"`
+	Env   string `yaml:"env"`
+	Port  string `yaml:"port"`
+	Level string `yaml:"level"`
 }
 
 func init() {
@@ -22,11 +25,12 @@ func init() {
 	}
 
 	c := mizudi.Enchant[Config](nil)
-
 	mizudi.Register(func() (*Config, error) { return c, nil })
 
 	// e.g. Register Default Database using mizudi.Register and use
 	// them across services.
 	// ...
 
+	// Logging ----------------------------------------------------
+	mizulog.Initialize(nil, mizulog.WithLogLevel(c.Level))
 }

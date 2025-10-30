@@ -2,7 +2,7 @@ package mizu
 
 import (
 	"context"
-	"log"
+	"fmt"
 	"net"
 	"net/http"
 	"sync"
@@ -165,7 +165,7 @@ func (s *Server) ServeContext(ctx context.Context, addr string) error {
 	}
 	server.Handler = s.Handler()
 
-	log.Println("🚀 [INFO] Starting HTTP server on", addr)
+	fmt.Println("🚀 [INFO] Starting HTTP server on", addr)
 	for _, hook := range s.hookStartup {
 		hook(s)
 	}
@@ -174,7 +174,7 @@ func (s *Server) ServeContext(ctx context.Context, addr string) error {
 	go func() {
 		defer close(errChan)
 		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			log.Println("🚨 [ERROR] Server exited unexpectedly:", err)
+			fmt.Println("🚨 [ERROR] Server exited unexpectedly:", err)
 			errChan <- err
 		}
 	}()
@@ -184,12 +184,12 @@ func (s *Server) ServeContext(ctx context.Context, addr string) error {
 		return err
 	case <-ctx.Done():
 		s.isShuttingDown.Store(true)
-		log.Println("✅ [INFO] Server shutting down...")
+		fmt.Println("✅ [INFO] Server shutting down...")
 
 		// Give time for readiness check to propagate
-		log.Println("🕸️ [INFO] Draining readiness check before shutdown...")
+		fmt.Println("🕸️ [INFO] Draining readiness check before shutdown...")
 		<-time.After(tickerReadinessDrainDelay)
-		log.Println("✅ [INFO] Readiness drained. Waiting for ongoing requests to finish...")
+		fmt.Println("✅ [INFO] Readiness drained. Waiting for ongoing requests to finish...")
 
 		// Shutdown Server, waiting for ongoing requests to finish
 		downCtx, downCancel := context.WithTimeout(context.Background(), shutdownPeriod)
@@ -207,11 +207,11 @@ func (s *Server) ServeContext(ctx context.Context, addr string) error {
 		}
 
 		if err != nil {
-			log.Println("⚠️ [WARN] Graceful shutdown failed:", err)
+			fmt.Println("⚠️ [WARN] Graceful shutdown failed:", err)
 			time.Sleep(shutdownHardPeriod)
 			return err
 		}
-		log.Println("✅ [INFO] Server shut down gracefully.")
+		fmt.Println("✅ [INFO] Server shut down gracefully.")
 	}
 
 	return nil

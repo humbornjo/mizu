@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log"
 	"net/http"
 	"path"
 	"reflect"
@@ -58,7 +57,7 @@ func NewOai(server *mizu.Server, title string, opts ...OaiOption) *scope {
 		mizu.Hook(server, _CTXKEY_OAI_INITIALIZED, &once, mizu.WithHookHandler(func(srv *mizu.Server) {
 			oaiJson, err := renderJson(config)
 			if err != nil {
-				log.Printf("🚨 [ERROR] Failed to generate openapi.json: %s\n", err)
+				fmt.Printf("🚨 [ERROR] Failed to generate openapi.json: %s\n", err)
 				return
 			}
 

@@ -1,6 +1,8 @@
 # config is the app level config
 config:
   env: local
+  port: :18080
+  level: DEBUG
 
 # service is the service level config
 service:

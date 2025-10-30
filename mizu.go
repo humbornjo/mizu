@@ -3,7 +3,6 @@ package mizu
 import (
 	"context"
 	"fmt"
-	"log"
 	"net/http"
 	"net/http/pprof"
 	"slices"
@@ -156,6 +155,7 @@ func WithPrometheusMetrics() Option {
 	}
 }
 
+// WithServerProtocols sets the server protocols to use.
 func WithServerProtocols(protocols http.Protocols) Option {
 	return func(m *config) {
 		old := *m
@@ -238,7 +238,7 @@ func WithRevealRoutes() Option {
 
 			routes := new([]string)
 			Hook(s, _CTXKEY, routes, WithHookStartup(func(s *Server) {
-				log.Println("📦 [INFO] Available routes:")
+				fmt.Println("📦 [INFO] Available routes:")
 
 				slices.Sort(*routes)
 				for _, path := range *routes {
@@ -248,9 +248,9 @@ func WithRevealRoutes() Option {
 						method, uri = fields[0], fields[1]
 					}
 					if method == "" {
-						log.Printf("  ➤ 📍 %-7s %s\n", "*", uri)
+						fmt.Printf("     ➤ 📍 %-7s %s\n", "*", uri)
 					} else {
-						log.Printf("  ➤ 📍 %-7s %s\n", method, uri)
+						fmt.Printf("     ➤ 📍 %-7s %s\n", method, uri)
 					}
 				}
 			}))

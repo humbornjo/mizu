@@ -11,6 +11,7 @@ import (
 	"connectrpc.com/connect"
 	"github.com/humbornjo/mizu"
 	"github.com/humbornjo/mizu/mizuconnect"
+	"github.com/humbornjo/mizu/mizudi"
 	"github.com/humbornjo/mizu/mizuoai"
 	"github.com/humbornjo/mizu/mizuotel"
 	"go.opentelemetry.io/otel/exporters/stdout/stdouttrace"
@@ -18,6 +19,7 @@ import (
 
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 
+	"mizu.example/config"
 	"mizu.example/package/debug"
 	"mizu.example/protogen"
 	"mizu.example/protogen/barapp/file/v1/filev1connect"
@@ -95,6 +97,9 @@ func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
+	global := mizudi.MustRetrieve[*config.Config]()
+	port := global.Port
+
 	// Server -----------------------------------------------------
 	serviceName := "example-app"
 	server := mizu.NewServer(
@@ -168,7 +173,7 @@ func main() {
 	go func() {
 		defer cancel()
 		defer close(errChan)
-		if err := server.ServeContext(ctx, ":18080"); err != nil {
+		if err := server.ServeContext(ctx, port); err != nil {
 			errChan <- err
 		}
 	}()
