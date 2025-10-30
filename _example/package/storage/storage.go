@@ -1,4 +1,4 @@
-package filesvc
+package storage
 
 import (
 	"context"
@@ -14,7 +14,7 @@ type File interface {
 	ContentType() string
 }
 
-type Storage interface {
+type Instance interface {
 	Store(ctx context.Context, file File) (string, error)
 	Retrieve(ctx context.Context, id string) (File, error)
 }
@@ -55,7 +55,7 @@ type storage struct {
 	inner sync.Map
 }
 
-func NewStorage() Storage {
+func NewStorage() Instance {
 	return &storage{}
 }
 

@@ -6,6 +6,8 @@ replace github.com/humbornjo/mizu => ../
 
 replace github.com/humbornjo/mizu/mizudi => ../mizudi/
 
+replace github.com/humbornjo/mizu/mizuoai => ../mizuoai/
+
 replace github.com/humbornjo/mizu/mizuotel => ../mizuotel/
 
 require (

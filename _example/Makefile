@@ -1,15 +1,3 @@
-# ---------------------------------------------------------------
-# Mizu Example Makefile
-#
-# Usage:
-#   make [target]
-#
-# Targets:
-#   help      Show this help message
-#   gen       Generate protocol buffer files
-#   clean     Clean up generated files
-# ---------------------------------------------------------------
-
 # --- Configuration ---
 PREFIX=protogen
 
@@ -17,7 +5,6 @@ PREFIX=protogen
 GENERATE_ICON := ✨
 CLEAN_ICON := 🧹
 DONE_ICON := ✅
-HELP_ICON := 💬
 
 # --- Targets ---
 .PHONY: all gen clean help
@@ -28,6 +15,14 @@ all: gen ## Generate all files (default)
 gen: clean ## Generate protocol buffer files
 	@echo "$(GENERATE_ICON) Generating protocol buffer files..."
 	@buf generate
+	@echo 'package '$(PREFIX)'\n\n'    \
+		'import (\n'                  \
+		'  _ "embed"\n'               \
+		')\n\n'                       \
+		'var (\n'                     \
+		'  //go:embed openapi.yaml\n' \
+		'  OPENAPI []byte\n'          \
+		')' >  dist/const.go
 	@mkdir -p ./${PREFIX}
 	@mv dist/* ./${PREFIX}/
 	@echo "$(DONE_ICON) Protobuf generation complete."

@@ -19,6 +19,7 @@ import (
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 
 	"mizu.example/package/debug"
+	"mizu.example/protogen"
 	"mizu.example/protogen/barapp/file/v1/filev1connect"
 	"mizu.example/protogen/barapp/greet/v1/greetv1connect"
 	"mizu.example/protogen/fooapp/namaste/v1/namastev1connect"
@@ -133,7 +134,8 @@ func main() {
 	// OPENAPI ----------------------------------------------------
 	oaiScope := mizuoai.NewOai(
 		server, "mizu_example",
-		mizuoai.WithOaiDocumentation(),
+		mizuoai.WithOaiDocumentation(nil),
+		mizuoai.WithOaiPreLoad(protogen.OPENAPI),
 	)
 	mizuoai.Get(oaiScope, "/oai/scrape", HandleOaiScrape,
 		mizuoai.WithOperationTags("scrape"),

@@ -1,4 +1,4 @@
-.PHONY: help lint fmt test clean check-deps install-deps all
+.PHONY: help install-hooks test test-race
 
 # 🎨 Colors and symbols
 BLUE := \033[34m
@@ -16,9 +16,6 @@ help: ## 📚 Show this help message
 	@echo ""
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "  $(CYAN)%-15s$(RESET) %s\n", $$1, $$2}'
 	@echo ""
-
-all: deps fmt lint test ## 🚀 Run all checks (format, lint, test)
-	@echo "$(GREEN)✅ All checks completed successfully!$(RESET)"
 
 install-hooks: ## 🪝 Install Git hooks
 	@echo "$(BLUE)🪝 Installing Git hooks...$(RESET)"

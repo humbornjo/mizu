@@ -101,6 +101,12 @@ curl -X POST http://localhost:8080/users   # User created (with auth header)
 curl http://localhost:8080/healthz         # OK (built-in health check)
 ```
 
+## 🗺️ Roadmap to Beta
+
+- [ ] Complete documentation for each sub-module
+- [ ] Add common HTTP middleware support like CORS
+- [ ] Using mizuoai to compare performance with popular OpenAPI Go frameworks like Fuego
+
 ## 🔧 Configuration Options
 
 ### Server Options

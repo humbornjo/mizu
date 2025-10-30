@@ -4,6 +4,7 @@ import (
 	"github.com/humbornjo/mizu/mizudi"
 
 	"mizu.example/config"
+	"mizu.example/package/storage"
 	"mizu.example/protogen/barapp/file/v1/filev1connect"
 )
 
@@ -36,6 +37,6 @@ func init() {
 	}
 
 	mizudi.Register(func() (filev1connect.FileServiceHandler, error) {
-		return &Service{}, nil
+		return &Service{storage: storage.NewStorage()}, nil
 	})
 }

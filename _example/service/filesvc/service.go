@@ -11,12 +11,13 @@ import (
 	"github.com/humbornjo/mizu/mizudi"
 	"google.golang.org/genproto/googleapis/api/httpbody"
 
+	"mizu.example/package/storage"
 	filev1 "mizu.example/protogen/barapp/file/v1"
 	"mizu.example/protogen/barapp/file/v1/filev1connect"
 )
 
 type Service struct {
-	storage Storage
+	storage storage.Instance
 }
 
 var _ filev1connect.FileServiceHandler = (*Service)(nil)
