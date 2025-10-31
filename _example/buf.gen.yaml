@@ -33,8 +33,10 @@ plugins:
 
   # https://github.com/sudorandom/protoc-gen-connect-openapi
   # This plugin is better for Connect RPC, however what MIZU aim
-  # for is integrating OPENAPI into Go ecosystem. Separate
-  # compiling outputs make it hard to attach go:embed support.
+  # for is integrating OPENAPI into Go ecosystem. This plugin
+  # support only OpenAPI v3.1.0, which is not yet supported by
+  # kin-openapi.
   #
   # - remote: buf.build/community/sudorandom-connect-openapi:v0.21.3
   #   out: dist
+  #   opt: path=openapi.yaml

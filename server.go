@@ -200,10 +200,8 @@ func (s *Server) ServeContext(ctx context.Context, addr string) error {
 		ingCancel()
 
 		// Custom cleanup functions from WithCustomHttpServer, this block is mutually exclusive with ingCancel
-		if s.config.CustomCleanupFns != nil {
-			for _, fn := range s.config.CustomCleanupFns {
-				fn()
-			}
+		for _, fn := range s.config.CustomCleanupFns {
+			fn()
 		}
 
 		if err != nil {

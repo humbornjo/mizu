@@ -212,13 +212,21 @@ func WithProfilingHandlers() Option {
 		old := *m
 		new := func(s *Server) *Server {
 			s = old(s)
+
+			s.HandleFunc("/pprof", func(w http.ResponseWriter, r *http.Request) {
+				http.Redirect(w, r, r.RequestURI+"/", http.StatusMovedPermanently)
+			})
+
 			s.HandleFunc("/debug/pprof/", pprof.Index)
 			s.HandleFunc("/debug/pprof/trace", pprof.Trace)
 			s.HandleFunc("/debug/pprof/symbol", pprof.Symbol)
 			s.HandleFunc("/debug/pprof/cmdline", pprof.Cmdline)
 			s.HandleFunc("/debug/pprof/profile", pprof.Profile)
+
 			s.Handle("/debug/pprof/heap", pprof.Handler("heap"))
 			s.Handle("/debug/pprof/block", pprof.Handler("block"))
+			s.Handle("/debug/pprof/mutex", pprof.Handler("mutex"))
+			s.Handle("/debug/pprof/allocs", pprof.Handler("allocs"))
 			s.Handle("/debug/pprof/goroutine", pprof.Handler("goroutine"))
 			s.Handle("/debug/pprof/threadcreate", pprof.Handler("threadcreate"))
 			return s

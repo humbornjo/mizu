@@ -27,13 +27,7 @@ func Initialize(h slog.Handler, opts ...Option) {
 // slog.Handler. If h is nil, it uses the current default handler.
 func New(h slog.Handler, opts ...Option) *handler {
 	if h == nil {
-		h = slog.NewTextHandler(
-			os.Stdout,
-			&slog.HandlerOptions{
-				AddSource: true,
-				Level:     _DEFAULT_LOG_LEVEL,
-			},
-		)
+		h = slog.NewTextHandler(os.Stdout, nil)
 	}
 
 	config := new(config)
