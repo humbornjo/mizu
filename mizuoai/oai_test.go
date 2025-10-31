@@ -82,11 +82,11 @@ func TestMizuOai_Rx_Read_BodyJSON(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			srv := mizu.NewServer("test")
-			scope := mizuoai.NewOai(srv, "test_title")
+			mizuoai.Initialize(srv, "test_title")
 
 			var receivedInput *TestInputBodyJSON
 
-			mizuoai.Get(scope, "/users/{id}", func(tx mizuoai.Tx[string], rx mizuoai.Rx[TestInputBodyJSON]) {
+			mizuoai.Get(srv, "/users/{id}", func(tx mizuoai.Tx[string], rx mizuoai.Rx[TestInputBodyJSON]) {
 				receivedInput = rx.MizuRead()
 			})
 
@@ -124,11 +124,11 @@ func TestMizuOai_Rx_Read_BodyString(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			srv := mizu.NewServer("test")
-			scope := mizuoai.NewOai(srv, "test_title")
+			mizuoai.Initialize(srv, "test_title")
 
 			var receivedInput *TestInputBodyString
 
-			mizuoai.Get(scope, "/test", func(tx mizuoai.Tx[string], rx mizuoai.Rx[TestInputBodyString]) {
+			mizuoai.Get(srv, "/test", func(tx mizuoai.Tx[string], rx mizuoai.Rx[TestInputBodyString]) {
 				receivedInput = rx.MizuRead()
 			})
 
@@ -163,10 +163,10 @@ func TestMizuOai_Rx_Read_BodyInt(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			srv := mizu.NewServer("test")
-			scope := mizuoai.NewOai(srv, "test_title")
+			mizuoai.Initialize(srv, "test_title")
 
 			var receivedInput *TestInputBodyInt
-			mizuoai.Get(scope, "/int", func(tx mizuoai.Tx[string], rx mizuoai.Rx[TestInputBodyInt]) {
+			mizuoai.Get(srv, "/int", func(tx mizuoai.Tx[string], rx mizuoai.Rx[TestInputBodyInt]) {
 				receivedInput = rx.MizuRead()
 			})
 
@@ -203,11 +203,11 @@ func TestMizuOai_Rx_Read_BodyFloat(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			srv := mizu.NewServer("test")
-			scope := mizuoai.NewOai(srv, "test_title")
+			mizuoai.Initialize(srv, "test_title")
 
 			var receivedInput *TestInputBodyFloat
 
-			mizuoai.Get(scope, "/float", func(tx mizuoai.Tx[string], rx mizuoai.Rx[TestInputBodyFloat]) {
+			mizuoai.Get(srv, "/float", func(tx mizuoai.Tx[string], rx mizuoai.Rx[TestInputBodyFloat]) {
 				receivedInput = rx.MizuRead()
 			})
 

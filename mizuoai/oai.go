@@ -26,22 +26,17 @@ var (
 	_STOPLIGHT_UI_TEMPLATE         = template.Must(template.New("oai_ui").Parse(_STOPLIGHT_UI_TEMPLATE_CONTENT))
 )
 
-type scope struct {
-	mux       mizu.Mux
-	oaiConfig *oaiConfig
-}
-
 type ctxkey int
 
 const (
-	_CTXKEY_OAI_INITIALIZED ctxkey = iota
-	_CTXKEY_OAI_CONFIG
+	_CTXKEY_OAI ctxkey = iota
 )
 
-// NewOai creates a new scope with the given path and options.
-// openapi.json will be served at /{path}/openapi.json. HTML will
-// be served at /{path}/openapi if enabled.
-func NewOai(server *mizu.Server, title string, opts ...OaiOption) *scope {
+// Initialize inject OpenAPI config into mizu.Server with the
+// given path and options. openapi.json will be served at
+// /{path}/openapi.json. HTML will be served at /{path}/openapi
+// if enabled. {path} can be set using WithOaiServePath
+func Initialize(server *mizu.Server, title string, opts ...OaiOption) {
 	if title == "" {
 		panic("title is required")
 	}
@@ -54,26 +49,26 @@ func NewOai(server *mizu.Server, title string, opts ...OaiOption) *scope {
 
 	if config.enableDoc {
 		once := sync.Once{}
-		mizu.Hook(server, _CTXKEY_OAI_INITIALIZED, &once, mizu.WithHookHandler(func(srv *mizu.Server) {
-			oaiJson, err := renderJson(config)
-			if err != nil {
-				fmt.Printf("🚨 [ERROR] Failed to generate openapi.json: %s\n", err)
-				return
-			}
+		mizu.Hook(server, _CTXKEY_OAI, config, mizu.WithHookHandler(func(srv *mizu.Server) {
+			once.Do(func() {
+				oaiJson, err := renderJson(config)
+				if err != nil {
+					fmt.Printf("🚨 [ERROR] Failed to generate openapi.json: %s\n", err)
+					return
+				}
 
-			// Serve openapi.json
-			srv.Get(path.Join(config.pathDoc, "/openapi.json"), func(w http.ResponseWriter, r *http.Request) {
-				w.Header().Set("Content-Type", "application/json; charset=utf-8")
-				_, _ = w.Write(oaiJson)
-			})
-			srv.Get(path.Join(config.pathDoc, "/openapi"), func(w http.ResponseWriter, r *http.Request) {
-				w.Header().Set("Content-Type", "text/html")
-				_ = _STOPLIGHT_UI_TEMPLATE.Execute(w, map[string]string{"Path": path.Join(config.pathDoc, "/openapi.json")})
+				// Serve openapi.json
+				srv.Get(path.Join(config.pathDoc, "/openapi.json"), func(w http.ResponseWriter, r *http.Request) {
+					w.Header().Set("Content-Type", "application/json; charset=utf-8")
+					_, _ = w.Write(oaiJson)
+				})
+				srv.Get(path.Join(config.pathDoc, "/openapi"), func(w http.ResponseWriter, r *http.Request) {
+					w.Header().Set("Content-Type", "text/html")
+					_ = _STOPLIGHT_UI_TEMPLATE.Execute(w, map[string]string{"Path": path.Join(config.pathDoc, "/openapi.json")})
+				})
 			})
 		}))
 	}
-
-	return &scope{mux: server, oaiConfig: config}
 }
 
 // Path registers a new path in the OpenAPI spec. It can be used
@@ -81,12 +76,14 @@ func NewOai(server *mizu.Server, title string, opts ...OaiOption) *scope {
 // etc.
 //
 // See: https://spec.openapis.org/oas/v3.0.4.html#path-item-object
-func (oai *scope) Path(pattern string, opts ...PathOption) {
+func Path(server *mizu.Server, pattern string, opts ...PathOption) {
 	config := new(pathConfig)
 	for _, opt := range opts {
 		opt(config)
 	}
-	oai.oaiConfig.paths.Set(pattern, &config.PathItem)
+
+	oai := mizu.Hook[ctxkey, oaiConfig](server, _CTXKEY_OAI, nil)
+	oai.paths.Set(pattern, &config.PathItem)
 }
 
 // Rx represents the request side of an API endpoint. It provides

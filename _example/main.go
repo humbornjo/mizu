@@ -14,8 +14,6 @@ import (
 	"github.com/humbornjo/mizu/mizudi"
 	"github.com/humbornjo/mizu/mizuoai"
 	"github.com/humbornjo/mizu/mizuotel"
-	"go.opentelemetry.io/otel/exporters/stdout/stdouttrace"
-	"go.opentelemetry.io/otel/sdk/trace"
 
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 
@@ -137,31 +135,23 @@ func main() {
 	crpcScope.Register(namasteSvc, namastev1connect.NewNamasteServiceHandler)
 
 	// OPENAPI ----------------------------------------------------
-	oaiScope := mizuoai.NewOai(
-		server, "mizu_example",
+	mizuoai.Initialize(server, "mizu_example",
 		mizuoai.WithOaiDocumentation(nil),
 		mizuoai.WithOaiPreLoad(protogen.OPENAPI),
 	)
-	mizuoai.Get(oaiScope, "/oai/scrape", HandleOaiScrape,
+	mizuoai.Get(server, "/oai/scrape", HandleOaiScrape,
 		mizuoai.WithOperationTags("scrape"),
 		mizuoai.WithOperationSummary("mizu_example http scrape"),
 		mizuoai.WithOperationDescription("nobody knows scrape more than I do"),
 	)
-	mizuoai.Post(oaiScope, "/oai/user/{user_id}/order", HandleOaiOrder,
+	mizuoai.Post(server, "/oai/user/{user_id}/order", HandleOaiOrder,
 		mizuoai.WithOperationTags("bisiness", "order"),
 		mizuoai.WithOperationSummary("mizu_example order service"),
 		mizuoai.WithOperationDescription("nobody knows order more than I do"),
 	)
 
 	// Opentelemetry ----------------------------------------------
-	te, err := stdouttrace.New(stdouttrace.WithPrettyPrint())
-	if err != nil {
-		panic(err)
-	}
-	tp := trace.NewTracerProvider(
-		trace.WithBatcher(te, trace.WithBatchTimeout(time.Second)),
-	)
-	if err := mizuotel.Initialize(mizuotel.WithTracerProvider(tp)); err != nil {
+	if err := mizuotel.Initialize(); err != nil {
 		panic(err)
 	}
 	// Done Ctx is fine, server is already shutdown when mizuotel.Shutdown is defer-ed
