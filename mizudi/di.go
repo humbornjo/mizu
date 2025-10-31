@@ -166,7 +166,7 @@ func RevealConfig(tx io.Writer) error {
 //	    Host string `yaml:"host"`
 //	}
 //
-//	config := mizudi.Enchant[MyConfig]()
+//	config := mizudi.Enchant[MyConfig](nil)
 func Enchant[T any](defaultConfig *T, opts ...Option) *T {
 	_, runtimePath, _, ok := runtime.Caller(1)
 	if !ok {
