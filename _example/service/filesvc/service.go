@@ -8,7 +8,6 @@ import (
 
 	"connectrpc.com/connect"
 	"github.com/humbornjo/mizu/mizuconnect/restful/filekit"
-	"github.com/humbornjo/mizu/mizudi"
 	"google.golang.org/genproto/googleapis/api/httpbody"
 
 	"mizu.example/package/storage"
@@ -27,8 +26,6 @@ const FILE_FIELD = "file"
 func (s *Service) genPublicUrl(id string) string {
 	return "http://localhost:18080/file/" + id
 }
-
-var NewService = mizudi.MustRetrieve[filev1connect.FileServiceHandler]
 
 func (s *Service) GetFile(ctx context.Context, req *connect.Request[filev1.GetFileRequest],
 ) (*connect.Response[filev1.GetFileResponse], error) {

@@ -41,12 +41,12 @@ type Server struct {
 	mu  *sync.Mutex // mutex for server initialization
 	mmu *sync.Mutex // mutex for the mux that server binds to
 
-	initialized    atomic.Bool
-	isShuttingDown atomic.Bool
+	initialized    *atomic.Bool
+	isShuttingDown *atomic.Bool
 
 	ctx         context.Context
 	name        string
-	config      serverConfig
+	config      *serverConfig
 	hookStartup []func(*Server)
 	hookHandler []func(*Server)
 }
@@ -123,7 +123,7 @@ func (s *Server) Handler() http.Handler {
 	if s.initialized.CompareAndSwap(false, true) {
 		s.inner.HandleFunc(
 			s.config.ReadinessPath,
-			s.config.WizardHandleReadiness(&s.isShuttingDown),
+			s.config.WizardHandleReadiness(s.isShuttingDown),
 		)
 	}
 
@@ -260,11 +260,15 @@ func (s *Server) Connect(pattern string, handler http.HandlerFunc) {
 }
 
 func (s *Server) Group(prefix string) Mux {
-	return s.inner.Group(prefix)
+	ss := *s
+	ss.inner = s.inner.Group(prefix)
+	return &ss
 }
 
 func (s *Server) Use(middleware func(http.Handler) http.Handler) Mux {
-	return s.inner.Use(middleware)
+	ss := *s
+	ss.inner = s.inner.Use(middleware)
+	return &ss
 }
 
 // Uses is a shortcut for chaining multiple middlewares.

@@ -125,11 +125,11 @@ func (t tag) String() string {
 }
 
 const (
-	_TAG_PATH   tag = "path"
-	_TAG_QUERY  tag = "query"
-	_TAG_HEADER tag = "header"
-	_TAG_BODY   tag = "body"
-	_TAG_FORM   tag = "form"
+	_STRUCT_TAG_PATH   tag = "path"
+	_STRUCT_TAG_QUERY  tag = "query"
+	_STRUCT_TAG_HEADER tag = "header"
+	_STRUCT_TAG_BODY   tag = "body"
+	_STRUCT_TAG_FORM   tag = "form"
 )
 
 // notion holds metadata about a struct field to be parsed from a
@@ -189,12 +189,12 @@ func genDecode[T any]() decode[T] {
 		fieldTyp := typ.Field(i)
 		if mizuTag, ok := fieldTyp.Tag.Lookup("mizu"); ok {
 			switch tag(mizuTag) {
-			case _TAG_PATH:
+			case _STRUCT_TAG_PATH:
 				if fieldTyp.Type.Kind() != reflect.Struct {
 					panic("path must be a struct")
 				}
 				structPath := val.FieldByName(fieldTyp.Name)
-				notionPath := genNotions(structPath, _TAG_PATH)
+				notionPath := genNotions(structPath, _STRUCT_TAG_PATH)
 				if len(notionPath) == 0 {
 					continue
 				}
@@ -210,12 +210,12 @@ func genDecode[T any]() decode[T] {
 					}
 					return errs
 				})
-			case _TAG_QUERY:
+			case _STRUCT_TAG_QUERY:
 				if fieldTyp.Type.Kind() != reflect.Struct {
 					panic("query must be a struct")
 				}
 				structQuery := val.FieldByName(fieldTyp.Name)
-				notionQuery := genNotions(structQuery, _TAG_QUERY)
+				notionQuery := genNotions(structQuery, _STRUCT_TAG_QUERY)
 				if len(notionQuery) == 0 {
 					continue
 				}
@@ -231,12 +231,12 @@ func genDecode[T any]() decode[T] {
 					}
 					return errs
 				})
-			case _TAG_HEADER:
+			case _STRUCT_TAG_HEADER:
 				if fieldTyp.Type.Kind() != reflect.Struct {
 					panic("header must be a struct")
 				}
 				structHeader := val.FieldByName(fieldTyp.Name)
-				notionHeader := genNotions(structHeader, _TAG_HEADER)
+				notionHeader := genNotions(structHeader, _STRUCT_TAG_HEADER)
 				if len(notionHeader) == 0 {
 					continue
 				}
@@ -252,7 +252,7 @@ func genDecode[T any]() decode[T] {
 					}
 					return errs
 				})
-			case _TAG_FORM:
+			case _STRUCT_TAG_FORM:
 				if hasBody {
 					panic("cannot use both form and body")
 				}
@@ -261,7 +261,7 @@ func genDecode[T any]() decode[T] {
 				}
 				hasForm = true
 				structForm := val.FieldByName(fieldTyp.Name)
-				notionForm := genNotions(structForm, _TAG_FORM)
+				notionForm := genNotions(structForm, _STRUCT_TAG_FORM)
 				p.append(func(r *http.Request, val *T) []error {
 					errs := []error{}
 					if err := r.ParseForm(); err != nil {
@@ -277,7 +277,7 @@ func genDecode[T any]() decode[T] {
 					}
 					return errs
 				})
-			case _TAG_BODY:
+			case _STRUCT_TAG_BODY:
 				if hasForm {
 					panic("cannot use both form and body")
 				}
@@ -422,7 +422,7 @@ func enrichOperation[I any, O any](config *operationConfig) {
 			continue
 		}
 		switch tag(mizuTag) {
-		case _TAG_PATH, _TAG_QUERY, _TAG_HEADER:
+		case _STRUCT_TAG_PATH, _STRUCT_TAG_QUERY, _STRUCT_TAG_HEADER:
 			for i := range field.Type.NumField() {
 				subfield := field.Type.Field(i)
 				subTag := subfield.Tag.Get(mizuTag)
@@ -440,7 +440,7 @@ func enrichOperation[I any, O any](config *operationConfig) {
 				}
 				config.Parameters = append(config.Parameters, param)
 			}
-		case _TAG_BODY:
+		case _STRUCT_TAG_BODY:
 			config.RequestBody = &openapi3.RequestBodyRef{
 				Value: &openapi3.RequestBody{
 					Description: field.Tag.Get("desc"),
@@ -455,7 +455,7 @@ func enrichOperation[I any, O any](config *operationConfig) {
 				contentType = "application/json"
 			}
 			config.RequestBody.Value.WithSchema(createSchema(field.Type), []string{contentType})
-		case _TAG_FORM:
+		case _STRUCT_TAG_FORM:
 			config.RequestBody = &openapi3.RequestBodyRef{
 				Value: &openapi3.RequestBody{
 					Description: field.Tag.Get("desc"),

@@ -103,7 +103,7 @@ func WithCrpcHandlerOptions(opts ...connect.HandlerOption) Option {
 	}
 }
 
-type scope struct {
+type Scope struct {
 	mux mizu.Mux
 
 	config           *config
@@ -115,13 +115,13 @@ type scope struct {
 // server. The scope manages registration of Connect services
 // with optional features like health checks, reflection,
 // validation, and Vanguard transcoding.
-func NewScope(srv *mizu.Server, opts ...Option) *scope {
+func NewScope(srv *mizu.Server, opts ...Option) *Scope {
 	config := _DEFAULT_CONFIG
 	for _, opt := range opts {
 		opt(&config)
 	}
 
-	scope := &scope{
+	scope := &Scope{
 		mux:    srv,
 		config: &config,
 	}
@@ -180,7 +180,7 @@ func NewScope(srv *mizu.Server, opts ...Option) *scope {
 //	scope := mizuconnect.NewScope(server)
 //	impl := &GreetServiceImpl{}
 //	scope.Register(impl, greetv1connect.NewGreetServiceHandler)
-func (s *scope) Register(impl any, newFunc any, opts ...connect.HandlerOption) {
+func (s *Scope) Register(impl any, newFunc any, opts ...connect.HandlerOption) {
 	opts = append(opts, s.config.connectOpts...)
 
 	pattern, handler := invoke(impl, newFunc, opts...)
@@ -198,7 +198,7 @@ func (s *scope) Register(impl any, newFunc any, opts ...connect.HandlerOption) {
 }
 
 type relayScope struct {
-	inner   *scope
+	inner   *Scope
 	svcOpts []vanguard.ServiceOption
 }
 
@@ -208,7 +208,7 @@ type relayScope struct {
 // configured with
 // WithCrpcVanguard("/", vanguard.WithDefaultServiceOptions(...))
 // on initialization.
-func (s *scope) Use(svcOpt vanguard.ServiceOption) *relayScope {
+func (s *Scope) Use(svcOpt vanguard.ServiceOption) *relayScope {
 	if !s.config.enabledCrpcVanguard {
 		panic("invalid call: vanguard is not enabled")
 	}
@@ -221,7 +221,7 @@ func (s *scope) Use(svcOpt vanguard.ServiceOption) *relayScope {
 // configured with
 // WithCrpcVanguard("/", vanguard.WithDefaultServiceOptions(...))
 // on initialization.
-func (s *scope) Uses(svcOpts ...vanguard.ServiceOption) *relayScope {
+func (s *Scope) Uses(svcOpts ...vanguard.ServiceOption) *relayScope {
 	if !s.config.enabledCrpcVanguard {
 		panic("invalid call: vanguard is not enabled")
 	}

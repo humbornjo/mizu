@@ -69,7 +69,8 @@ func init() {
 func NewServer(srvName string, opts ...Option) *Server {
 	var config = new(config)
 	*config = func(s *Server) *Server {
-		s.config = _DEFAULT_SERVER_CONFIG
+		cc := _DEFAULT_SERVER_CONFIG
+		s.config = &cc
 		return s
 	}
 
@@ -85,8 +86,8 @@ func NewServer(srvName string, opts ...Option) *Server {
 			_CTXKEY, new([]string),
 		),
 		name:           srvName,
-		initialized:    atomic.Bool{},
-		isShuttingDown: atomic.Bool{},
+		initialized:    &atomic.Bool{},
+		isShuttingDown: &atomic.Bool{},
 	}
 	server.initialized.Store(false)
 	server.isShuttingDown.Store(false)
@@ -213,7 +214,7 @@ func WithProfilingHandlers() Option {
 		new := func(s *Server) *Server {
 			s = old(s)
 
-			s.HandleFunc("/pprof", func(w http.ResponseWriter, r *http.Request) {
+			s.HandleFunc("/debug/pprof", func(w http.ResponseWriter, r *http.Request) {
 				http.Redirect(w, r, r.RequestURI+"/", http.StatusMovedPermanently)
 			})
 

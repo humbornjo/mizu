@@ -45,7 +45,7 @@ install-hooks: ## 🪝 Install Git hooks
 
 test: ## 🧪 Run tests
 	@echo "$(BLUE)🧪 Running tests...$(RESET)"
-	@go test -v ./...
+	@go test ./...
 	@echo "$(GREEN)✅ Tests completed!$(RESET)"
 
 test-race: ## 🏃 Run tests with race detection

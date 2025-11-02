@@ -10,6 +10,8 @@ replace github.com/humbornjo/mizu/mizuoai => ../mizuoai/
 
 replace github.com/humbornjo/mizu/mizuotel => ../mizuotel/
 
+replace github.com/humbornjo/mizu/mizuconnect => ../mizuconnect/
+
 require (
 	connectrpc.com/connect v1.19.1
 	github.com/humbornjo/mizu v0.0.0-20251028144032-c8e95fbda45c

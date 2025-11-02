@@ -2,6 +2,7 @@ package mizu
 
 import (
 	"net/http"
+	"os"
 	"path"
 	"strings"
 )
@@ -146,14 +147,20 @@ func (m *mux) handle(method string, pattern string, handler http.Handler) {
 
 	// Record the registered paths
 	paths := Hook[ctxkey, []string](m.server, _CTXKEY, nil)
-	*paths = append(*paths, pattern)
+	path := path.Join(m.prefix, pattern)
+	if pattern != string(os.PathSeparator) &&
+		strings.TrimSuffix(pattern, string(os.PathSeparator)) != pattern {
+		path += string(os.PathSeparator)
+	}
+
+	if method != "" {
+		path = strings.Join([]string{method, path}, " ")
+	}
+	*paths = append(*paths, path)
 
 	for _, mw := range m.drain() {
 		handler = mw(handler)
 	}
 
-	m.inner.HandleFunc(
-		strings.TrimSpace(strings.Join([]string{method, m.prefix + pattern}, " ")),
-		handler.ServeHTTP,
-	)
+	m.inner.HandleFunc(strings.TrimSpace(path), handler.ServeHTTP)
 }
