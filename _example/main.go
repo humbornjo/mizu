@@ -19,19 +19,17 @@ import (
 	"mizu.example/service/oaisvc"
 )
 
-const serviceName = "mizu-example"
-
 func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	config := mizudi.MustRetrieve[*config.Config]()
+	cfg := mizudi.MustRetrieve[*config.Config]()
 	srv := mizudi.MustRetrieve[*mizu.Server]()
 
 	// HTTP global middleware -------------------------------------
 
 	// Apply middleware to all handlers
-	srv.Use(otelhttp.NewMiddleware(serviceName))
+	srv.Use(otelhttp.NewMiddleware(config.ServiceName))
 
 	// Initialize services ----------------------------------------
 	oaisvc.Initialize()
@@ -46,7 +44,7 @@ func main() {
 	go func() {
 		defer cancel()
 		defer close(errChan)
-		if err := srv.ServeContext(ctx, config.Port); err != nil {
+		if err := srv.ServeContext(ctx, cfg.Port); err != nil {
 			errChan <- err
 		}
 	}()
@@ -55,6 +53,6 @@ func main() {
 	stop()
 
 	if err := <-errChan; err != nil {
-		slog.ErrorContext(ctx, serviceName+" exit unexpectedly", "error", err)
+		slog.ErrorContext(ctx, config.ServiceName+" exit unexpectedly", "error", err)
 	}
 }

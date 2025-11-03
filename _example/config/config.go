@@ -16,6 +16,8 @@ import (
 	"mizu.example/protogen"
 )
 
+const ServiceName = "example-app"
+
 type Config struct {
 	Env   string `yaml:"env"`
 	Port  string `yaml:"port"`
@@ -24,7 +26,9 @@ type Config struct {
 
 func init() {
 	// Dependency Injection ---------------------------------------
-	mizudi.Initialize()
+	mizudi.Initialize("config",
+		"/Users/moonshot/Repository/mizu/_example/local.yaml",
+	)
 
 	if err := mizudi.RevealConfig(os.Stdout); err != nil {
 		if !errors.Is(err, mizudi.ErrNotInitialized) {
@@ -36,9 +40,8 @@ func init() {
 	mizudi.Register(func() (*Config, error) { return c, nil })
 
 	// Server -----------------------------------------------------
-	serviceName := "example-app"
 	server := mizu.NewServer(
-		serviceName,
+		ServiceName,
 		mizu.WithRevealRoutes(),
 		mizu.WithProfilingHandlers(),
 		mizu.WithReadinessDrainDelay(10*time.Millisecond),

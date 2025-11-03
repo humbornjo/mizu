@@ -1,16 +1,11 @@
 // Package mizudi provides dependency injection and configuration
-// management for Go applications with automatic service
-// discovery and configuration loading.
+// management for Go applications with automatic configuration
+// loading.
 //
 // The package offers two main functionalities:
 //  1. Configuration management through YAML files and
 //     environment variables
 //  2. Dependency injection using the samber/do library
-//
-// Configuration files are loaded from paths specified in options
-// or default to "local.yaml".
-// Environment variables with prefix "MIZU_" are automatically
-// loaded and converted to config paths.
 package mizudi
 
 import (
@@ -66,28 +61,19 @@ func WithSubstitutePrefix(from string, to string) Option {
 	}
 }
 
-// WARN: TL;DR: use `go build -trimpath` and `go run -trimpath`.
-// The -trimpath flag is critical for mizudi's configuration path
-// resolution mechanism. Without -trimpath, runtime.Caller(1)
-// returns full absolute file paths that include the build
-// machine's directory structure
-// (e.g., "/app/src/project/service/config.go"). This makes the
-// configuration path extraction unreliable across compilation
-// environment and deployment.
-//
 // Init initializes the mizudi package with the provided options.
 // It sets up the configuration system by loading YAML files and
-// environment variables.
+// environment variables. `relativePath` is the relative path to
+// the current directory from repository root.
 //
-// The function automatically determines the runtime root
-// directory and loads configuration
-// from the specified paths (or defaults to "local.yaml" in the
-// current working directory).
+// The function automatically determines the compiling time
+// prefix and loads configuration from the specified paths (or
+// defaults to "local.yaml" in the current working directory).
 //
 // Environment variables with prefix "MIZU_" are automatically
 // loaded and mapped to configuration paths (e.g., MIZU_DB_HOST
 // becomes db.host).
-func Initialize(loadPaths ...string) {
+func Initialize(relativePath string, loadPaths ...string) {
 	if _KOANF != nil {
 		panic("mizudi already initialized")
 	}
@@ -97,7 +83,9 @@ func Initialize(loadPaths ...string) {
 	if !ok {
 		panic("failed to get runtime caller")
 	}
-	_ROOT = strings.Split(runtimePath, _PATH_SEPARATOR)[0]
+	dir := path.Dir(runtimePath)
+	root := strings.TrimSuffix(dir, relativePath)
+	_ROOT = strings.TrimSuffix(root, _PATH_SEPARATOR)
 
 	// Load config
 	k, parser := koanf.New("/"), yaml.Parser()
