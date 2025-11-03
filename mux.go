@@ -7,14 +7,14 @@ import (
 	"strings"
 )
 
-type Mux interface {
+type multiplexer interface {
 	Handle(pattern string, handler http.Handler)
 	HandleFunc(pattern string, handlerFunc http.HandlerFunc)
 
 	Handler() http.Handler
-	Use(middleware func(http.Handler) http.Handler) Mux
+	Use(middleware func(http.Handler) http.Handler) multiplexer
 
-	Group(prefix string) Mux
+	Group(prefix string) multiplexer
 	Get(pattern string, handler http.HandlerFunc)
 	Post(pattern string, handler http.HandlerFunc)
 	Put(pattern string, handler http.HandlerFunc)
@@ -38,7 +38,7 @@ func (m *mux) Handler() http.Handler {
 	return m.inner
 }
 
-func (m *mux) Use(middleware func(http.Handler) http.Handler) Mux {
+func (m *mux) Use(middleware func(http.Handler) http.Handler) multiplexer {
 	m.server.mmu.Lock()
 	defer m.server.mmu.Unlock()
 
@@ -105,7 +105,7 @@ func (m *mux) Connect(pattern string, handler http.HandlerFunc) {
 	m.handle(http.MethodConnect, pattern, handler)
 }
 
-func (m *mux) Group(prefix string) Mux {
+func (m *mux) Group(prefix string) multiplexer {
 	m.server.mmu.Lock()
 	defer m.server.mmu.Unlock()
 

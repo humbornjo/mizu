@@ -104,7 +104,7 @@ func WithCrpcHandlerOptions(opts ...connect.HandlerOption) Option {
 }
 
 type Scope struct {
-	mux mizu.Mux
+	srv *mizu.Server
 
 	config           *config
 	serviceNames     []string
@@ -122,7 +122,7 @@ func NewScope(srv *mizu.Server, opts ...Option) *Scope {
 	}
 
 	scope := &Scope{
-		mux:    srv,
+		srv:    srv,
 		config: &config,
 	}
 
@@ -194,7 +194,7 @@ func (s *Scope) Register(impl any, newFunc any, opts ...connect.HandlerOption) {
 	}
 
 	// Register service
-	s.mux.Handle(pattern, handler)
+	s.srv.Handle(pattern, handler)
 }
 
 type relayScope struct {
@@ -245,7 +245,7 @@ func (s relayScope) Register(impl any, newFunc any, opts ...connect.HandlerOptio
 	}
 
 	// Register service
-	s.inner.mux.Handle(pattern, handler)
+	s.inner.srv.Handle(pattern, handler)
 }
 
 // detect extracts the protobuf service descriptor from the

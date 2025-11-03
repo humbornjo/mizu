@@ -30,13 +30,11 @@ type serverConfig struct {
 	WizardHandleReadiness func(isShuttingDown *atomic.Bool) http.HandlerFunc
 }
 
-var _ Mux = (*Server)(nil)
-
 // Server is the main HTTP server that implements the Mux
 // interface. It provides HTTP routing, middleware support, and
 // graceful shutdown capabilities.
 type Server struct {
-	inner Mux
+	inner multiplexer
 
 	mu  *sync.Mutex // mutex for server initialization
 	mmu *sync.Mutex // mutex for the mux that server binds to
@@ -259,13 +257,13 @@ func (s *Server) Connect(pattern string, handler http.HandlerFunc) {
 	s.inner.Connect(pattern, handler)
 }
 
-func (s *Server) Group(prefix string) Mux {
+func (s *Server) Group(prefix string) *Server {
 	ss := *s
 	ss.inner = s.inner.Group(prefix)
 	return &ss
 }
 
-func (s *Server) Use(middleware func(http.Handler) http.Handler) Mux {
+func (s *Server) Use(middleware func(http.Handler) http.Handler) *Server {
 	ss := *s
 	ss.inner = s.inner.Use(middleware)
 	return &ss
@@ -273,7 +271,7 @@ func (s *Server) Use(middleware func(http.Handler) http.Handler) Mux {
 
 // Uses is a shortcut for chaining multiple middlewares.
 func (s *Server) Uses(middleware func(http.Handler) http.Handler, more ...func(http.Handler) http.Handler,
-) Mux {
+) multiplexer {
 	m := s.inner.Use(middleware)
 	for _, mw := range more {
 		m = m.Use(mw)
