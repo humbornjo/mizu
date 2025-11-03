@@ -113,6 +113,11 @@ func Initialize(relativePath string, loadPaths ...string) {
 	}
 }
 
+// Append loads a YAML file to the loaded configuration files.
+func Append(path string) error {
+	return _KOANF.Load(file.Provider(path), yaml.Parser())
+}
+
 // Reveal prints the loaded configuration to the provided
 // io.Writer. This function should be used after calling
 // Initialize.

@@ -26,9 +26,7 @@ type Config struct {
 
 func init() {
 	// Dependency Injection ---------------------------------------
-	mizudi.Initialize("config",
-		"/Users/moonshot/Repository/mizu/_example/local.yaml",
-	)
+	mizudi.Initialize("config")
 
 	if err := mizudi.RevealConfig(os.Stdout); err != nil {
 		if !errors.Is(err, mizudi.ErrNotInitialized) {
