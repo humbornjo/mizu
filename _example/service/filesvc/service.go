@@ -2,7 +2,6 @@ package filesvc
 
 import (
 	"context"
-	"errors"
 	"io"
 	"log/slog"
 
@@ -97,15 +96,14 @@ func (s *Service) DownloadFile(
 	defer txFile.Close() // nolint: errcheck
 
 	nbyte, err := io.Copy(txFile, file)
-	if err == nil || errors.Is(err, io.EOF) {
-		slog.InfoContext(
-			ctx, "file downloaded",
-			"id", id, "checksum", file.Checksum(),
-			"content-type", file.ContentType(), "file-size", nbyte,
-		)
-
-		return nil
+	if err != nil {
+		slog.ErrorContext(ctx, "failed to copy file", "err", err)
+		return connect.NewError(connect.CodeInternal, err)
 	}
-	slog.ErrorContext(ctx, "failed to copy file", "err", err)
-	return connect.NewError(connect.CodeInternal, err)
+
+	slog.InfoContext(
+		ctx, "file downloaded",
+		"id", id, "checksum", file.Checksum(), "content-type", file.ContentType(), "file-size", nbyte,
+	)
+	return nil
 }
