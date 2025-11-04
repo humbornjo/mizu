@@ -1,6 +1,6 @@
 module github.com/humbornjo/mizu/mizuoai
 
-go 1.24.4
+go 1.24.7
 
 replace github.com/humbornjo/mizu => ../
 

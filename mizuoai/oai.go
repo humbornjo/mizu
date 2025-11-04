@@ -59,12 +59,14 @@ func Initialize(server *mizu.Server, title string, opts ...OaiOption) {
 
 				// Serve openapi.json
 				srv.Get(path.Join(config.pathDoc, "/openapi.json"), func(w http.ResponseWriter, r *http.Request) {
-					w.Header().Set("Content-Type", "application/json; charset=utf-8")
+					w.Header().Set("Content-Type", "application/json")
 					_, _ = w.Write(oaiJson)
 				})
+
+				encoded, _ := json.Marshal(string(oaiJson))
 				srv.Get(path.Join(config.pathDoc, "/openapi"), func(w http.ResponseWriter, r *http.Request) {
 					w.Header().Set("Content-Type", "text/html")
-					_ = _STOPLIGHT_UI_TEMPLATE.Execute(w, map[string]string{"Path": path.Join(config.pathDoc, "/openapi.json")})
+					_ = _STOPLIGHT_UI_TEMPLATE.Execute(w, map[string]string{"Document": string(encoded)})
 				})
 			})
 		}))
