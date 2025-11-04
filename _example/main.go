@@ -8,6 +8,7 @@ import (
 
 	"github.com/humbornjo/mizu"
 	"github.com/humbornjo/mizu/mizudi"
+	"github.com/humbornjo/mizu/mizumw/compressmw"
 
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 
@@ -23,13 +24,14 @@ func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	cfg := mizudi.MustRetrieve[*config.Config]()
 	srv := mizudi.MustRetrieve[*mizu.Server]()
+	cfg := mizudi.MustRetrieve[*config.Config]()
 
 	// HTTP global middleware -------------------------------------
 
 	// Apply middleware to all handlers
 	srv.Use(otelhttp.NewMiddleware(config.ServiceName))
+	srv.Use(compressmw.New(compressmw.EncodingGzip{}))
 
 	// Initialize services ----------------------------------------
 	oaisvc.Initialize()

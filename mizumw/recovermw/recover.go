@@ -28,9 +28,9 @@ func New() func(http.Handler) http.Handler {
 				debugStack := debug.Stack()
 				out, err := parse(debugStack, rcv)
 				if err == nil {
-					os.Stderr.Write(out)
+					_, _ = os.Stderr.Write(out)
 				} else {
-					os.Stderr.Write(debugStack)
+					_, _ = os.Stderr.Write(debugStack)
 				}
 
 				if r.Header.Get("Connection") != "Upgrade" {

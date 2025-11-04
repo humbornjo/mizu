@@ -37,6 +37,6 @@ func Initialize() {
 		panic("serve prefix not loaded")
 	}
 
-	srv := mizudi.MustRetrieve[*mizuconnect.Scope]()
-	srv.Register(&Service{storage.NewStorage()}, filev1connect.NewFileServiceHandler)
+	scp := mizudi.MustRetrieve[*mizuconnect.Scope]()
+	scp.Register(&Service{storage.NewStorage()}, filev1connect.NewFileServiceHandler)
 }

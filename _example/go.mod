@@ -10,13 +10,18 @@ replace github.com/humbornjo/mizu/mizuoai => ../mizuoai/
 
 replace github.com/humbornjo/mizu/mizuotel => ../mizuotel/
 
+replace github.com/humbornjo/mizu/mizumw => ../mizumw/
+
 replace github.com/humbornjo/mizu/mizuconnect => ../mizuconnect/
+
+replace connectrpc.com/vanguard => ../../vanguard-go/
 
 require (
 	connectrpc.com/connect v1.19.1
 	github.com/humbornjo/mizu v0.0.0-20251028144032-c8e95fbda45c
 	github.com/humbornjo/mizu/mizuconnect v0.0.0-20251028142926-633981b80da7
 	github.com/humbornjo/mizu/mizudi v0.0.0-20251028144032-c8e95fbda45c
+	github.com/humbornjo/mizu/mizumw v0.0.0-00010101000000-000000000000
 	github.com/humbornjo/mizu/mizuoai v0.0.0-20251028142926-633981b80da7
 	github.com/humbornjo/mizu/mizuotel v0.0.0-20251028144032-c8e95fbda45c
 	go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.62.0
@@ -82,6 +87,7 @@ require (
 	go.yaml.in/yaml/v3 v3.0.4 // indirect
 	go.yaml.in/yaml/v4 v4.0.0-rc.2 // indirect
 	golang.org/x/exp v0.0.0-20250911091902-df9299821621 // indirect
+	golang.org/x/net v0.46.0 // indirect
 	golang.org/x/sys v0.37.0 // indirect
 	golang.org/x/text v0.30.0 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20251014184007-4626949a642f // indirect
