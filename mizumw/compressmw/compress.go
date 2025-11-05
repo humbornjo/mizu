@@ -1,44 +1,185 @@
 package compressmw
 
 import (
+	"compress/flate"
 	"compress/gzip"
 	"fmt"
 	"net/http"
-
-	"golang.org/x/net/http/httpguts"
+	"slices"
+	"strings"
 )
 
-type Encoding interface {
-	fmt.Stringer
-	EncodingGzip | EncodingDeflate
+var _DEFAULT_CONTENT_TYPES = []string{
+	"text/html",
+	"text/css",
+	"text/plain",
+	"text/javascript",
+	"application/javascript",
+	"application/x-javascript",
+	"application/json",
+	"application/atom+xml",
+	"application/rss+xml",
+	"image/svg+xml",
+	"video/mp4",
+	"video/webm",
 }
 
-func New[T Encoding](encoding T) func(http.Handler) http.Handler {
-	encStr := encoding.String()
-	switch enc := any(encoding).(type) {
-	case EncodingGzip:
-		return func(next http.Handler) http.Handler {
-			return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				if !httpguts.HeaderValuesContainsToken(r.Header["Accept-Encoding"], encStr) {
-					next.ServeHTTP(w, r)
-					return
-				}
-				gw, _ := gzip.NewWriterLevel(w, enc.Level.Int())
-				next.ServeHTTP(&wrapGzip{ResponseWriter: w, inner: gw}, r)
-			})
-		}
-	default:
-		panic("unreachable")
+type Encoder interface {
+	fmt.Stringer
+	serveNext(w http.ResponseWriter, r *http.Request, next http.Handler, rules rules)
+}
+
+var _ Encoder = EncoderGzip{}
+var _ Encoder = EncoderDeflate{}
+
+type config struct {
+	rules      rules
+	precedence []Encoder
+}
+
+func init() {
+	fill(&_DEFAULT_CONFIG.rules)
+}
+
+type rules struct {
+	AllowedTypes     map[string]struct{}
+	AllowedWildcards map[string]struct{}
+}
+
+func (c config) clone() config {
+	return config{
+		rules:      c.rules,
+		precedence: slices.Clone(c.precedence),
 	}
 }
 
-// EncodingGzip -------------------------------------------------
-type EncodingGzip struct {
+var _DEFAULT_CONFIG = config{
+	rules:      rules{},
+	precedence: []Encoder{EncoderGzip{}, EncoderDeflate{}},
+}
+
+type Option func(*config)
+
+func fill(rules *rules, contentTypes ...string) {
+	allowedTypes := make(map[string]struct{})
+	allowedWildcards := make(map[string]struct{})
+
+	if len(contentTypes) == 0 {
+		for _, ct := range _DEFAULT_CONTENT_TYPES {
+			allowedTypes[ct] = struct{}{}
+		}
+		rules.AllowedTypes = allowedTypes
+		return
+	}
+
+	for _, ct := range contentTypes {
+		if strings.Contains(strings.TrimSuffix(ct, "/*"), "*") {
+			panic(fmt.Sprintf("invalid content type %s", ct))
+		}
+		if !strings.HasSuffix(ct, "/*") {
+			allowedTypes[ct] = struct{}{}
+		} else {
+			allowedWildcards[strings.TrimSuffix(ct, "/*")] = struct{}{}
+		}
+	}
+
+	rules.AllowedTypes = allowedTypes
+	rules.AllowedWildcards = allowedWildcards
+}
+
+func WithOverrideGzip(enc *EncoderGzip) Option {
+	return func(c *config) {
+		if enc == nil {
+			c.precedence = slices.DeleteFunc(c.precedence, func(e Encoder) bool {
+				return e.String() == "gzip"
+			})
+			return
+		}
+
+		for i, e := range c.precedence {
+			if e.String() == enc.String() {
+				c.precedence[i] = enc
+			}
+		}
+	}
+}
+
+func WithOverrideDeflate(enc *EncoderDeflate) Option {
+	return func(c *config) {
+		if enc == nil {
+			c.precedence = slices.DeleteFunc(c.precedence, func(e Encoder) bool {
+				return e.String() == "deflate"
+			})
+			return
+		}
+
+		for i, e := range c.precedence {
+			if e.String() == enc.String() {
+				c.precedence[i] = enc
+			}
+		}
+	}
+}
+
+func WithContentTypes(contentTypes ...string) Option {
+	return func(c *config) {
+		if len(contentTypes) == 0 {
+			return
+		}
+		c.rules = rules{}
+		fill(&c.rules, contentTypes...)
+	}
+}
+
+func New(opts ...Option) func(http.Handler) http.Handler {
+	config := _DEFAULT_CONFIG.clone()
+	for _, opt := range opts {
+		opt(&config)
+	}
+
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			// Compress should not be applied to chunked messages, as the call to
+			// Flush() will lead to broken compression data.
+			transferHeader := r.Header.Get("Transfer-Encoding")
+			if transferHeader == "chunked" {
+				next.ServeHTTP(w, r)
+				return
+			}
+
+			// Select the appropriate encoder according to the Accept-Encoding header
+			acceptedHeader := r.Header.Get("Accept-Encoding")
+			accepted := strings.Split(strings.ToLower(acceptedHeader), ",")
+			for _, enc := range config.precedence {
+				if !slices.Contains(accepted, enc.String()) {
+					continue
+				}
+
+				enc.serveNext(w, r, next, config.rules)
+				return
+			}
+
+			// Fallback to no compression
+			next.ServeHTTP(w, r)
+		})
+	}
+}
+
+// EncoderGzip -------------------------------------------------
+
+type EncoderGzip struct {
 	Level gzipLevel
 }
 
-func (EncodingGzip) String() string {
+func (EncoderGzip) String() string {
 	return "gzip"
+}
+
+func (e EncoderGzip) serveNext(w http.ResponseWriter, r *http.Request, next http.Handler, rules rules) {
+	gw, _ := gzip.NewWriterLevel(w, e.Level.Int())
+	ww := embed(w, gw, e, rules)
+	defer ww.Close() // nolint: errcheck
+	next.ServeHTTP(ww, r)
 }
 
 type gzipLevel int
@@ -68,44 +209,44 @@ func (l gzipLevel) Int() int {
 	}
 }
 
-var _ http.Flusher = (*wrapGzip)(nil)
+// EncoderDeflate -----------------------------------------------
 
-type wrapGzip struct {
-	http.ResponseWriter
-
-	doneHeader bool
-	inner      *gzip.Writer
+type EncoderDeflate struct {
+	Level deflateLevel
 }
 
-func (w *wrapGzip) Flush() {
-	if flusher, ok := w.ResponseWriter.(http.Flusher); ok {
-		flusher.Flush()
+func (EncoderDeflate) String() string {
+	return "deflate"
+}
+
+func (e EncoderDeflate) serveNext(w http.ResponseWriter, r *http.Request, next http.Handler, rules rules) {
+	fw, _ := flate.NewWriter(w, e.Level.Int())
+	next.ServeHTTP(embed(w, fw, e, rules), r)
+}
+
+type deflateLevel int
+
+const (
+	DEFLATE_COMPRESSION_LEVEL_DEFAULT deflateLevel = iota
+	DEFLATE_COMPRESSION_LEVEL_BEST
+	DEFLATE_COMPRESSION_LEVEL_FAST
+	DEFLATE_COMPRESSION_LEVEL_HUFFMAN
+	DEFLATE_COMPRESSION_LEVEL_NONE
+)
+
+func (l deflateLevel) Int() int {
+	switch l {
+	case DEFLATE_COMPRESSION_LEVEL_NONE:
+		return flate.NoCompression
+	case DEFLATE_COMPRESSION_LEVEL_DEFAULT:
+		return flate.DefaultCompression
+	case DEFLATE_COMPRESSION_LEVEL_BEST:
+		return flate.BestCompression
+	case DEFLATE_COMPRESSION_LEVEL_FAST:
+		return flate.BestSpeed
+	case DEFLATE_COMPRESSION_LEVEL_HUFFMAN:
+		return flate.HuffmanOnly
+	default:
+		panic("unreachable")
 	}
-}
-
-func (w *wrapGzip) Write(b []byte) (int, error) {
-	return w.ResponseWriter.Write(b)
-}
-
-func (w *wrapGzip) WriteHeader(code int) {
-	if w.doneHeader {
-		w.ResponseWriter.WriteHeader(code)
-		return
-	}
-
-	w.doneHeader = true
-	defer w.ResponseWriter.WriteHeader(code)
-
-	if w.Header().Get("Content-Encoding") != "" {
-		return
-	}
-
-	w.Header().Set("Content-Encoding", "gzip")
-	w.Header().Add("Vary", "Accept-Encoding")
-	w.Header().Del("Content-Length")
-}
-
-// Encoding deflate ---------------------------------------------
-type EncodingDeflate struct {
-	Level gzipLevel
 }
