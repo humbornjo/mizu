@@ -3,34 +3,73 @@ package recovermw
 import (
 	"bytes"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"runtime/debug"
 	"strings"
 )
 
-func New() func(http.Handler) http.Handler {
+var _DEFAULT_CONFIG = config{
+	tx:       os.Stderr,
+	maxBytes: 0,
+}
+
+type config struct {
+	tx       io.WriteCloser
+	maxBytes int
+}
+
+type Option func(*config)
+
+// WithMaxBytes sets the maximum number of bytes to write to the
+// log file.
+func WithMaxBytes(maxBytes int) Option {
+	return func(c *config) {
+		c.maxBytes = maxBytes
+	}
+}
+
+// WithWriteCloser sets the WriteCloser to use for logging,
+// default is os.Stderr.
+func WithWriteCloser(tx io.WriteCloser) Option {
+	return func(c *config) {
+		c.tx = tx
+	}
+}
+
+// New creates a new recover middleware.
+func New(opts ...Option) func(http.Handler) http.Handler {
+	config := _DEFAULT_CONFIG
+	for _, opt := range opts {
+		opt(&config)
+	}
+
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			bad := true // Incase some dickhead use panic("")
+			bad := true // incase some dickhead use panic("")
 			defer func() {
 				if !bad {
 					return
 				}
 
 				rcv := recover()
+				// we don't recover http.ErrAbortHandler so the response to the
+				// client is aborted, this should not be logged
 				if rcv == http.ErrAbortHandler {
-					// we don't recover http.ErrAbortHandler so the response
-					// to the client is aborted, this should not be logged
 					panic(rcv)
 				}
 
+				defer config.tx.Close() // nolint: errcheck
 				debugStack := debug.Stack()
+				if config.maxBytes > 0 {
+					debugStack = debugStack[:config.maxBytes]
+				}
 				out, err := parse(debugStack, rcv)
 				if err == nil {
-					os.Stderr.Write(out)
+					_, _ = config.tx.Write(out)
 				} else {
-					os.Stderr.Write(debugStack)
+					_, _ = config.tx.Write(debugStack)
 				}
 
 				if r.Header.Get("Connection") != "Upgrade" {
@@ -46,7 +85,7 @@ func New() func(http.Handler) http.Handler {
 
 func parse(debugStack []byte, rcv any) ([]byte, error) {
 	buf := bytes.NewBuffer(nil)
-	fmt.Fprintf(buf, "\n panic: %v\n\n", rcv)
+	fmt.Fprintf(buf, "[PANIC] %v\n\n", rcv)
 
 	// process debug stack info
 	stack := strings.Split(string(debugStack), "\n")
@@ -68,7 +107,7 @@ func parse(debugStack []byte, rcv any) ([]byte, error) {
 	}
 
 	for _, l := range lines {
-		fmt.Fprintf(buf, "%s", l)
+		fmt.Fprintf(buf, "%s\n", l)
 	}
 	return buf.Bytes(), nil
 }

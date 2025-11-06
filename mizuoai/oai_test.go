@@ -2,7 +2,6 @@ package mizuoai_test
 
 import (
 	"bytes"
-	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -169,8 +168,6 @@ func TestMizuOai_Rx_Read_BodyInt(t *testing.T) {
 			mizuoai.Get(srv, "/int", func(tx mizuoai.Tx[string], rx mizuoai.Rx[TestInputBodyInt]) {
 				receivedInput = rx.MizuRead()
 			})
-
-			fmt.Println(receivedInput)
 
 			rr := httptest.NewRecorder()
 			srv.Handler().ServeHTTP(rr, tc.request)

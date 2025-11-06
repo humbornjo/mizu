@@ -22,6 +22,6 @@ func Initialize() {
 		config.Greet = "Hello"
 	}
 
-	srv := mizudi.MustRetrieve[*mizuconnect.Scope]()
-	srv.Register(&Service{WhatToSay: config.Greet}, greetv1connect.NewGreetServiceHandler)
+	scp := mizudi.MustRetrieve[*mizuconnect.Scope]()
+	scp.Register(&Service{WhatToSay: config.Greet}, greetv1connect.NewGreetServiceHandler)
 }

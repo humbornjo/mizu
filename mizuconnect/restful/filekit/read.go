@@ -1,7 +1,6 @@
 package filekit
 
 import (
-	"bufio"
 	"bytes"
 	"crypto/sha256"
 	"encoding/base64"
@@ -191,12 +190,17 @@ type FormReader interface {
 	//
 	// purge internally calls NextPart and return nil on EOF.
 	File() (filePart *multipart.Part, purge func() error, err error)
+
+	// Close put back the *bufio.Reader to the pool. It must be
+	// called after the form reader is done.
+	Close()
 }
 
 type formReader[T HttpForm] struct {
 	fileField  string
 	bufferSize int64
 	stream     StreamForm[T]
+	close      func()
 	message    proto.Message
 	inner      *multipart.Reader
 	detect     func(protoreflect.MessageDescriptor, string) protoreflect.FieldDescriptor
@@ -286,12 +290,18 @@ func NewFormReader[T HttpForm](fileField string, stream StreamForm[T], msg proto
 	}
 
 	sr := &streamReader[T]{stream, prologue.GetForm().GetData()}
+	rxPool := readerPool.Get()
+	rxPool.Reset(sr)
 	rx := &formReader[T]{
 		fileField:  fileField,
 		bufferSize: 4 * 1024,
 		message:    msg,
 		stream:     stream,
-		inner:      multipart.NewReader(bufio.NewReaderSize(sr, 64*1024), boundary),
+		close: func() {
+			rxPool.Reset(nil)
+			readerPool.Put(rxPool)
+		},
+		inner: multipart.NewReader(rxPool, boundary),
 		detect: func(md protoreflect.MessageDescriptor, name string) protoreflect.FieldDescriptor {
 			return md.Fields().ByTextName(name)
 		},
@@ -299,6 +309,12 @@ func NewFormReader[T HttpForm](fileField string, stream StreamForm[T], msg proto
 
 	for _, opt := range opts {
 		opt(rx)
+	}
+
+	if _, ok := fieldPools[rx.bufferSize]; !ok {
+		fieldMutex.Lock()
+		defer fieldMutex.Unlock()
+		fieldPools[rx.bufferSize] = newpool(func() []byte { return make([]byte, rx.bufferSize) })
 	}
 
 	return rx, nil
@@ -360,6 +376,10 @@ func (r *formReader[T]) File() (*multipart.Part, func() error, error) {
 	return fpart, purge, err
 }
 
+func (r *formReader[T]) Close() {
+	r.close()
+}
+
 type streamReader[T HttpForm] struct {
 	stream StreamForm[T]
 	buffer []byte
@@ -401,7 +421,10 @@ func (r *formReader[T]) trySetMessage(msg proto.Message, rx *multipart.Part) {
 		return
 	}
 
-	buffer := make([]byte, r.bufferSize)
+	fieldMutex.RLock()
+	buffer := fieldPools[r.bufferSize].Get()
+	fieldMutex.RUnlock()
+	defer fieldPools[r.bufferSize].Put(buffer)
 	n, err := rx.Read(buffer)
 	if err != nil {
 		if !errors.Is(err, io.EOF) {

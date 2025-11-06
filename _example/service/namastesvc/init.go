@@ -13,6 +13,6 @@ type Config struct {
 }
 
 func Initialize() {
-	srv := mizudi.MustRetrieve[*mizuconnect.Scope]()
-	srv.Register(&Service{}, namastev1connect.NewNamasteServiceHandler)
+	scp := mizudi.MustRetrieve[*mizuconnect.Scope]()
+	scp.Register(&Service{}, namastev1connect.NewNamasteServiceHandler)
 }

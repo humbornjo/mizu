@@ -38,7 +38,9 @@ func NewBodyWriter(stream StreamResponse, prologue *httpbody.HttpBody,
 		inner:       stream,
 		contentType: prologue.GetContentType(),
 	}
-	tx := &Writer{inner: bufio.NewWriterSize(sw, 64*1024)}
+	txPool := writerPool.Get()
+	txPool.Reset(sw)
+	tx := &Writer{inner: txPool}
 
 	data := prologue.GetData()
 	if len(data) == 0 {
@@ -62,7 +64,10 @@ func (w *Writer) Write(p []byte) (int, error) {
 
 // Close calls bufio.Writer.Flush to ensure all data is written.
 func (w *Writer) Close() error {
-	return w.inner.Flush()
+	err := w.inner.Flush()
+	w.inner.Reset(nil)
+	writerPool.Put(w.inner)
+	return err
 }
 
 // WriteSize returns the total number of bytes written so far.
