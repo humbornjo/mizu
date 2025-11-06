@@ -1,4 +1,4 @@
-.PHONY: help install-hooks test test-race
+.PHONY: help install-hooks test rtest
 
 # 🎨 Colors and symbols
 BLUE := \033[34m
@@ -43,12 +43,26 @@ install-hooks: ## 🪝 Install Git hooks
 	@echo "$(YELLOW)💡 The commit-msg hook will validate conventional commit message format$(RESET)"
 	@echo "$(YELLOW)💡 The pre-commit hook will now run 'make format' and 'make lint' before each commit$(RESET)"
 
-test: ## 🧪 Run tests
-	@echo "$(BLUE)🧪 Running tests...$(RESET)"
+test: test-mizuoai test-mizudi test-mizuconnect test-mizuotel ## 🧪 Run mizu tests
+	@echo "$(BLUE)🧪 Running mizu tests...$(RESET)"
 	@go test ./...
 	@echo "$(GREEN)✅ Tests completed!$(RESET)"
 
-test-race: ## 🏃 Run tests with race detection
+rtest: test-race-mizuoai test-race-mizudi test-race-mizuconnect test-race-mizuotel ## 🏃 Run mizu tests with race detection
 	@echo "$(BLUE)🏃 Running tests with race detection...$(RESET)"
 	@go test -race ./...
 	@echo "$(GREEN)🏁 Race tests completed!$(RESET)"
+
+test-%: ## 🧪 Run mizuoai tests
+	@cd $*
+	@echo "$(BLUE)🧪 Running mizuoai tests...$(RESET)"
+	@go test ./...
+	@echo "$(GREEN)✅ Tests completed!$(RESET)"
+	@cd ..
+
+test-race-%: ## 🏃 Run mizuoai tests with race detection
+	@cd $*
+	@echo "$(BLUE)🏃 Running mizuoai tests with race detection...$(RESET)"
+	@go test -race ./...
+	@echo "$(GREEN)🏁 Race tests completed!$(RESET)"
+	@cd ..
