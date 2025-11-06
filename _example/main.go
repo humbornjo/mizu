@@ -31,7 +31,7 @@ func main() {
 
 	// Apply middleware to all handlers
 	srv.Use(otelhttp.NewMiddleware(config.ServiceName))
-	srv.Use(compressmw.New(compressmw.EncodingGzip{}))
+	srv.Use(compressmw.New(compressmw.WithContentTypes("text/*")))
 
 	// Initialize services ----------------------------------------
 	oaisvc.Initialize()

@@ -34,7 +34,7 @@ clean: ## Clean up generated files
 	@rm -rf ./${PREFIX}
 
 run: ## Run example
-	@go run -trimpath .
+	@go run .
 
 help: ## Show this help message
 	@echo "Usage: make [target]"
