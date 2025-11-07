@@ -271,10 +271,11 @@ func (s *Server) Use(middleware func(http.Handler) http.Handler) *Server {
 
 // Uses is a shortcut for chaining multiple middlewares.
 func (s *Server) Uses(middleware func(http.Handler) http.Handler, more ...func(http.Handler) http.Handler,
-) multiplexer {
-	m := s.inner.Use(middleware)
+) *Server {
+	ss := *s
+	ss.inner = ss.inner.Use(middleware)
 	for _, mw := range more {
-		m = m.Use(mw)
+		ss.inner = ss.inner.Use(mw)
 	}
-	return m
+	return &ss
 }

@@ -48,11 +48,6 @@ test: test-mizuoai test-mizudi test-mizuconnect test-mizuotel ## 🧪 Run mizu t
 	@go test ./...
 	@echo "$(GREEN)✅ Tests completed!$(RESET)"
 
-rtest: test-race-mizuoai test-race-mizudi test-race-mizuconnect test-race-mizuotel ## 🏃 Run mizu tests with race detection
-	@echo "$(BLUE)🏃 Running tests with race detection...$(RESET)"
-	@go test -race ./...
-	@echo "$(GREEN)🏁 Race tests completed!$(RESET)"
-
 test-%: ## 🧪 Run mizuoai tests
 	@cd $*
 	@echo "$(BLUE)🧪 Running mizuoai tests...$(RESET)"
@@ -60,7 +55,13 @@ test-%: ## 🧪 Run mizuoai tests
 	@echo "$(GREEN)✅ Tests completed!$(RESET)"
 	@cd ..
 
-test-race-%: ## 🏃 Run mizuoai tests with race detection
+rtest: rtest-mizuoai rtest-mizudi rtest-mizuconnect rtest-mizuotel ## 🏃 Run mizu tests with race detection
+	@echo "$(BLUE)🏃 Running tests with race detection...$(RESET)"
+	@go test -race ./...
+	@echo "$(GREEN)🏁 Race tests completed!$(RESET)"
+
+
+rtest-%: ## 🏃 Run mizuoai tests with race detection
 	@cd $*
 	@echo "$(BLUE)🏃 Running mizuoai tests with race detection...$(RESET)"
 	@go test -race ./...
