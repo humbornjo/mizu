@@ -3,18 +3,29 @@ package mizuoai
 import (
 	"net/http"
 
-	"github.com/getkin/kin-openapi/openapi3"
 	"github.com/humbornjo/mizu"
+	v3 "github.com/pb33f/libopenapi/datamodel/high/v3"
+	"github.com/pb33f/libopenapi/orderedmap"
 )
 
 func handle[I any, O any](
 	method string, srv *mizu.Server, pattern string, oaiHandler func(Tx[O], Rx[I]), opts ...OperationOption,
-) *openapi3.Operation {
+) *v3.Operation {
 	if srv == nil {
 		panic("nil oai instance")
 	}
 
-	config := &operationConfig{path: pattern, method: method}
+	config := &operationConfig{
+		path:   pattern,
+		method: method,
+		Operation: v3.Operation{
+			Deprecated: new(bool),
+			Callbacks:  orderedmap.New[string, *v3.Callback](),
+			Responses: &v3.Responses{
+				Codes: orderedmap.New[string, *v3.Response](),
+			},
+		},
+	}
 	for _, opt := range opts {
 		opt(config)
 	}
@@ -47,7 +58,7 @@ func handle[I any, O any](
 // reflection to parse request data into the input type `I` and
 // generate OpenAPI documentation.
 func Get[I any, O any](srv *mizu.Server, pattern string, oaiHandler func(Tx[O], Rx[I]), opts ...OperationOption,
-) *openapi3.Operation {
+) *v3.Operation {
 	return handle(http.MethodGet, srv, pattern, oaiHandler, opts...)
 }
 
@@ -55,7 +66,7 @@ func Get[I any, O any](srv *mizu.Server, pattern string, oaiHandler func(Tx[O], 
 // reflection to parse request data into the input type `I` and
 // generate OpenAPI documentation.
 func Post[I any, O any](srv *mizu.Server, pattern string, oaiHandler func(Tx[O], Rx[I]), opts ...OperationOption,
-) *openapi3.Operation {
+) *v3.Operation {
 	return handle(http.MethodPost, srv, pattern, oaiHandler, opts...)
 }
 
@@ -63,7 +74,7 @@ func Post[I any, O any](srv *mizu.Server, pattern string, oaiHandler func(Tx[O],
 // reflection to parse request data into the input type `I` and
 // generate OpenAPI documentation.
 func Put[I any, O any](srv *mizu.Server, pattern string, oaiHandler func(Tx[O], Rx[I]), opts ...OperationOption,
-) *openapi3.Operation {
+) *v3.Operation {
 	return handle(http.MethodPut, srv, pattern, oaiHandler, opts...)
 }
 
@@ -71,7 +82,7 @@ func Put[I any, O any](srv *mizu.Server, pattern string, oaiHandler func(Tx[O], 
 // uses reflection to parse request data into the input type `I`
 // and generate OpenAPI documentation.
 func Delete[I any, O any](srv *mizu.Server, pattern string, oaiHandler func(Tx[O], Rx[I]), opts ...OperationOption,
-) *openapi3.Operation {
+) *v3.Operation {
 	return handle(http.MethodDelete, srv, pattern, oaiHandler, opts...)
 }
 
@@ -79,7 +90,7 @@ func Delete[I any, O any](srv *mizu.Server, pattern string, oaiHandler func(Tx[O
 // reflection to parse request data into the input type `I` and
 // generate OpenAPI documentation.
 func Patch[I any, O any](srv *mizu.Server, pattern string, oaiHandler func(Tx[O], Rx[I]), opts ...OperationOption,
-) *openapi3.Operation {
+) *v3.Operation {
 	return handle(http.MethodPatch, srv, pattern, oaiHandler, opts...)
 }
 
@@ -87,7 +98,7 @@ func Patch[I any, O any](srv *mizu.Server, pattern string, oaiHandler func(Tx[O]
 // reflection to parse request data into the input type `I` and
 // generate OpenAPI documentation.
 func Head[I any, O any](srv *mizu.Server, pattern string, oaiHandler func(Tx[O], Rx[I]), opts ...OperationOption,
-) *openapi3.Operation {
+) *v3.Operation {
 	return handle(http.MethodHead, srv, pattern, oaiHandler, opts...)
 }
 
@@ -95,7 +106,7 @@ func Head[I any, O any](srv *mizu.Server, pattern string, oaiHandler func(Tx[O],
 // uses reflection to parse request data into the input type `I`
 // and generate OpenAPI documentation.
 func Options[I any, O any](srv *mizu.Server, pattern string, oaiHandler func(Tx[O], Rx[I]), opts ...OperationOption,
-) *openapi3.Operation {
+) *v3.Operation {
 	return handle(http.MethodOptions, srv, pattern, oaiHandler, opts...)
 }
 
@@ -103,6 +114,6 @@ func Options[I any, O any](srv *mizu.Server, pattern string, oaiHandler func(Tx[
 // reflection to parse request data into the input type `I` and
 // generate OpenAPI documentation.
 func Trace[I any, O any](srv *mizu.Server, pattern string, oaiHandler func(Tx[O], Rx[I]), opts ...OperationOption,
-) *openapi3.Operation {
+) *v3.Operation {
 	return handle(http.MethodTrace, srv, pattern, oaiHandler, opts...)
 }
