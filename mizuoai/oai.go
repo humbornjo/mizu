@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"net/http"
 	"path"
 	"reflect"
@@ -17,8 +16,10 @@ import (
 )
 
 var (
-	ErrOaiVersion = errors.New("support spec v3.0.x only")
+	ErrOaiVersion    = errors.New("support spec v3.0.x only")
+	ErrOaiEmptyTitle = errors.New("title is required")
 
+	// TODO: Make configurable? Or leave it to gateway?
 	BODY_SIZE_LIMIT = 64 * 1024
 
 	//go:embed tmpl_stoplight.html
@@ -36,9 +37,9 @@ const (
 // given path and options. openapi.json will be served at
 // /{path}/openapi.json. HTML will be served at /{path}/openapi
 // if enabled. {path} can be set using WithOaiServePath
-func Initialize(srv *mizu.Server, title string, opts ...OaiOption) {
+func Initialize(srv *mizu.Server, title string, opts ...OaiOption) error {
 	if title == "" {
-		panic("title is required")
+		return ErrOaiEmptyTitle
 	}
 
 	config := &oaiConfig{
@@ -80,6 +81,8 @@ func Initialize(srv *mizu.Server, title string, opts ...OaiOption) {
 			})
 		})
 	}))
+
+	return nil
 }
 
 // Path registers a new path in the OpenAPI spec. It can be used
@@ -198,11 +201,6 @@ func (d *decode[T]) retrieve(tag tag, r *http.Request, identifier string) string
 		return r.URL.Query().Get(identifier)
 	case _STRUCT_TAG_HEADER:
 		return r.Header.Get(identifier)
-	case _STRUCT_TAG_FORM:
-		return r.FormValue(identifier)
-	case _STRUCT_TAG_BODY:
-		bytes, _ := io.ReadAll(io.LimitReader(r.Body, int64(BODY_SIZE_LIMIT)))
-		return string(bytes)
 	default:
 		panic("unreachable")
 	}
@@ -225,15 +223,10 @@ func genDecode[T any]() decode[T] {
 		}
 		mizuTag := tag(t)
 
+		decoder.validate(mizuTag, &fieldTyp)
 		switch mizuTag {
 		case _STRUCT_TAG_BODY:
 			hasBody = true
-		case _STRUCT_TAG_FORM:
-			hasForm = true
-		}
-
-		decoder.validate(mizuTag, &fieldTyp)
-		if mizuTag == _STRUCT_TAG_BODY {
 			decoder.append(func(r *http.Request, val *T) error {
 				defer r.Body.Close() // nolint: errcheck
 				fieldBody := reflect.ValueOf(val).Elem().Field(i)
@@ -243,7 +236,10 @@ func genDecode[T any]() decode[T] {
 				}
 				return nil
 			})
-		} else {
+		case _STRUCT_TAG_FORM:
+			hasForm = true
+			fallthrough
+		default:
 			fieldVal := val.FieldByName(fieldTyp.Name)
 			notions := genNotions(fieldVal, mizuTag)
 			decoder.append(func(r *http.Request, val *T) error {

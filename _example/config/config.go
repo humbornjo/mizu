@@ -26,7 +26,9 @@ type Config struct {
 
 func init() {
 	// Dependency Injection ---------------------------------------
-	mizudi.Initialize("config")
+	if err := mizudi.Initialize("config"); err != nil {
+		panic(err)
+	}
 
 	if err := mizudi.RevealConfig(os.Stdout); err != nil {
 		if !errors.Is(err, mizudi.ErrNotInitialized) {
@@ -61,10 +63,11 @@ func init() {
 	mizudi.Register(func() (*mizuconnect.Scope, error) { return scope, nil })
 
 	// OPENAPI ----------------------------------------------------
-	mizuoai.Initialize(server, "mizu_example",
+	if err := mizuoai.Initialize(server, "mizu_example",
 		mizuoai.WithOaiDocumentation(),
-		mizuoai.WithOaiPreLoad(protogen.OPENAPI),
-	)
+		mizuoai.WithOaiPreLoad(protogen.OPENAPI)); err != nil {
+		panic(err)
+	}
 
 	// Opentelemetry ----------------------------------------------
 	if err := mizuotel.Initialize(); err != nil {
