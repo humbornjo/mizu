@@ -62,7 +62,7 @@ func init() {
 
 	// OPENAPI ----------------------------------------------------
 	mizuoai.Initialize(server, "mizu_example",
-		mizuoai.WithOaiDocumentation(nil),
+		mizuoai.WithOaiDocumentation(),
 		mizuoai.WithOaiPreLoad(protogen.OPENAPI),
 	)
 

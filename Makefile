@@ -1,4 +1,4 @@
-.PHONY: help install-hooks test rtest
+.PHONY: help install-hooks test race-test
 
 # 🎨 Colors and symbols
 BLUE := \033[34m
@@ -48,22 +48,27 @@ test: test-mizuoai test-mizudi test-mizuconnect test-mizuotel ## 🧪 Run mizu t
 	@go test ./...
 	@echo "$(GREEN)✅ Tests completed!$(RESET)"
 
-test-%: ## 🧪 Run mizuoai tests
-	@cd $*
-	@echo "$(BLUE)🧪 Running mizuoai tests...$(RESET)"
-	@go test ./...
+test-%:
+	@echo "$(BLUE)🧪 Running $* tests...$(RESET)"
+	@cd $* && go test ./...
 	@echo "$(GREEN)✅ Tests completed!$(RESET)"
-	@cd ..
 
-rtest: rtest-mizuoai rtest-mizudi rtest-mizuconnect rtest-mizuotel ## 🏃 Run mizu tests with race detection
-	@echo "$(BLUE)🏃 Running tests with race detection...$(RESET)"
+race-test: race-test-mizuoai race-test-mizudi race-test-mizuconnect race-test-mizuotel ## 🏃 Run mizu tests with race detection
+	@echo "$(BLUE)🏃 Running mizu tests with race detection...$(RESET)"
 	@go test -race ./...
 	@echo "$(GREEN)🏁 Race tests completed!$(RESET)"
 
-
-rtest-%: ## 🏃 Run mizuoai tests with race detection
-	@cd $*
-	@echo "$(BLUE)🏃 Running mizuoai tests with race detection...$(RESET)"
-	@go test -race ./...
+race-test-%:
+	@echo "$(BLUE)🏃 Running $* tests with race detection...$(RESET)"
+	@cd $* && go test -race ./...
 	@echo "$(GREEN)🏁 Race tests completed!$(RESET)"
-	@cd ..
+
+tidy: tidy-mizuoai tidy-mizudi tidy-mizuconnect tidy-mizuotel ## 🧹 Run mizu tests with race detection
+	@echo "$(BLUE)🧹 Running mizu go mod tidy...$(RESET)"
+	@go mod tidy
+	@echo "$(GREEN)✅ Go mod tidy completed!$(RESET)"
+
+tidy-%:
+	@echo "$(BLUE)🧹 Running $* go mod tidy...$(RESET)"
+	@cd $* && go mod tidy
+	@echo "$(GREEN)✅ Go mod tidy completed!$(RESET)"

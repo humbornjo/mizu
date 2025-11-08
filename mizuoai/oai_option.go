@@ -1,11 +1,18 @@
 package mizuoai
 
 import (
-	"github.com/getkin/kin-openapi/openapi3"
+	"fmt"
+
+	"github.com/pb33f/libopenapi"
+	"github.com/pb33f/libopenapi/datamodel/high/base"
+	v3 "github.com/pb33f/libopenapi/datamodel/high/v3"
+	"github.com/pb33f/libopenapi/orderedmap"
+	"go.yaml.in/yaml/v4"
 )
 
-// INFO: mizuoai only support OPENAPI v3.0.4 (version is not
-// customizable), but still compatible with OpenAPI v3.0.x
+// INFO: mizuoai only support OPENAPI v3.0.4 Spec (version is not
+// customizable), but still compatible with OpenAPI v3.1.0, which
+// means you can load v3.1.0 document.
 
 // --------------------------------------------------------------
 // OpenAPI Options
@@ -17,59 +24,66 @@ type OaiOption func(*oaiConfig)
 // OpenAPI specification. Version is fixed as 3.0.4.
 //
 // Each field corresponds to a field in the OpenAPI Object.
-// See: https://spec.openapis.org/oas/v3.0.4.html#openapi-object
+// - https://spec.openapis.org/oas/v3.0.4.html#openapi-object
 //
 // WARN: components are ignored for now.
 type oaiConfig struct {
-	enableDoc bool
-	pathDoc   string
-	preLoaded *openapi3.T
+	enableJson     bool
+	enableDocument bool
+	servePath      string
+	baseModel      *v3.Document
 
-	paths        openapi3.Paths
-	info         openapi3.Info
-	servers      []*openapi3.Server
-	security     []openapi3.SecurityRequirement
-	tags         []*openapi3.Tag
-	externalDocs *openapi3.ExternalDocs
-	extensions   map[string]any
+	info         *base.Info
+	tags         []*base.Tag
+	servers      []*v3.Server
+	externalDocs *base.ExternalDoc
+	security     []*base.SecurityRequirement
+	extensions   *orderedmap.Map[string, *yaml.Node]
+	paths        v3.Paths
 
 	handlers []*operationConfig
-}
-
-// WithOaiDocumentation enables to serve HTML OpenAPI
-// documentation. It will be served at the same path as
-// openapi.json
-func WithOaiDocumentation(doc *openapi3.T) OaiOption {
-	return func(c *oaiConfig) {
-		c.enableDoc = true
-		if doc != nil {
-			c.preLoaded = doc
-		}
-	}
 }
 
 // WithOaiServePath sets the path to serve openapi.json.
 func WithOaiServePath(path string) OaiOption {
 	return func(c *oaiConfig) {
-		c.pathDoc = path
+		c.servePath = path
+	}
+}
+
+// WithOaiRenderJson use JSON rendering.
+func WithOaiRenderJson() OaiOption {
+	return func(c *oaiConfig) {
+		c.enableJson = true
+	}
+}
+
+// WithOaiDocumentation enables documentation generation.
+func WithOaiDocumentation() OaiOption {
+	return func(c *oaiConfig) {
+		c.enableDocument = true
 	}
 }
 
 // WithOaiPreLoad loads an OpenAPI document from data.
 func WithOaiPreLoad(data []byte) OaiOption {
-	doc, err := openapi3.NewLoader().LoadFromData(data)
+	document, err := libopenapi.NewDocument(data)
 	if err != nil {
-		panic(err)
+		fmt.Printf("🚨 [ERROR] Failed to load OpenAPI document: %s\n", err)
+	}
+	v3Model, err := document.BuildV3Model()
+	if err != nil {
+		fmt.Printf("🚨 [ERROR] Failed to build v3 model: %s\n", err)
 	}
 	return func(c *oaiConfig) {
-		c.preLoaded = doc
+		c.baseModel = &v3Model.Model
 	}
 }
 
 // WithOaiDescription provides a verbose description of the API.
 // CommonMark syntax MAY be used for rich text representation.
 //
-// See: https://spec.openapis.org/oas/v3.0.4.html#info-object
+// - https://spec.openapis.org/oas/v3.0.4.html#info-object
 func WithOaiDescription(description string) OaiOption {
 	return func(c *oaiConfig) {
 		c.info.Description = description
@@ -79,7 +93,7 @@ func WithOaiDescription(description string) OaiOption {
 // WithOaiTermsOfService provides a URL to the Terms of Service
 // for the API. Must be in the form of URI.
 //
-// See: https://spec.openapis.org/oas/v3.0.4.html#info-object
+// - https://spec.openapis.org/oas/v3.0.4.html#info-object
 func WithOaiTermsOfService(url string) OaiOption {
 	return func(c *oaiConfig) {
 		c.info.TermsOfService = url
@@ -89,31 +103,41 @@ func WithOaiTermsOfService(url string) OaiOption {
 // WithOaiContact provides contact information for the exposed
 // API.
 //
-// See: https://spec.openapis.org/oas/v3.0.4.html#contact-object
+// - https://spec.openapis.org/oas/v3.0.4.html#contact-object
 func WithOaiContact(name string, url string, email string, extensions ...map[string]any) OaiOption {
 	var firstExtensions map[string]any
 	if len(extensions) > 0 {
 		firstExtensions = extensions[0]
 	}
+
 	return func(c *oaiConfig) {
-		c.info.Contact = &openapi3.Contact{Name: name, URL: url, Email: email, Extensions: firstExtensions}
+		c.info.Contact = &base.Contact{
+			Name:       name,
+			URL:        url,
+			Email:      email,
+			Extensions: convExtensions(firstExtensions),
+		}
 	}
 }
 
 // WithOaiLicense provides the license information for the
 // exposed API.
 //
-// See: https://spec.openapis.org/oas/v3.0.4.html#license-object
+// - https://spec.openapis.org/oas/v3.0.4.html#license-object
 func WithOaiLicense(name string, url string, extensions ...map[string]any) OaiOption {
+	if name == "" {
+		fmt.Println("🚨 [ERROR] License name cannot be empty")
+	}
 	var firstExtensions map[string]any
 	if len(extensions) > 0 {
 		firstExtensions = extensions[0]
 	}
 	return func(c *oaiConfig) {
-		if name == "" {
-			panic("name is required")
+		c.info.License = &base.License{
+			Name:       name,
+			URL:        url,
+			Extensions: convExtensions(firstExtensions),
 		}
-		c.info.License = &openapi3.License{URL: url, Name: name, Extensions: firstExtensions}
 	}
 }
 
@@ -122,19 +146,20 @@ func WithOaiLicense(name string, url string, extensions ...map[string]any) OaiOp
 // field is not provided, or is an empty array, the default value
 // would be a Server Object with a url value of /.
 //
-// See: https://spec.openapis.org/oas/v3.0.4.html#server-object
-func WithOaiServer(url string, desc string, variables map[string]*openapi3.ServerVariable, extensions ...map[string]any,
+// - https://spec.openapis.org/oas/v3.0.4.html#server-object
+func WithOaiServer(url string, desc string, variables map[string]*v3.ServerVariable, extensions ...map[string]any,
 ) OaiOption {
 	var firstExtensions map[string]any
 	if len(extensions) > 0 {
 		firstExtensions = extensions[0]
 	}
+
 	return func(c *oaiConfig) {
-		c.servers = append(c.servers, &openapi3.Server{
+		c.servers = append(c.servers, &v3.Server{
 			URL:         url,
 			Description: desc,
-			Variables:   variables,
-			Extensions:  firstExtensions,
+			Variables:   orderedmap.ToOrderedMap(variables),
+			Extensions:  convExtensions(firstExtensions),
 		})
 	}
 }
@@ -143,28 +168,37 @@ func WithOaiServer(url string, desc string, variables map[string]*openapi3.Serve
 // Each name MUST correspond to a security scheme which is
 // declared in the Security Schemes under the Components Object.
 //
-// See: https://spec.openapis.org/oas/v3.0.4.html#security-requirement-object
+// - https://spec.openapis.org/oas/v3.0.4.html#security-requirement-object
 func WithOaiSecurity(requirement map[string][]string) OaiOption {
-	securityRequirement := openapi3.SecurityRequirement(requirement)
+	var containEmpty bool
+	for _, v := range requirement {
+		if len(v) == 0 {
+			containEmpty = true
+			break
+		}
+	}
 	return func(c *oaiConfig) {
-		c.security = append(c.security, securityRequirement)
+		c.security = append(c.security, &base.SecurityRequirement{
+			ContainsEmptyRequirement: containEmpty,
+			Requirements:             orderedmap.ToOrderedMap(requirement),
+		})
 	}
 }
 
 // WithOaiTags adds tags to the operation.
 //
-// See: https://spec.openapis.org/oas/v3.0.4.html#tag-object
-func WithOaiTag(name string, desc string, externalDocs *openapi3.ExternalDocs, extensions ...map[string]any) OaiOption {
+// - https://spec.openapis.org/oas/v3.0.4.html#tag-object
+func WithOaiTag(name string, desc string, externalDocs *base.ExternalDoc, extensions ...map[string]any) OaiOption {
 	var firstExtensions map[string]any
 	if len(extensions) > 0 {
 		firstExtensions = extensions[0]
 	}
 	return func(c *oaiConfig) {
-		c.tags = append(c.tags, &openapi3.Tag{
+		c.tags = append(c.tags, &base.Tag{
 			Name:         name,
 			Description:  desc,
 			ExternalDocs: externalDocs,
-			Extensions:   firstExtensions,
+			Extensions:   convExtensions(firstExtensions),
 		})
 	}
 }
@@ -172,23 +206,27 @@ func WithOaiTag(name string, desc string, externalDocs *openapi3.ExternalDocs, e
 // WithOaiExternalDocs provides a reference to an external
 // resource for extended documentation.
 //
-// See: https://spec.openapis.org/oas/v3.0.4.html#external-documentation-object
+// - https://spec.openapis.org/oas/v3.0.4.html#external-documentation-object
 func WithOaiExternalDocs(url string, description string, extensions ...map[string]any) OaiOption {
 	var firstExtensions map[string]any
 	if len(extensions) > 0 {
 		firstExtensions = extensions[0]
 	}
 	return func(c *oaiConfig) {
-		c.externalDocs = &openapi3.ExternalDocs{URL: url, Description: description, Extensions: firstExtensions}
+		c.externalDocs = &base.ExternalDoc{
+			Description: description,
+			URL:         url,
+			Extensions:  convExtensions(firstExtensions),
+		}
 	}
 }
 
 // WithOaiExtensions adds extensions to the operation.
 //
-// See: https://spec.openapis.org/oas/v3.0.4.html#openapi-object
+// - https://spec.openapis.org/oas/v3.0.4.html#openapi-object
 func WithOaiExtensions(extensions map[string]any) OaiOption {
 	return func(c *oaiConfig) {
-		c.extensions = extensions
+		c.extensions = convExtensions(extensions)
 	}
 }
 
@@ -200,14 +238,14 @@ func WithOaiExtensions(extensions map[string]any) OaiOption {
 type PathOption func(*pathConfig)
 
 type pathConfig struct {
-	openapi3.PathItem
+	v3.PathItem
 }
 
 // WithPathSummary adds a summary for the path. An optional. An
 // optional string summary, intended to apply to all operations
 // in this path.
 //
-// See: https://spec.openapis.org/oas/v3.0.4.html#path-item-object
+// - https://spec.openapis.org/oas/v3.0.4.html#path-item-object
 func WithPathSummary(summary string) PathOption {
 	return func(c *pathConfig) {
 		c.Summary = summary
@@ -218,7 +256,7 @@ func WithPathSummary(summary string) PathOption {
 // optional string summary, intended to apply to all operations
 // in this path.
 //
-// See: https://spec.openapis.org/oas/v3.0.4.html#path-item-object
+// - https://spec.openapis.org/oas/v3.0.4.html#path-item-object
 func WithPathDescription(desc string) PathOption {
 	return func(c *pathConfig) {
 		c.Description = desc
@@ -230,19 +268,19 @@ func WithPathDescription(desc string) PathOption {
 // the servers field is not provided, or is an empty array, the
 // default value would be a Server Object with a url value of /.
 //
-// See: https://spec.openapis.org/oas/v3.0.4.html#server-object
-func WithPathServer(url string, desc string, variables map[string]*openapi3.ServerVariable, extensions ...map[string]any,
+// - https://spec.openapis.org/oas/v3.0.4.html#server-object
+func WithPathServer(url string, desc string, variables map[string]*v3.ServerVariable, extensions ...map[string]any,
 ) PathOption {
 	var firstExtensions map[string]any
 	if len(extensions) > 0 {
 		firstExtensions = extensions[0]
 	}
 	return func(c *pathConfig) {
-		c.Servers = append(c.Servers, &openapi3.Server{
+		c.Servers = append(c.Servers, &v3.Server{
 			URL:         url,
 			Description: desc,
-			Variables:   variables,
-			Extensions:  firstExtensions,
+			Variables:   orderedmap.ToOrderedMap(variables),
+			Extensions:  convExtensions(firstExtensions),
 		})
 	}
 }
@@ -256,8 +294,8 @@ func WithPathServer(url string, desc string, variables map[string]*openapi3.Serv
 // use the Reference Object to link to parameters that are
 // defined in the OpenAPI Object’s components.parameters.
 //
-// See: https://spec.openapis.org/oas/v3.0.4.html#path-item-object
-func WithPathParameters(parameters ...*openapi3.ParameterRef) PathOption {
+// - https://spec.openapis.org/oas/v3.0.4.html#path-item-object
+func WithPathParameters(parameters ...*v3.Parameter) PathOption {
 	return func(c *pathConfig) {
 		c.Parameters = parameters
 	}
@@ -265,14 +303,14 @@ func WithPathParameters(parameters ...*openapi3.ParameterRef) PathOption {
 
 // WithPathExtensions adds extensions to the operation.
 //
-// See: https://spec.openapis.org/oas/v3.0.4.html#path-item-object
+// - https://spec.openapis.org/oas/v3.0.4.html#path-item-object
 func WithPathExtensions(extensions ...map[string]any) PathOption {
 	var firstExtensions map[string]any
 	if len(extensions) > 0 {
 		firstExtensions = extensions[0]
 	}
 	return func(c *pathConfig) {
-		c.Extensions = firstExtensions
+		c.Extensions = convExtensions(firstExtensions)
 	}
 }
 
@@ -282,10 +320,10 @@ func WithPathExtensions(extensions ...map[string]any) PathOption {
 type OperationOption func(*operationConfig)
 
 type operationConfig struct {
-	openapi3.Operation
+	v3.Operation
 	responseCode    *int
-	responseLinks   openapi3.Links
-	responseHeaders openapi3.Headers
+	responseLinks   map[string]*v3.Link
+	responseHeaders map[string]*v3.Header
 
 	path   string
 	method string
@@ -294,7 +332,7 @@ type operationConfig struct {
 // WithOperationTags adds tags to the operation, for logical
 // grouping of operations.
 //
-// See: https://spec.openapis.org/oas/v3.0.4.html#operation-object
+// - https://spec.openapis.org/oas/v3.0.4.html#operation-object
 func WithOperationTags(tags ...string) OperationOption {
 	return func(c *operationConfig) {
 		c.Tags = tags
@@ -304,7 +342,7 @@ func WithOperationTags(tags ...string) OperationOption {
 // WithOperationSummary provides a summary of what the operation
 // does.
 //
-// See: https://spec.openapis.org/oas/v3.0.4.html#operation-object
+// - https://spec.openapis.org/oas/v3.0.4.html#operation-object
 func WithOperationSummary(summary string) OperationOption {
 	return func(c *operationConfig) {
 		c.Summary = summary
@@ -315,7 +353,7 @@ func WithOperationSummary(summary string) OperationOption {
 // operation behavior. CommonMark syntax MAY be used for rich
 // text representation.
 //
-// See: https://spec.openapis.org/oas/v3.0.4.html#operation-object
+// - https://spec.openapis.org/oas/v3.0.4.html#operation-object
 func WithOperationDescription(description string) OperationOption {
 	return func(c *operationConfig) {
 		c.Description = description
@@ -325,14 +363,18 @@ func WithOperationDescription(description string) OperationOption {
 // WithOperationExternalDocs provides a reference to an external
 // resource for extended documentation.
 //
-// See: https://spec.openapis.org/oas/v3.0.4.html#external-documentation-object
+// - https://spec.openapis.org/oas/v3.0.4.html#external-documentation-object
 func WithOperationExternalDocs(url string, description string, extensions ...map[string]any) OperationOption {
 	var firstExtensions map[string]any
 	if len(extensions) > 0 {
 		firstExtensions = extensions[0]
 	}
 	return func(c *operationConfig) {
-		c.ExternalDocs = &openapi3.ExternalDocs{URL: url, Description: description, Extensions: firstExtensions}
+		c.ExternalDocs = &base.ExternalDoc{
+			Description: description,
+			URL:         url,
+			Extensions:  convExtensions(firstExtensions),
+		}
 	}
 }
 
@@ -341,10 +383,10 @@ func WithOperationExternalDocs(url string, description string, extensions ...map
 // operation. The id MUST be unique among all operations
 // described in the API. The operationId value is case-sensitive.
 //
-// See: https://spec.openapis.org/oas/v3.0.4.html#operation-object
+// - https://spec.openapis.org/oas/v3.0.4.html#operation-object
 func WithOperationOperationId(operationId string) OperationOption {
 	return func(c *operationConfig) {
-		c.OperationID = operationId
+		c.OperationId = operationId
 	}
 }
 
@@ -357,8 +399,8 @@ func WithOperationOperationId(operationId string) OperationOption {
 // use the Reference Object to link to parameters that are
 // defined in the OpenAPI Object’s
 //
-// See: https://spec.openapis.org/oas/v3.0.4.html#path-item-object
-func WithOperationParameters(parameters ...*openapi3.ParameterRef) OperationOption {
+// - https://spec.openapis.org/oas/v3.0.4.html#path-item-object
+func WithOperationParameters(parameters ...*v3.Parameter) OperationOption {
 	return func(c *operationConfig) {
 		c.Parameters = parameters
 	}
@@ -371,19 +413,19 @@ func WithOperationParameters(parameters ...*openapi3.ParameterRef) OperationOpti
 // that may be initiated by the API provider and the expected
 // responses.
 //
-// See: https://spec.openapis.org/oas/v3.0.4.html#operation-object
-func WithOperationCallback(key string, value *openapi3.CallbackRef) OperationOption {
+// - https://spec.openapis.org/oas/v3.0.4.html#operation-object
+func WithOperationCallback(key string, value *v3.Callback) OperationOption {
 	return func(c *operationConfig) {
-		c.Callbacks[key] = value
+		c.Callbacks.Set(key, value)
 	}
 }
 
 // WithOperationDeprecated marks the operation as deprecated.
 //
-// See: https://spec.openapis.org/oas/v3.0.4.html#operation-object
+// - https://spec.openapis.org/oas/v3.0.4.html#operation-object
 func WithOperationDeprecated() OperationOption {
 	return func(c *operationConfig) {
-		c.Deprecated = true
+		*c.Deprecated = true
 	}
 }
 
@@ -392,15 +434,20 @@ func WithOperationDeprecated() OperationOption {
 // which is declared in the Security Schemes under the
 // Components Object.
 //
-// See: https://spec.openapis.org/oas/v3.0.4.html#security-requirement-object
+// - https://spec.openapis.org/oas/v3.0.4.html#security-requirement-object
 func WithOperationSecurity(requirement map[string][]string) OperationOption {
-	securityRequirement := openapi3.SecurityRequirement(requirement)
-	return func(c *operationConfig) {
-		if c.Security == nil {
-			c.Security = &openapi3.SecurityRequirements{securityRequirement}
-			return
+	var containEmpty bool
+	for _, v := range requirement {
+		if len(v) == 0 {
+			containEmpty = true
+			break
 		}
-		*c.Security = append(*c.Security, securityRequirement)
+	}
+	return func(c *operationConfig) {
+		c.Security = append(c.Security, &base.SecurityRequirement{
+			ContainsEmptyRequirement: containEmpty,
+			Requirements:             orderedmap.ToOrderedMap(requirement),
+		})
 	}
 }
 
@@ -409,8 +456,8 @@ func WithOperationSecurity(requirement map[string][]string) OperationOption {
 // servers array is specified at the Path Item Object or OpenAPI
 // Object level, it will be overridden by this value.
 //
-// See: https://spec.openapis.org/oas/v3.0.4.html#server-object
-func WithOperationServer(url string, desc string, variables map[string]*openapi3.ServerVariable,
+// - https://spec.openapis.org/oas/v3.0.4.html#server-object
+func WithOperationServer(url string, desc string, variables map[string]*v3.ServerVariable,
 	extensions ...map[string]any,
 ) OperationOption {
 	var firstExtensions map[string]any
@@ -418,27 +465,18 @@ func WithOperationServer(url string, desc string, variables map[string]*openapi3
 		firstExtensions = extensions[0]
 	}
 	return func(c *operationConfig) {
-		if c.Servers == nil {
-			c.Servers = &openapi3.Servers{{
-				URL:         url,
-				Description: desc,
-				Variables:   variables,
-				Extensions:  firstExtensions,
-			}}
-			return
-		}
-		*c.Servers = append(*c.Servers, &openapi3.Server{
+		c.Servers = append(c.Servers, &v3.Server{
 			URL:         url,
 			Description: desc,
-			Variables:   variables,
-			Extensions:  firstExtensions,
+			Variables:   orderedmap.ToOrderedMap(variables),
+			Extensions:  convExtensions(firstExtensions),
 		})
 	}
 }
 
 // WithResponseOverride overrides the default response for the
 // operation. Links and headers can be added if needed.
-func WithResponseOverride(code int, links openapi3.Links, headers openapi3.Headers) OperationOption {
+func WithResponseOverride(code int, links map[string]*v3.Link, headers map[string]*v3.Header) OperationOption {
 	return func(c *operationConfig) {
 		c.responseCode = &code
 		c.responseLinks = links
