@@ -73,7 +73,7 @@ func WithSubstitutePrefix(from string, to string) Option {
 // Environment variables with prefix "MIZU_" are automatically
 // loaded and mapped to configuration paths (e.g., MIZU_DB_HOST
 // becomes db.host).
-func Initialize(relativePath string, loadPaths ...string) {
+func Initialize(relativePath string, loadPaths ...string) error {
 	if _KOANF != nil {
 		panic("mizudi already initialized")
 	}
@@ -93,29 +93,37 @@ func Initialize(relativePath string, loadPaths ...string) {
 	if len(loadPaths) == 0 {
 		wd, err := os.Getwd()
 		if err != nil {
-			panic(err)
+			return err
 		}
 		loadPaths = []string{path.Join(wd, "local.yaml")}
 	}
 	for _, path := range loadPaths {
 		_, err := os.Stat(path)
 		if os.IsNotExist(err) {
+			fmt.Printf("⚠️ [WARN] Config file not found: %s\n", path)
 			continue
 		}
 		if err := k.Load(file.Provider(path), parser); err != nil {
-			panic(err)
+			return err
 		}
 	}
+
 	if err := k.Load(env.Provider("MIZU_", ".", func(s string) string {
 		return strings.ReplaceAll(strings.ToLower(strings.TrimPrefix(s, "MIZU_")), "_", ".")
 	}), nil); err != nil {
-		panic(err)
+		return err
 	}
+	return nil
 }
 
 // Append loads a YAML file to the loaded configuration files.
 func Append(path string) error {
-	return _KOANF.Load(file.Provider(path), yaml.Parser())
+	if err := _KOANF.Load(file.Provider(path), yaml.Parser()); err != nil {
+		return err
+	}
+	return _KOANF.Load(env.Provider("MIZU_", ".", func(s string) string {
+		return strings.ReplaceAll(strings.ToLower(strings.TrimPrefix(s, "MIZU_")), "_", ".")
+	}), nil)
 }
 
 // Reveal prints the loaded configuration to the provided
