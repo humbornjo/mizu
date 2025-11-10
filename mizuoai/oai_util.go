@@ -2,7 +2,13 @@ package mizuoai
 
 import (
 	"encoding/json"
+	"encoding/json/jsontext"
+	jsonv2 "encoding/json/v2"
+	"errors"
 	"fmt"
+	"io"
+	"mime"
+	"mime/multipart"
 	"net/http"
 	"reflect"
 	"strconv"
@@ -16,6 +22,18 @@ import (
 )
 
 // Public Utils -------------------------------------------------
+
+func consFormReader(rx io.Reader, contentType string) (*multipart.Reader, error) {
+	_, params, err := mime.ParseMediaType(contentType)
+	if err != nil {
+		return nil, err
+	}
+	boundary := params["boundary"]
+	if boundary == "" {
+		return nil, errors.New("form boundary not found")
+	}
+	return multipart.NewReader(rx, boundary), nil
+}
 
 func convExtensions(extensions map[string]any) *orderedmap.Map[string, *yaml.Node] {
 	ymap := make(map[string]*yaml.Node)
@@ -72,7 +90,30 @@ func createSchema(typ reflect.Type) *base.SchemaProxy {
 	return base.CreateSchemaProxy(schema)
 }
 
-// setParamValue sets a value to a reflect.Value based on its kind
+// setStreamValue sets a value to a reflect.Struct using jsonv2
+// decoder
+func setStreamValue(value reflect.Value, stream io.ReadCloser, kind reflect.Kind) error {
+	defer stream.Close() // nolint: errcheck
+	switch kind {
+	case reflect.Struct:
+		decoder := jsontext.NewDecoder(stream)
+		object := reflect.New(value.Type()).Interface()
+		if err := jsonv2.UnmarshalDecode(decoder, &object); err != nil {
+			return err
+		}
+		value.Set(reflect.ValueOf(object).Elem())
+		return nil
+	default:
+		raw, err := io.ReadAll(stream)
+		if err != nil && errors.Is(err, io.EOF) {
+			return err
+		}
+		return setParamValue(value, string(raw), kind)
+	}
+}
+
+// setParamValue sets a value to a reflect.Value based on its
+// kind
 func setParamValue(value reflect.Value, paramValue string, kind reflect.Kind) error {
 	switch kind {
 	case reflect.String:
@@ -157,11 +198,13 @@ func (c *oaiConfig) render(json bool) ([]byte, error) {
 
 	if !strings.HasPrefix(model.Version, "3.1.0") &&
 		!strings.HasPrefix(model.Version, "3.0") {
-		return nil, ErrOaiVersion
+		return nil, errors.New("unsupported OpenAPI version: " + model.Version + " (should be 3.1.0 or 3.0.*)")
 	}
 
 	if model.Paths == nil {
-		model.Paths = new(v3.Paths)
+		model.Paths = &v3.Paths{
+			PathItems: orderedmap.New[string, *v3.PathItem](),
+		}
 	}
 
 	for _, handler := range c.handlers {

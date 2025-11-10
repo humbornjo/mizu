@@ -79,12 +79,9 @@ func NewServer(srvName string, opts ...Option) *Server {
 	}
 
 	server := &Server{
-		mu:  &sync.Mutex{},
-		mmu: &sync.Mutex{},
-		ctx: context.WithValue(
-			context.Background(),
-			_CTXKEY, new([]string),
-		),
+		mu:             &sync.Mutex{},
+		mmu:            &sync.Mutex{},
+		ctx:            context.Background(),
 		name:           srvName,
 		initialized:    &atomic.Bool{},
 		isShuttingDown: &atomic.Bool{},
@@ -92,7 +89,7 @@ func NewServer(srvName string, opts ...Option) *Server {
 	server.initialized.Store(false)
 	server.isShuttingDown.Store(false)
 
-	server.inner = &mux{inner: http.NewServeMux(), server: server}
+	server.inner = &mux{inner: http.NewServeMux(), mu: server.mmu}
 	return (*config)(server)
 }
 
@@ -180,7 +177,7 @@ func WithCustomHttpServer(server *http.Server, cleanupFns ...func()) Option {
 		new := func(s *Server) *Server {
 			s = old(s)
 			s.config.CustomServer = server
-			s.config.CustomCleanupFns = cleanupFns
+			s.config.CustomCleanupFuncs = cleanupFns
 			return s
 		}
 		*m = new
@@ -246,6 +243,7 @@ func WithRevealRoutes() Option {
 			s = old(s)
 
 			routes := new([]string)
+			s.inner.(*mux).paths = routes
 			Hook(s, _CTXKEY, routes, WithHookStartup(func(s *Server) {
 				fmt.Println("📦 [INFO] Available routes:")
 

@@ -1,6 +1,6 @@
 module github.com/humbornjo/mizu/mizumw
 
-go 1.24.0
+go 1.25
 
 replace github.com/humbornjo/mizu => ../
 

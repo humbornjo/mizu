@@ -2,9 +2,12 @@ package mizu
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net"
 	"net/http"
+	"os"
+	"os/signal"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -21,7 +24,7 @@ type bucket struct {
 
 type serverConfig struct {
 	CustomServer          *http.Server
-	CustomCleanupFns      []func()
+	CustomCleanupFuncs    []func()
 	ServerProtocols       *http.Protocols
 	ShutdownPeriod        time.Duration
 	ShutdownHardPeriod    time.Duration
@@ -37,7 +40,7 @@ type Server struct {
 	inner multiplexer
 
 	mu  *sync.Mutex // mutex for server initialization
-	mmu *sync.Mutex // mutex for the mux that server binds to
+	mmu *sync.Mutex // mutex passed down to mux for concurrent registration
 
 	initialized    *atomic.Bool
 	isShuttingDown *atomic.Bool
@@ -137,10 +140,13 @@ func (s *Server) Handler() http.Handler {
 // shutdown when the context is cancelled, draining connections
 // before stopping.
 func (s *Server) ServeContext(ctx context.Context, addr string) error {
+	ctx, stop := signal.NotifyContext(ctx, os.Interrupt)
+	defer stop()
+
 	var server *http.Server
 	var shutdownPeriod = s.config.ShutdownPeriod
 	var shutdownHardPeriod = s.config.ShutdownHardPeriod
-	var tickerReadinessDrainDelay = s.config.ReadinessDrainDelay
+	var ReadinessDrainDelayPeriod = s.config.ReadinessDrainDelay
 
 	ingCtx, ingCancel := context.WithCancel(context.Background())
 	defer ingCancel()
@@ -153,9 +159,7 @@ func (s *Server) ServeContext(ctx context.Context, addr string) error {
 			ReadTimeout:       60 * time.Second,
 			WriteTimeout:      60 * time.Second,
 			IdleTimeout:       300 * time.Second,
-			BaseContext: func(_ net.Listener) context.Context {
-				return ingCtx
-			},
+			BaseContext:       func(_ net.Listener) context.Context { return ingCtx },
 		}
 	}
 	if s.config.ServerProtocols != nil {
@@ -181,26 +185,30 @@ func (s *Server) ServeContext(ctx context.Context, addr string) error {
 	case err := <-errChan:
 		return err
 	case <-ctx.Done():
+		stop()
+
 		s.isShuttingDown.Store(true)
 		fmt.Println("✅ [INFO] Server shutting down...")
 
-		// Give time for readiness check to propagate
-		fmt.Println("🕸️ [INFO] Draining readiness check before shutdown...")
-		<-time.After(tickerReadinessDrainDelay)
-		fmt.Println("✅ [INFO] Readiness drained. Waiting for ongoing requests to finish...")
+		if ReadinessDrainDelayPeriod > 0 {
+			// Give time for readiness check to propagate
+			fmt.Println("🕸️ [INFO] Draining readiness check before shutdown...")
+			<-time.After(ReadinessDrainDelayPeriod)
+			fmt.Println("✅ [INFO] Readiness drained. Waiting for ongoing requests to finish...")
+		}
 
 		// Shutdown Server, waiting for ongoing requests to finish
 		downCtx, downCancel := context.WithTimeout(context.Background(), shutdownPeriod)
 		defer downCancel()
 		err := server.Shutdown(downCtx)
 
+		// Custom cleanup functions from WithCustomHttpServer, mutually exclusive with ingCancel
+		for _, cleanupHookFunc := range s.config.CustomCleanupFuncs {
+			cleanupHookFunc()
+		}
+
 		// Cancel in-flight requests, disable it or customize it by setting http.Server via WithCustomHttpServer
 		ingCancel()
-
-		// Custom cleanup functions from WithCustomHttpServer, this block is mutually exclusive with ingCancel
-		for _, fn := range s.config.CustomCleanupFns {
-			fn()
-		}
 
 		if err != nil {
 			fmt.Println("⚠️ [WARN] Graceful shutdown failed:", err)
@@ -278,4 +286,23 @@ func (s *Server) Uses(middleware func(http.Handler) http.Handler, more ...func(h
 		ss.inner = ss.inner.Use(mw)
 	}
 	return &ss
+}
+
+// WriteJson writes a JSON response to the client.
+func WriteJson(w http.ResponseWriter, val any, code ...int) error {
+	w.Header().Set("Content-Type", "application/json")
+	if len(code) > 0 {
+		w.WriteHeader(code[0])
+	}
+	return json.NewEncoder(w).Encode(val)
+}
+
+// WriteString writes a string response to the client
+func WriteString(w http.ResponseWriter, val string, code ...int) error {
+	w.Header().Set("Content-Type", "text/plain")
+	if len(code) > 0 {
+		w.WriteHeader(code[0])
+	}
+	_, err := w.Write([]byte(val))
+	return err
 }

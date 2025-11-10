@@ -1,14 +1,6 @@
-# 🔍 mizuotel - OpenTelemetry Integration
+# mizuotel - OpenTelemetry Integration
 
-Simplified OpenTelemetry setup for distributed tracing and metrics in Mizu applications.
-
-## Features
-
-- **Easy Setup** - Simple initialization with sensible defaults
-- **Configurable** - Customizable service metadata and attributes
-- **Comprehensive** - Both tracing and metrics support
-- **Integration Ready** - Seamless Mizu framework integration
-- **Context Propagation** - Automatic trace context propagation
+Simplified OpenTelemetry setup for distributed tracing and metrics.
 
 ## Installation
 

@@ -2,7 +2,7 @@
 
 # 🌊 Mizu - HTTP Framework for Go
 
-[![Go Version](https://img.shields.io/badge/go-1.24+-blue.svg)](https://golang.org)
+[![Go Version](https://img.shields.io/badge/go-1.25+-blue.svg)](https://golang.org)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![CI Status](https://github.com/humbornjo/mizu/workflows/CI/badge.svg)](https://github.com/humbornjo/mizu/actions)
 ![Alpha](https://img.shields.io/badge/status-alpha-orange.svg)
@@ -18,8 +18,8 @@ Mizu provides middleware composition, lifecycle hooks, and observability feature
 - **Native Performance** - Built on Go's `net/http`
 - **Middleware** - Composable middleware system with scoping
 - **Observability** - Pluggable metrics and logging through independent modules
-- **Graceful Shutdown** - Configurable timeouts and drain periods
-- **Modular Design** - Each feature lives in its own independent module
+- **Graceful Shutdown** - Configurable timeouts and drain periods for cloud native deployments
+- **Modular Design** - Each feature lives in its own independent module for minimal dependencies and small compiling output
 
 ## Installation
 
@@ -105,7 +105,7 @@ curl http://localhost:8080/healthz         # OK (built-in health check)
 
 ## Roadmap to Beta
 
-- [ ] Complete documentation for each sub-module
+- [x] Complete documentation for each sub-module (but `mizuoai`)
 - [ ] Fix Connect-RPC download issue in `mizuconnect/restful/filekit`
 - [x] Add commonly used HTTP middleware implementations
 - [ ] Compare mizuoai with popular OpenAPI Go frameworks like Fuego on performance

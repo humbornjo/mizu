@@ -2,8 +2,10 @@ package oaisvc
 
 import (
 	"log/slog"
+	"net/http"
 	"time"
 
+	"github.com/humbornjo/mizu"
 	"github.com/humbornjo/mizu/mizuoai"
 )
 
@@ -16,8 +18,14 @@ type InputOaiScrape struct {
 type OutputOaiScrape = string
 
 func HandleOaiScrape(tx mizuoai.Tx[OutputOaiScrape], rx mizuoai.Rx[InputOaiScrape]) {
-	input := rx.MizuRead()
-	_, _ = tx.Write([]byte("Hello, " + input.Header.Key))
+	input, err := rx.MizuRead()
+	if err != nil {
+		slog.Error("failed to read input", "error", err)
+		_ = mizu.WriteString(tx, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	_ = mizu.WriteString(tx, "Hello, "+input.Header.Key, http.StatusOK)
 }
 
 type InputOaiOrder struct {
@@ -42,7 +50,12 @@ type OutputOaiOrder struct {
 }
 
 func HandleOaiOrder(tx mizuoai.Tx[OutputOaiOrder], rx mizuoai.Rx[InputOaiOrder]) {
-	input := rx.MizuRead()
+	input, err := rx.MizuRead()
+	if err != nil {
+		slog.Error("failed to read input", "error", err)
+		_ = mizu.WriteString(tx, err.Error(), http.StatusBadRequest)
+		return
+	}
 
 	userId := input.Path.UserId
 	region := input.Header.Region

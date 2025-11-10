@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
+	"mime/multipart"
 	"net/http"
 	"path"
 	"reflect"
@@ -16,12 +18,6 @@ import (
 )
 
 var (
-	ErrOaiVersion    = errors.New("support spec v3.0.x only")
-	ErrOaiEmptyTitle = errors.New("title is required")
-
-	// TODO: Make configurable? Or leave it to gateway?
-	BODY_SIZE_LIMIT = 64 * 1024
-
 	//go:embed tmpl_stoplight.html
 	_STOPLIGHT_UI_TEMPLATE_CONTENT string
 	_STOPLIGHT_UI_TEMPLATE         = template.Must(template.New("oai_ui").Parse(_STOPLIGHT_UI_TEMPLATE_CONTENT))
@@ -39,7 +35,7 @@ const (
 // if enabled. {path} can be set using WithOaiServePath
 func Initialize(srv *mizu.Server, title string, opts ...OaiOption) error {
 	if title == "" {
-		return ErrOaiEmptyTitle
+		return errors.New("openapi spec title is required")
 	}
 
 	config := &oaiConfig{
@@ -105,12 +101,12 @@ func Path(server *mizu.Server, pattern string, opts ...PathOption) {
 // context.
 type Rx[T any] struct {
 	*http.Request
-	read func(*http.Request) *T
+	read func(*http.Request) (*T, error)
 }
 
 // Read returns the parsed input from the request. The parsing
 // logic is generated based on the struct tags of the input type.
-func (rx Rx[T]) MizuRead() *T {
+func (rx Rx[T]) MizuRead() (*T, error) {
 	return rx.read(rx.Request)
 }
 
@@ -176,8 +172,14 @@ func (d *decode[T]) append(fn decode[T]) {
 
 	old := *d
 	*d = func(r *http.Request, val *T) error {
-		err := old(r, val)
-		return fmt.Errorf("%w; %w", fn(r, val), err)
+		errOld := old(r, val)
+		if err := fn(r, val); err != nil {
+			if errOld == nil {
+				return err
+			}
+			return fmt.Errorf("%w; %w", err, errOld)
+		}
+		return errOld
 	}
 }
 
@@ -228,17 +230,40 @@ func genDecode[T any]() decode[T] {
 		case _STRUCT_TAG_BODY:
 			hasBody = true
 			decoder.append(func(r *http.Request, val *T) error {
-				defer r.Body.Close() // nolint: errcheck
 				fieldBody := reflect.ValueOf(val).Elem().Field(i)
-				v := decoder.retrieve(mizuTag, r, "")
-				if err := setParamValue(fieldBody, v, fieldBody.Kind()); err != nil {
+				if err := setStreamValue(fieldBody, r.Body, fieldBody.Kind()); err != nil {
 					return fmt.Errorf("failed to decode body: %w", err)
 				}
 				return nil
 			})
 		case _STRUCT_TAG_FORM:
 			hasForm = true
-			fallthrough
+			fieldVal := val.FieldByName(fieldTyp.Name)
+			notions := genNotions(fieldVal, mizuTag)
+			decoder.append(func(r *http.Request, val *T) error {
+				st := reflect.ValueOf(val).Elem().Field(i)
+				rx, err := consFormReader(r.Body, r.Header.Get("Content-Type"))
+				if err != nil {
+					return fmt.Errorf("failed to read form: %w", err)
+				}
+				var part *multipart.Part
+				for part, err = rx.NextPart(); err == nil; part, err = rx.NextPart() {
+					for _, notion := range notions {
+						if part.FormName() != notion.identifier {
+							continue
+						}
+						f := st.Field(notion.fieldNumber)
+						if err := setStreamValue(f, part, f.Kind()); err != nil {
+							return fmt.Errorf("failed to decode form: %w", err)
+						}
+						break
+					}
+				}
+				if errors.Is(err, io.EOF) {
+					err = nil
+				}
+				return err
+			})
 		default:
 			fieldVal := val.FieldByName(fieldTyp.Name)
 			notions := genNotions(fieldVal, mizuTag)
@@ -260,11 +285,9 @@ func genDecode[T any]() decode[T] {
 			})
 		}
 	}
-
 	if hasForm && hasBody {
 		panic("cannot use both form and body")
 	}
-
 	if *decoder == nil {
 		return func(r *http.Request, val *T) error { return nil }
 	}
@@ -307,7 +330,10 @@ func (h handler[I, O]) genHandler() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		// Lazily parse the request data.
 		tx := Tx[O]{w, func(val *O) error { return encode(w, val) }}
-		rx := Rx[I]{r, func(r *http.Request) *I { input := new(I); decode(r, input); return input }}
+		rx := Rx[I]{r, func(r *http.Request) (*I, error) {
+			input := new(I)
+			return input, decode(r, input)
+		}}
 		h(tx, rx)
 	}
 }

@@ -5,6 +5,7 @@ import (
 	"os"
 	"path"
 	"strings"
+	"sync"
 )
 
 type multiplexer interface {
@@ -27,9 +28,10 @@ type multiplexer interface {
 }
 
 type mux struct {
+	mu       *sync.Mutex // passed from server to prevent concurrent access
+	paths    *[]string
 	inner    *http.ServeMux
 	prefix   string
-	server   *Server
 	buckets  []*bucket // contains the middlewares passed by initializer
 	volatile *bucket   // contains the middlewares passed by Use
 }
@@ -39,8 +41,8 @@ func (m *mux) Handler() http.Handler {
 }
 
 func (m *mux) Use(middleware func(http.Handler) http.Handler) multiplexer {
-	m.server.mmu.Lock()
-	defer m.server.mmu.Unlock()
+	m.mu.Lock()
+	defer m.mu.Unlock()
 
 	if m.volatile != nil {
 		m.volatile.Middlewares = append(m.volatile.Middlewares, middleware)
@@ -48,9 +50,10 @@ func (m *mux) Use(middleware func(http.Handler) http.Handler) multiplexer {
 	}
 
 	mm := &mux{
+		mu:     m.mu,
+		paths:  m.paths,
 		inner:  m.inner,
 		prefix: m.prefix,
-		server: m.server,
 	}
 	b := &bucket{Middlewares: []func(http.Handler) http.Handler{middleware}}
 
@@ -106,12 +109,13 @@ func (m *mux) Connect(pattern string, handler http.HandlerFunc) {
 }
 
 func (m *mux) Group(prefix string) multiplexer {
-	m.server.mmu.Lock()
-	defer m.server.mmu.Unlock()
+	m.mu.Lock()
+	defer m.mu.Unlock()
 
 	mm := &mux{
+		mu:      m.mu,
+		paths:   m.paths,
 		inner:   m.inner,
-		server:  m.server,
 		prefix:  path.Join(m.prefix, prefix),
 		buckets: append([]*bucket{}, m.buckets...),
 	}
@@ -142,11 +146,10 @@ func (m *mux) drain() []func(http.Handler) http.Handler {
 
 // handle registers the handler for the given pattern
 func (m *mux) handle(method string, pattern string, handler http.Handler) {
-	m.server.mmu.Lock()
-	defer m.server.mmu.Unlock()
+	m.mu.Lock()
+	defer m.mu.Unlock()
 
 	// Record the registered paths
-	paths := Hook[ctxkey, []string](m.server, _CTXKEY, nil)
 	path := path.Join(m.prefix, pattern)
 	if pattern != string(os.PathSeparator) &&
 		strings.TrimSuffix(pattern, string(os.PathSeparator)) != pattern {
@@ -156,7 +159,10 @@ func (m *mux) handle(method string, pattern string, handler http.Handler) {
 	if method != "" {
 		path = strings.Join([]string{method, path}, " ")
 	}
-	*paths = append(*paths, path)
+
+	if paths := m.paths; paths != nil {
+		*paths = append(*paths, path)
+	}
 
 	for _, mw := range m.drain() {
 		handler = mw(handler)

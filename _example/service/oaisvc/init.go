@@ -4,9 +4,10 @@ import (
 	"github.com/humbornjo/mizu"
 	"github.com/humbornjo/mizu/mizudi"
 	"github.com/humbornjo/mizu/mizuoai"
+	"mizu.example/config"
 )
 
-func Initialize() {
+func Initialize(_ *config.Config) {
 	srv := mizudi.MustRetrieve[*mizu.Server]()
 
 	group := srv.Group("/oai")

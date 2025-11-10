@@ -3,8 +3,6 @@ package main
 import (
 	"context"
 	"log/slog"
-	"os"
-	"os/signal"
 
 	"github.com/humbornjo/mizu"
 	"github.com/humbornjo/mizu/mizudi"
@@ -25,7 +23,7 @@ func main() {
 	defer cancel()
 
 	srv := mizudi.MustRetrieve[*mizu.Server]()
-	cfg := mizudi.MustRetrieve[*config.Config]()
+	global := mizudi.MustRetrieve[*config.Config]()
 
 	// HTTP global middleware -------------------------------------
 
@@ -34,25 +32,22 @@ func main() {
 	srv.Use(compressmw.New(compressmw.WithContentTypes("text/*")))
 
 	// Initialize services ----------------------------------------
-	oaisvc.Initialize()
-	httpsvc.Initialize()
-	filesvc.Initialize()
-	greetsvc.Initialize()
-	namastesvc.Initialize()
+	oaisvc.Initialize(global)
+	httpsvc.Initialize(global)
+	filesvc.Initialize(global)
+	greetsvc.Initialize(global)
+	namastesvc.Initialize(global)
 
 	errChan := make(chan error, 1)
-	ctx, stop := signal.NotifyContext(ctx, os.Interrupt)
-	defer stop()
 	go func() {
 		defer cancel()
 		defer close(errChan)
-		if err := srv.ServeContext(ctx, cfg.Port); err != nil {
+		if err := srv.ServeContext(ctx, global.Port); err != nil {
 			errChan <- err
 		}
 	}()
 
 	<-ctx.Done()
-	stop()
 
 	if err := <-errChan; err != nil {
 		slog.ErrorContext(ctx, config.ServiceName+" exit unexpectedly", "error", err)

@@ -13,12 +13,9 @@ type Config struct {
 	ServePrefix string `yaml:"serve_prefix"`
 }
 
-func Initialize() {
+func Initialize(global *config.Config) {
 	// Extract service config
 	local := mizudi.Enchant[Config](nil)
-
-	// Retrieve global config
-	global := mizudi.MustRetrieve[*config.Config]()
 
 	switch global.Env {
 	case "local":

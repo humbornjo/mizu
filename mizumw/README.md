@@ -1,4 +1,4 @@
-# 🛡️ mizumw - HTTP Middleware Collection
+# mizumw - HTTP Middleware Collection
 
 **This module steal a lot of code from [chi](https://github.com/go-chi/chi)**
 

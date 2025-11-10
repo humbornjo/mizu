@@ -1,4 +1,4 @@
-# 📝 mizulog - Structured Logging for Go
+# mizulog - Structured Logging for Go
 
 Enhanced structured logging with context-aware attribute injection built on Go's standard `log/slog` package.
 
@@ -76,7 +76,7 @@ mizulog.Initialize(nil,
 | `WithLogLevel(level)`   | Minimum log level (string or int)           | `slog.LevelInfo` |
 | `WithAttributes(attrs)` | Default attributes added to all log records | `nil`            |
 
-## 💡 Examples
+## Examples
 
 ### HTTP Server Integration
 

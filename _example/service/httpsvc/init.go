@@ -5,9 +5,11 @@ import (
 
 	"github.com/humbornjo/mizu"
 	"github.com/humbornjo/mizu/mizudi"
+
+	"mizu.example/config"
 )
 
-func Initialize() {
+func Initialize(_ *config.Config) {
 	srv := mizudi.MustRetrieve[*mizu.Server]()
 
 	srv.Use(MiddlewareLogging).Get("/scrape", // Chain middleware on one handler only

@@ -11,10 +11,6 @@ import (
 func handle[I any, O any](
 	method string, srv *mizu.Server, pattern string, oaiHandler func(Tx[O], Rx[I]), opts ...OperationOption,
 ) *v3.Operation {
-	if srv == nil {
-		panic("nil oai instance")
-	}
-
 	config := &operationConfig{
 		path:   pattern,
 		method: method,

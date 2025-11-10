@@ -30,12 +30,7 @@ import (
 	"google.golang.org/protobuf/types/known/wrapperspb"
 )
 
-var (
-	ErrNilStream     = errors.New("nil stream")
-	ErrNoBoundary    = errors.New("no boundary")
-	ErrFileTooLarge  = errors.New("file too large")
-	ErrMismatchProto = errors.New("mismatched proto")
-)
+var ErrFileTooLarge = errors.New("file too large")
 
 // FileReader wraps an io.ReadCloser to provide file upload
 // functionality with size limiting, checksum calculation, and
@@ -153,10 +148,6 @@ type HttpForm interface {
 // stream interface methods while ensuring the message type
 // satisfies the HttpForm interface for HTTP body content
 // handling.
-//
-// INFO: This interface is equivalent to
-// *connect.ClientStream[T HttpForm]. It is provided for test
-// purposes.
 type StreamForm[T HttpForm] interface {
 	Msg() T
 	Err() error
@@ -188,7 +179,9 @@ type FormReader interface {
 	// calling the purge function. This function internally
 	// calls NextPart until the file part is found.
 	//
-	// purge internally calls NextPart and return nil on EOF.
+	// purge internally calls NextPart and return nil on EOF. Thus
+	// msg still will be filled if none nil (see comment of
+	// NextPart).
 	File() (filePart *multipart.Part, purge func() error, err error)
 
 	// Close put back the *bufio.Reader to the pool. It must be
@@ -263,9 +256,6 @@ func WithFormFieldLimitBytes[T HttpForm](limit int64) FormReaderOption[T] {
 // to the provided proto.Message.
 func NewFormReader[T HttpForm](fileField string, stream StreamForm[T], msg proto.Message, opts ...FormReaderOption[T],
 ) (FormReader, error) {
-	if stream == nil {
-		return nil, ErrNilStream
-	}
 	if ok := stream.Receive(); !ok {
 		return nil, stream.Err()
 	}
@@ -274,7 +264,7 @@ func NewFormReader[T HttpForm](fileField string, stream StreamForm[T], msg proto
 		var temp T
 		cur := msg.ProtoReflect().Descriptor()
 		if name, want := cur.FullName(), temp.ProtoReflect().Descriptor().FullName(); name != want {
-			return nil, ErrMismatchProto
+			return nil, fmt.Errorf("expected proto %s, got proto %s", want, name)
 		}
 	}
 
@@ -286,7 +276,7 @@ func NewFormReader[T HttpForm](fileField string, stream StreamForm[T], msg proto
 	}
 	boundary := params["boundary"]
 	if boundary == "" {
-		return nil, ErrNoBoundary
+		return nil, errors.New("form boundary not found")
 	}
 
 	sr := &streamReader[T]{stream, prologue.GetForm().GetData()}

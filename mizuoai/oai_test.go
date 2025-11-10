@@ -2,6 +2,7 @@ package mizuoai_test
 
 import (
 	"bytes"
+	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -9,6 +10,7 @@ import (
 	"github.com/humbornjo/mizu"
 	"github.com/humbornjo/mizu/mizuoai"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 type TestInputBodyJSON struct {
@@ -81,17 +83,20 @@ func TestMizuOai_Rx_Read_BodyJSON(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			srv := mizu.NewServer("test")
-			mizuoai.Initialize(srv, "test_title")
+			if err := mizuoai.Initialize(srv, "test_title"); err != nil {
+				t.Fatal(err)
+			}
 
 			var receivedInput *TestInputBodyJSON
+			var err error
 
 			mizuoai.Get(srv, "/users/{id}", func(tx mizuoai.Tx[string], rx mizuoai.Rx[TestInputBodyJSON]) {
-				receivedInput = rx.MizuRead()
+				receivedInput, err = rx.MizuRead()
 			})
 
 			w := httptest.NewRecorder()
 			srv.Handler().ServeHTTP(w, tc.request)
-			assert.NotNil(t, receivedInput)
+			assert.Nil(t, err)
 			assert.Equal(t, tc.expected.Query, receivedInput.Query)
 			assert.Equal(t, tc.expected.Body, receivedInput.Body)
 			assert.Equal(t, tc.expected.Path, receivedInput.Path)
@@ -123,17 +128,20 @@ func TestMizuOai_Rx_Read_BodyString(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			srv := mizu.NewServer("test")
-			mizuoai.Initialize(srv, "test_title")
+			if err := mizuoai.Initialize(srv, "test_title"); err != nil {
+				t.Fatal(err)
+			}
 
 			var receivedInput *TestInputBodyString
+			var err error
 
 			mizuoai.Get(srv, "/test", func(tx mizuoai.Tx[string], rx mizuoai.Rx[TestInputBodyString]) {
-				receivedInput = rx.MizuRead()
+				receivedInput, err = rx.MizuRead()
 			})
 
 			w := httptest.NewRecorder()
 			srv.Handler().ServeHTTP(w, tc.request)
-			assert.NotNil(t, receivedInput)
+			assert.Nil(t, err)
 			assert.Equal(t, tc.expected, receivedInput)
 		})
 	}
@@ -162,16 +170,20 @@ func TestMizuOai_Rx_Read_BodyInt(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			srv := mizu.NewServer("test")
-			mizuoai.Initialize(srv, "test_title")
+			if err := mizuoai.Initialize(srv, "test_title"); err != nil {
+				t.Fatal(err)
+			}
 
 			var receivedInput *TestInputBodyInt
+			var err error
+
 			mizuoai.Get(srv, "/int", func(tx mizuoai.Tx[string], rx mizuoai.Rx[TestInputBodyInt]) {
-				receivedInput = rx.MizuRead()
+				receivedInput, err = rx.MizuRead()
 			})
 
 			rr := httptest.NewRecorder()
 			srv.Handler().ServeHTTP(rr, tc.request)
-			assert.NotNil(t, receivedInput)
+			assert.Nil(t, err)
 			assert.Equal(t, tc.expected, receivedInput)
 		})
 	}
@@ -200,17 +212,104 @@ func TestMizuOai_Rx_Read_BodyFloat(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			srv := mizu.NewServer("test")
-			mizuoai.Initialize(srv, "test_title")
+			if err := mizuoai.Initialize(srv, "test_title"); err != nil {
+				t.Fatal(err)
+			}
 
 			var receivedInput *TestInputBodyFloat
+			var err error
 
 			mizuoai.Get(srv, "/float", func(tx mizuoai.Tx[string], rx mizuoai.Rx[TestInputBodyFloat]) {
-				receivedInput = rx.MizuRead()
+				receivedInput, err = rx.MizuRead()
 			})
 
 			w := httptest.NewRecorder()
 			srv.Handler().ServeHTTP(w, tc.request)
-			assert.NotNil(t, receivedInput)
+			assert.Nil(t, err)
+			assert.Equal(t, tc.expected, receivedInput)
+		})
+	}
+}
+
+type TestInputForm struct {
+	Form struct {
+		Name      string `form:"name"`
+		Email     string `form:"email"`
+		Age       int    `form:"age"`
+		Subscribe bool   `form:"subscribe"`
+	} `mizu:"form"`
+}
+
+func TestMizuOai_Rx_Read_FormData(t *testing.T) {
+	testCases := []struct {
+		name     string
+		request  *http.Request
+		expected *TestInputForm
+	}{
+		{
+			name: "Form Data Request with nested struct",
+			request: func() *http.Request {
+				// Create multipart form data
+				body := bytes.NewBuffer(nil)
+				writer := multipart.NewWriter(body)
+
+				fieldName, err := writer.CreateFormField("name")
+				require.NoError(t, err)
+				_, err = fieldName.Write([]byte("John Doe"))
+				require.NoError(t, err)
+
+				fieldAge, err := writer.CreateFormField("age")
+				require.NoError(t, err)
+				_, err = fieldAge.Write([]byte("25"))
+				require.NoError(t, err)
+
+				fieldEmail, err := writer.CreateFormField("email")
+				require.NoError(t, err)
+				_, err = fieldEmail.Write([]byte("john@example.com"))
+				require.NoError(t, err)
+
+				fieldSubscribe, err := writer.CreateFormField("subscribe")
+				require.NoError(t, err)
+				_, err = fieldSubscribe.Write([]byte("true"))
+				require.NoError(t, err)
+
+				req := httptest.NewRequest("POST", "/form", body)
+				req.Header.Set("Content-Type", writer.FormDataContentType())
+				return req
+			}(),
+			expected: &TestInputForm{
+				Form: struct {
+					Name      string `form:"name"`
+					Email     string `form:"email"`
+					Age       int    `form:"age"`
+					Subscribe bool   `form:"subscribe"`
+				}{
+					Name:      "John Doe",
+					Email:     "john@example.com",
+					Age:       25,
+					Subscribe: true,
+				},
+			},
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			srv := mizu.NewServer("test")
+			if err := mizuoai.Initialize(srv, "test_title"); err != nil {
+				t.Fatal(err)
+			}
+
+			var receivedInput *TestInputForm
+			var err error
+
+			mizuoai.Post(srv, "/form", func(tx mizuoai.Tx[string], rx mizuoai.Rx[TestInputForm]) {
+				receivedInput, err = rx.MizuRead()
+			})
+
+			w := httptest.NewRecorder()
+			srv.Handler().ServeHTTP(w, tc.request)
+			assert.Nil(t, err)
 			assert.Equal(t, tc.expected, receivedInput)
 		})
 	}

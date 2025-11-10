@@ -44,7 +44,7 @@ func init() {
 		ServiceName,
 		mizu.WithRevealRoutes(),
 		mizu.WithProfilingHandlers(),
-		mizu.WithReadinessDrainDelay(10*time.Millisecond),
+		mizu.WithReadinessDrainDelay(0*time.Second),
 		// Force Protocol can useful when dev locally (Go use HTTP/1 by default when TLS is disabled)
 		mizu.WithServerProtocols(mizu.PROTOCOLS_HTTP2_UNENCRYPTED),
 	)

@@ -1,4 +1,4 @@
-# 🔌 mizuconnect - Connect RPC Integration
+# mizuconnect - Connect RPC Integration
 
 Streamlined integration with Connect protocol for type-safe RPC services built on protobuffer definitions.
 
@@ -60,7 +60,7 @@ func main() {
 | `WithCrpcVanguard(pattern, opts...)` | Enable REST transcoding with Vanguard | Disabled |
 | `WithCrpcHandlerOptions(opts...)`    | Additional Connect handler options    | `nil`    |
 
-## 💡 Examples
+## Examples
 
 ### Basic Service Without Extra Features
 

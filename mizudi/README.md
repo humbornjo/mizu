@@ -1,4 +1,4 @@
-# 📦 mizudi - Configuration Management & Dependency Injection
+# mizudi - Configuration Management & Dependency Injection
 
 Built with [samber/do](https://github.com/samber/do) for dependency injection and [knadh/koanf](https://github.com/knadh/koanf) for configuration management.
 
@@ -6,21 +6,12 @@ A powerful Go framework that combines automatic configuration loading with depen
 
 ## Philosophy
 
-### Configuration Management Philosophy
-
-mizudi treats configuration as **location-aware, type-safe, and environment-driven** data that should be:
+Configuration should be:
 
 1. **Convention-based**: Configuration paths are automatically determined by your code hierarchy.
-2. **Type-safe**: Strong typing ensures compile-time validation of configuration access
-3. **Environment-aware**: Seamlessly merges YAML configurations with environment variables
-4. **Service-oriented**: Each service automatically loads its relevant configuration subset
-
-### Dependency Injection Philosophy
-
-mizudi embraces **explicit dependency registration** with **implicit dependency resolution**:
-
-1. **Explicit Registration**: Only one registry (do.Injector) exist globally
-2. **Service-oriented**: Designed for microservices with clear service boundaries
+2. **Environment-aware**: Seamlessly merges YAML configurations with environment variables.
+3. **Scope-constrained**: A config for a individual service is only accessible by that service. And a global config
+   should be easily accessible by all services.
 
 ## Why This Design is Good
 
@@ -29,59 +20,42 @@ mizudi embraces **explicit dependency registration** with **implicit dependency 
 Traditional approaches create problematic dependencies and unmaintainable config structures:
 
 ```go
-// UGLY: Traditional monolithic config approach
 package config
 
+// Single massive struct containing ALL service configs accessed
+// by a singleton method.
 type GlobalConfig struct {
-    // 🤢 Single massive struct containing ALL service configs
     ServiceA ServiceAConfig  // ServiceA's private config exposed
     ServiceB ServiceBConfig  // ServiceB's private config exposed
+
     Shared   SharedConfig    // Public/shared config mixed in
 }
-
-var GlobalCfg *GlobalConfig  // Global singleton everyone imports
-
-// Result: Every service imports the entire config = massive coupling
-// Services can access configs they shouldn't see
 ```
 
-```go
-// NIGHTMARE: Traditional circular dependency pattern
-package serviceA
+Say service A want to use shared config, it has to load the entire GloalConfig manually. Which results in that service A
+"see" the config of service B, which is not what we want.
 
-type ServiceAConfig struct {
-  ...
-}
-// CIRCULAR DEPENDENCY: If ServiceA need global config, then It
-// has to load its own config individually, otherwise (introduce
-// ServiceAConfig in package config) will cause circular dependency.
-```
+When it comes to ergonomic config management, it's better to have each service defines its own config struct. However,
+if the config is imported by GloalConfig, then the service initialization must happened outside the service package,
+which is counter-intuitive (otherwise introduce circular dependency).
 
-With mizudi, each service has **independent boundaries** and **clean separation**:
+### Quickstart
 
-- **config pakcage**: Load global config
-- **services**: Load their own config, import config package and use global config
-- **main.go**: Import services and config package
-
-```txt
+```plain
   +--------------+  imported  +----------------+
   |   services   |<-----------| config package |
   +--------------+            +----------------+
           |                           |
-          |                           |
-          |                           |
-          |                           |
-          |                           |
           | imported                  | imported
-          |                           |
-          |                           |
-          |                           |
           |                           |
           v                           |
   +--------------+                    |
   |    main.go   |<-------------------+
   +--------------+
 ```
+
+The config extraction in each service rely on the initialization of the config package (load from YAML). So the
+dependency should be explicitly declared in each package where `mizudi.Enchant` is called. Refer to [examples](https://github.com/humbornjo/mizu/tree/main/_example) for detailed code structure instructions (which use `config.Config` as a placeholder input argument to maintain the dependency hierarchy).
 
 ```go
 // config/config.go
@@ -95,34 +69,24 @@ func init() {
 
 // service/greetsvc/config.go
 type ConfigGreet struct {
-    Port     int    `yaml:"port"`
+    Port     int      `yaml:"port"`
     Database DBConfig `yaml:"database"`
 }
 
-func Initialize() {
+func Initialize(_ *config.Config) {
     cfg := mizudi.Enchant[ConfigGreet](nil)
 
     // Do something with cfg
 }
 ```
 
-**Benefits:**
-
-- **No circular dependencies**: Services only access their own configs via DI
-- **Private by default**: Service configs are invisible to other services
-- **Clean separation**: Each service loads only its relevant config subset
-- **Independent evolution**: Change one service config = no recompile of others
-- **Location-aware**: Auto-loading based on file location
-
-### Clear Service Boundaries
-
 Each service knows only about its own configuration:
 
 ```
 service/
-├── greetsvc/     → loads from "service.greet.*" config path
-├── namastesvc/   → loads from "service.namaste.*" config path
-└── filesvc/      → loads from "service.file.*" config path
+├── greetsvc/     → loads from "service.greetsvc.*"   config path
+├── namastesvc/   → loads from "service.namastesvc.*" config path
+└── filesvc/      → loads from "service.filesvc.*"    config path
 ```
 
 ## Core Features
@@ -150,7 +114,6 @@ service:
 
 # Environment override
 export MIZU_SERVICE_GREETSVC_PORT=9090
-# Automatically overrides YAML value
 ```
 
 ### Path Substitution for Flexible Structure
@@ -158,5 +121,5 @@ export MIZU_SERVICE_GREETSVC_PORT=9090
 ```go
 config := mizudi.Enchant[Config](nil,
     mizudi.WithSubstitutePrefix("service/greetsvc/internal", "service/greet"))
-// Loads from "service.greet.*" even when called from "service/greetsvc/internal"
+// Loads from yaml path "service.greet.*" even when called from go project dir "service/greetsvc/internal"
 ```

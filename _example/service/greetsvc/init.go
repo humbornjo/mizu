@@ -4,9 +4,7 @@ import (
 	"github.com/humbornjo/mizu/mizuconnect"
 	"github.com/humbornjo/mizu/mizudi"
 
-	// INFO: root config collect should be decleared to ensure the
-	// dependency
-	_ "mizu.example/config"
+	"mizu.example/config"
 	"mizu.example/protogen/barapp/greet/v1/greetv1connect"
 )
 
@@ -14,14 +12,14 @@ type Config struct {
 	Greet string `yaml:"greet"`
 }
 
-var config *Config
+var cfg *Config
 
-func Initialize() {
-	config = mizudi.Enchant[Config](nil)
-	if config.Greet == "" {
-		config.Greet = "Hello"
+func Initialize(global *config.Config) {
+	cfg = mizudi.Enchant[Config](nil)
+	if cfg.Greet == "" {
+		cfg.Greet = "Hello"
 	}
 
 	scp := mizudi.MustRetrieve[*mizuconnect.Scope]()
-	scp.Register(&Service{WhatToSay: config.Greet}, greetv1connect.NewGreetServiceHandler)
+	scp.Register(&Service{WhatToSay: cfg.Greet}, greetv1connect.NewGreetServiceHandler)
 }
