@@ -5,16 +5,15 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
-	"mime/multipart"
 	"net/http"
 	"path"
-	"reflect"
 	"sync"
 	"text/template"
 
 	"github.com/humbornjo/mizu"
 	"github.com/pb33f/libopenapi/datamodel/high/base"
+	v3 "github.com/pb33f/libopenapi/datamodel/high/v3"
+	"github.com/pb33f/libopenapi/orderedmap"
 )
 
 var (
@@ -93,6 +92,10 @@ func Path(server *mizu.Server, pattern string, opts ...PathOption) {
 	}
 
 	oai := mizu.Hook[ctxkey, oaiConfig](server, _CTXKEY_OAI, nil)
+	if oai == nil {
+		panic("oai not initialized, call Initialize first")
+	}
+
 	oai.paths.PathItems.Set(pattern, &config.PathItem)
 }
 
@@ -101,12 +104,12 @@ func Path(server *mizu.Server, pattern string, opts ...PathOption) {
 // context.
 type Rx[T any] struct {
 	*http.Request
-	read func(*http.Request) (*T, error)
+	read func(*http.Request) (T, error)
 }
 
 // Read returns the parsed input from the request. The parsing
 // logic is generated based on the struct tags of the input type.
-func (rx Rx[T]) MizuRead() (*T, error) {
+func (rx Rx[T]) MizuRead() (T, error) {
 	return rx.read(rx.Request)
 }
 
@@ -123,217 +126,146 @@ func (tx Tx[T]) MizuWrite(data *T) error {
 	return tx.write(data)
 }
 
-// tag represents the source of request data (e.g., path, body).
-type tag string
+// mizutag represents the source of request data (e.g., path, body).
+type mizutag string
 
-func (t tag) String() string {
+func (t mizutag) String() string {
 	return string(t)
 }
 
 const (
-	_STRUCT_TAG_PATH   tag = "path"
-	_STRUCT_TAG_QUERY  tag = "query"
-	_STRUCT_TAG_HEADER tag = "header"
-	_STRUCT_TAG_BODY   tag = "body"
-	_STRUCT_TAG_FORM   tag = "form"
+	_STRUCT_TAG_PATH   mizutag = "path"
+	_STRUCT_TAG_QUERY  mizutag = "query"
+	_STRUCT_TAG_HEADER mizutag = "header"
+	_STRUCT_TAG_BODY   mizutag = "body"
+	_STRUCT_TAG_FORM   mizutag = "form"
 )
-
-// notion holds metadata about a struct field to be parsed from a
-// request.
-type notion struct {
-	fieldNumber int
-	identifier  string
-}
-
-// genNotions extracts metadata for fields within a struct that
-// are tagged with a specific data source tag as notion.
-func genNotions(val reflect.Value, typ tag) []notion {
-	notions := []notion{}
-	for i := range val.Type().NumField() {
-		field := val.Type().Field(i)
-		tagVal := field.Tag.Get(typ.String())
-		if tagVal == "" {
-			tagVal = field.Name
-		}
-		notions = append(notions, notion{fieldNumber: i, identifier: tagVal})
-	}
-	return notions
-}
-
-// decode is a collection of functions that perform parsing of an
-// http.Request into a target struct.
-type decode[T any] func(r *http.Request, val *T) error
-
-func (d *decode[T]) append(fn decode[T]) {
-	if *d == nil {
-		*d = fn
-		return
-	}
-
-	old := *d
-	*d = func(r *http.Request, val *T) error {
-		errOld := old(r, val)
-		if err := fn(r, val); err != nil {
-			if errOld == nil {
-				return err
-			}
-			return fmt.Errorf("%w; %w", err, errOld)
-		}
-		return errOld
-	}
-}
-
-func (d *decode[T]) validate(tag tag, field *reflect.StructField) {
-	switch tag {
-	case _STRUCT_TAG_PATH, _STRUCT_TAG_QUERY, _STRUCT_TAG_HEADER:
-		if field.Type.Kind() != reflect.Struct {
-			panic("path must be a struct")
-		}
-	case _STRUCT_TAG_BODY, _STRUCT_TAG_FORM:
-	default:
-		panic("unreachable")
-	}
-}
-
-func (d *decode[T]) retrieve(tag tag, r *http.Request, identifier string) string {
-	switch tag {
-	case _STRUCT_TAG_PATH:
-		return r.PathValue(identifier)
-	case _STRUCT_TAG_QUERY:
-		return r.URL.Query().Get(identifier)
-	case _STRUCT_TAG_HEADER:
-		return r.Header.Get(identifier)
-	default:
-		panic("unreachable")
-	}
-}
-
-// genDecode creates a parser for a given generic type T. It
-// uses reflection to inspect the fields and tags of T to build a
-// set of parsing functions for different parts of the request.
-func genDecode[T any]() decode[T] {
-	val := reflect.ValueOf(new(T)).Elem()
-	typ := val.Type()
-	hasBody, hasForm := false, false
-
-	decoder := new(decode[T])
-	for i := range typ.NumField() {
-		fieldTyp := typ.Field(i)
-		t, ok := fieldTyp.Tag.Lookup("mizu")
-		if !ok {
-			continue
-		}
-		mizuTag := tag(t)
-
-		decoder.validate(mizuTag, &fieldTyp)
-		switch mizuTag {
-		case _STRUCT_TAG_BODY:
-			hasBody = true
-			decoder.append(func(r *http.Request, val *T) error {
-				fieldBody := reflect.ValueOf(val).Elem().Field(i)
-				if err := setStreamValue(fieldBody, r.Body, fieldBody.Kind()); err != nil {
-					return fmt.Errorf("failed to decode body: %w", err)
-				}
-				return nil
-			})
-		case _STRUCT_TAG_FORM:
-			hasForm = true
-			fieldVal := val.FieldByName(fieldTyp.Name)
-			notions := genNotions(fieldVal, mizuTag)
-			decoder.append(func(r *http.Request, val *T) error {
-				st := reflect.ValueOf(val).Elem().Field(i)
-				rx, err := consFormReader(r.Body, r.Header.Get("Content-Type"))
-				if err != nil {
-					return fmt.Errorf("failed to read form: %w", err)
-				}
-				var part *multipart.Part
-				for part, err = rx.NextPart(); err == nil; part, err = rx.NextPart() {
-					for _, notion := range notions {
-						if part.FormName() != notion.identifier {
-							continue
-						}
-						f := st.Field(notion.fieldNumber)
-						if err := setStreamValue(f, part, f.Kind()); err != nil {
-							return fmt.Errorf("failed to decode form: %w", err)
-						}
-						break
-					}
-				}
-				if errors.Is(err, io.EOF) {
-					err = nil
-				}
-				return err
-			})
-		default:
-			fieldVal := val.FieldByName(fieldTyp.Name)
-			notions := genNotions(fieldVal, mizuTag)
-			decoder.append(func(r *http.Request, val *T) error {
-				var err error
-				st := reflect.ValueOf(val).Elem().Field(i)
-				for _, notion := range notions {
-					v := decoder.retrieve(mizuTag, r, notion.identifier)
-					f := st.Field(notion.fieldNumber)
-					if e := setParamValue(f, v, f.Kind()); e != nil {
-						if err == nil {
-							err = fmt.Errorf("failed to decode %s: %w", notion.identifier, e)
-						} else {
-							err = fmt.Errorf("failed to decode %s: %w; %w", notion.identifier, e, err)
-						}
-					}
-				}
-				return err
-			})
-		}
-	}
-	if hasForm && hasBody {
-		panic("cannot use both form and body")
-	}
-	if *decoder == nil {
-		return func(r *http.Request, val *T) error { return nil }
-	}
-
-	return *decoder
-}
-
-type encode[T any] func(http.ResponseWriter, *T) error
-
-func genEncode[T any]() encode[T] {
-	v := new(T)
-	field := reflect.ValueOf(v).Elem()
-	switch field.Kind() {
-	case reflect.String:
-		return func(w http.ResponseWriter, val *T) error {
-			w.Header().Set("Content-Type", "text/plain")
-			_, err := w.Write([]byte(any(*val).(string)))
-			return err
-		}
-	default:
-		return func(w http.ResponseWriter, val *T) error {
-			w.Header().Set("Content-Type", "application/json")
-			err := json.NewEncoder(w).Encode(val)
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return err
-		}
-	}
-}
 
 // handler is a generic type for user-provided API logic.
 type handler[I any, O any] func(Tx[O], Rx[I])
 
-// genHandler wraps the user-provided handler with request
+// newHandler wraps the user-provided handler with request
 // parsing logic.
-func (h handler[I, O]) genHandler() http.HandlerFunc {
-	encode := genEncode[O]()
-	decode := genDecode[I]()
-
-	// Return the actual http.HandlerFunc.
+func (h handler[I, O]) newHandler() http.HandlerFunc {
+	encoder := newEncoder[O]()
+	decoder := newDecoder[I]()
 	return func(w http.ResponseWriter, r *http.Request) {
-		// Lazily parse the request data.
-		tx := Tx[O]{w, func(val *O) error { return encode(w, val) }}
-		rx := Rx[I]{r, func(r *http.Request) (*I, error) {
-			input := new(I)
-			return input, decode(r, input)
+		tx := Tx[O]{w, func(val *O) error {
+			return encoder.encode(w, val)
+		}}
+		rx := Rx[I]{r, func(r *http.Request) (input I, err error) {
+			return input, decoder.decode(r, &input)
 		}}
 		h(tx, rx)
 	}
+}
+
+func handle[I any, O any](
+	method string, srv *mizu.Server, pattern string, oaiHandler func(Tx[O], Rx[I]), opts ...OperationOption,
+) *v3.Operation {
+	config := &operationConfig{
+		path:   pattern,
+		method: method,
+		Operation: v3.Operation{
+			Deprecated: new(bool),
+			Callbacks:  orderedmap.New[string, *v3.Callback](),
+			Responses: &v3.Responses{
+				Codes: orderedmap.New[string, *v3.Response](),
+			},
+		},
+	}
+	for _, opt := range opts {
+		opt(config)
+	}
+	enrichOperation[I, O](config)
+
+	oai := mizu.Hook[ctxkey, oaiConfig](srv, _CTXKEY_OAI, nil)
+	if oai == nil {
+		panic("oai not initialized, call Initialize first")
+	}
+
+	oai.handlers = append(oai.handlers, config)
+	switch method {
+	case http.MethodGet:
+		srv.Get(pattern, handler[I, O](oaiHandler).newHandler())
+	case http.MethodPost:
+		srv.Post(pattern, handler[I, O](oaiHandler).newHandler())
+	case http.MethodPut:
+		srv.Put(pattern, handler[I, O](oaiHandler).newHandler())
+	case http.MethodDelete:
+		srv.Delete(pattern, handler[I, O](oaiHandler).newHandler())
+	case http.MethodPatch:
+		srv.Patch(pattern, handler[I, O](oaiHandler).newHandler())
+	case http.MethodHead:
+		srv.Head(pattern, handler[I, O](oaiHandler).newHandler())
+	case http.MethodOptions:
+		srv.Options(pattern, handler[I, O](oaiHandler).newHandler())
+	case http.MethodTrace:
+		srv.Trace(pattern, handler[I, O](oaiHandler).newHandler())
+	}
+	return &config.Operation
+}
+
+// Get registers a generic handler for GET requests. It uses
+// reflection to parse request data into the input type `I` and
+// generate OpenAPI documentation.
+func Get[I any, O any](srv *mizu.Server, pattern string, oaiHandler func(Tx[O], Rx[I]), opts ...OperationOption,
+) *v3.Operation {
+	return handle(http.MethodGet, srv, pattern, oaiHandler, opts...)
+}
+
+// POST registers a generic handler for POST requests. It uses
+// reflection to parse request data into the input type `I` and
+// generate OpenAPI documentation.
+func Post[I any, O any](srv *mizu.Server, pattern string, oaiHandler func(Tx[O], Rx[I]), opts ...OperationOption,
+) *v3.Operation {
+	return handle(http.MethodPost, srv, pattern, oaiHandler, opts...)
+}
+
+// Put registers a generic handler for PUT requests. It uses
+// reflection to parse request data into the input type `I` and
+// generate OpenAPI documentation.
+func Put[I any, O any](srv *mizu.Server, pattern string, oaiHandler func(Tx[O], Rx[I]), opts ...OperationOption,
+) *v3.Operation {
+	return handle(http.MethodPut, srv, pattern, oaiHandler, opts...)
+}
+
+// Delete registers a generic handler for DELETE requests. It
+// uses reflection to parse request data into the input type `I`
+// and generate OpenAPI documentation.
+func Delete[I any, O any](srv *mizu.Server, pattern string, oaiHandler func(Tx[O], Rx[I]), opts ...OperationOption,
+) *v3.Operation {
+	return handle(http.MethodDelete, srv, pattern, oaiHandler, opts...)
+}
+
+// Patch registers a generic handler for PATCH requests. It uses
+// reflection to parse request data into the input type `I` and
+// generate OpenAPI documentation.
+func Patch[I any, O any](srv *mizu.Server, pattern string, oaiHandler func(Tx[O], Rx[I]), opts ...OperationOption,
+) *v3.Operation {
+	return handle(http.MethodPatch, srv, pattern, oaiHandler, opts...)
+}
+
+// Head registers a generic handler for HEAD requests. It uses
+// reflection to parse request data into the input type `I` and
+// generate OpenAPI documentation.
+func Head[I any, O any](srv *mizu.Server, pattern string, oaiHandler func(Tx[O], Rx[I]), opts ...OperationOption,
+) *v3.Operation {
+	return handle(http.MethodHead, srv, pattern, oaiHandler, opts...)
+}
+
+// Options registers a generic handler for OPTIONS requests. It
+// uses reflection to parse request data into the input type `I`
+// and generate OpenAPI documentation.
+func Options[I any, O any](srv *mizu.Server, pattern string, oaiHandler func(Tx[O], Rx[I]), opts ...OperationOption,
+) *v3.Operation {
+	return handle(http.MethodOptions, srv, pattern, oaiHandler, opts...)
+}
+
+// Trace registers a generic handler for TRACE requests. It uses
+// reflection to parse request data into the input type `I` and
+// generate OpenAPI documentation.
+func Trace[I any, O any](srv *mizu.Server, pattern string, oaiHandler func(Tx[O], Rx[I]), opts ...OperationOption,
+) *v3.Operation {
+	return handle(http.MethodTrace, srv, pattern, oaiHandler, opts...)
 }

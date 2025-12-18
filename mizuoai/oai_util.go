@@ -1,9 +1,6 @@
 package mizuoai
 
 import (
-	"encoding/json"
-	"encoding/json/jsontext"
-	jsonv2 "encoding/json/v2"
 	"errors"
 	"fmt"
 	"io"
@@ -88,71 +85,6 @@ func createSchema(typ reflect.Type) *base.SchemaProxy {
 	}
 
 	return base.CreateSchemaProxy(schema)
-}
-
-// setStreamValue sets a value to a reflect.Struct using jsonv2
-// decoder
-func setStreamValue(value reflect.Value, stream io.ReadCloser, kind reflect.Kind) error {
-	defer stream.Close() // nolint: errcheck
-	switch kind {
-	case reflect.Struct:
-		decoder := jsontext.NewDecoder(stream)
-		object := reflect.New(value.Type()).Interface()
-		if err := jsonv2.UnmarshalDecode(decoder, &object); err != nil {
-			return err
-		}
-		value.Set(reflect.ValueOf(object).Elem())
-		return nil
-	default:
-		raw, err := io.ReadAll(stream)
-		if err != nil && errors.Is(err, io.EOF) {
-			return err
-		}
-		return setParamValue(value, string(raw), kind)
-	}
-}
-
-// setParamValue sets a value to a reflect.Value based on its
-// kind
-func setParamValue(value reflect.Value, paramValue string, kind reflect.Kind) error {
-	switch kind {
-	case reflect.String:
-		value.SetString(paramValue)
-	case reflect.Bool:
-		boolValue, err := strconv.ParseBool(paramValue)
-		if err != nil {
-			return fmt.Errorf("cannot convert %s to bool: %w", paramValue, err)
-		}
-		value.SetBool(boolValue)
-	case reflect.Struct:
-		object := reflect.New(value.Type()).Interface()
-		if err := json.Unmarshal([]byte(paramValue), &object); err != nil {
-			return err
-		}
-		value.Set(reflect.ValueOf(object).Elem())
-		return nil
-	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
-		intValue, err := strconv.ParseInt(paramValue, 10, bitSize(kind))
-		if err != nil {
-			return fmt.Errorf("cannot convert %s to %s: %w", paramValue, kind, err)
-		}
-		value.SetInt(intValue)
-	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
-		uintValue, err := strconv.ParseUint(paramValue, 10, bitSize(kind))
-		if err != nil {
-			return fmt.Errorf("cannot convert %s to %s: %w", paramValue, kind, err)
-		}
-		value.SetUint(uintValue)
-	case reflect.Float32, reflect.Float64:
-		floatValue, err := strconv.ParseFloat(paramValue, bitSize(kind))
-		if err != nil {
-			return fmt.Errorf("cannot convert %s to %s: %w", paramValue, kind, err)
-		}
-		value.SetFloat(floatValue)
-	default:
-		return fmt.Errorf("unsupported type %s", kind)
-	}
-	return nil
 }
 
 func bitSize(kind reflect.Kind) int {
@@ -297,7 +229,7 @@ func enrichOperation[I any, O any](config *operationConfig) {
 		if !ok {
 			continue
 		}
-		switch tag(mizuTag) {
+		switch mizutag(mizuTag) {
 		case _STRUCT_TAG_PATH, _STRUCT_TAG_QUERY, _STRUCT_TAG_HEADER:
 			for i := range field.Type.NumField() {
 				subField := field.Type.Field(i)

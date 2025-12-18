@@ -108,7 +108,7 @@ curl http://localhost:8080/healthz         # OK (built-in health check)
 - [x] Complete documentation for each sub-module (but `mizuoai`)
 - [ ] Fix Connect-RPC download issue in `mizuconnect/restful/filekit`
 - [x] Add commonly used HTTP middleware implementations
-- [ ] Compare mizuoai with popular OpenAPI Go frameworks like Fuego on performance
+- [x] Compare mizuoai with popular OpenAPI Go frameworks like Fuego on performance
 
 ## Configuration Options
 
@@ -143,7 +143,7 @@ Mizu is now organized as a collection of independent modules, each with their ow
 
 - **[mizudi](./mizudi/)** - Dependency injection utilities
 - **[mizumw](./mizumw/)** - Common HTTP middleware implementations
-- **[mizuoai](./mizuoai/)** - OpenAPI/Swagger integration
+- **[mizuoai](./mizuoai/)** - OpenAPI specification integration
 - **[mizulog](./mizulog/)** - Structured logging with context-aware attributes
 - **[mizuotel](./mizuotel/)** - OpenTelemetry integration for distributed tracing and metrics
 - **[mizuconnect](./mizuconnect/)** - Connect-RPC integration for type-safe RPC services

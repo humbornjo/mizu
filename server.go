@@ -99,7 +99,7 @@ func Hook[K any, V any](s *Server, key K, val *V, opts ...hookOption) *V {
 	if v := s.ctx.Value(key); v != nil {
 		val = v.(*V)
 	} else {
-		panic("value not found")
+		return nil
 	}
 
 	config := &hookConfig{}
@@ -112,7 +112,6 @@ func Hook[K any, V any](s *Server, key K, val *V, opts ...hookOption) *V {
 	if config.hookStartup != nil {
 		s.hookStartup = append(s.hookStartup, config.hookStartup)
 	}
-
 	return val
 }
 

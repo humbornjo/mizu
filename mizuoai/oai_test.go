@@ -48,7 +48,7 @@ func TestMizuOai_Rx_Read_BodyJSON(t *testing.T) {
 	testCases := []struct {
 		name     string
 		request  *http.Request
-		expected *TestInputBodyJSON
+		expected TestInputBodyJSON
 	}{
 		{
 			name: "JSON Body Request",
@@ -59,7 +59,7 @@ func TestMizuOai_Rx_Read_BodyJSON(t *testing.T) {
 				req.Header.Set("Authorization", "Bearer xyz")
 				return req
 			}(),
-			expected: &TestInputBodyJSON{
+			expected: TestInputBodyJSON{
 				Query: struct {
 					Name  string `query:"name"`
 					Age   int    `query:"age"`
@@ -87,7 +87,7 @@ func TestMizuOai_Rx_Read_BodyJSON(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			var receivedInput *TestInputBodyJSON
+			var receivedInput TestInputBodyJSON
 			var err error
 
 			mizuoai.Get(srv, "/users/{id}", func(tx mizuoai.Tx[string], rx mizuoai.Rx[TestInputBodyJSON]) {
@@ -109,7 +109,7 @@ func TestMizuOai_Rx_Read_BodyString(t *testing.T) {
 	testCases := []struct {
 		name     string
 		request  *http.Request
-		expected *TestInputBodyString
+		expected TestInputBodyString
 	}{
 		{
 			name: "String Body Request",
@@ -119,7 +119,7 @@ func TestMizuOai_Rx_Read_BodyString(t *testing.T) {
 				req.Header.Set("Content-Type", "text/plain")
 				return req
 			}(),
-			expected: &TestInputBodyString{
+			expected: TestInputBodyString{
 				Message: "hello world",
 			},
 		},
@@ -132,7 +132,7 @@ func TestMizuOai_Rx_Read_BodyString(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			var receivedInput *TestInputBodyString
+			var receivedInput TestInputBodyString
 			var err error
 
 			mizuoai.Get(srv, "/test", func(tx mizuoai.Tx[string], rx mizuoai.Rx[TestInputBodyString]) {
@@ -151,7 +151,7 @@ func TestMizuOai_Rx_Read_BodyInt(t *testing.T) {
 	testCases := []struct {
 		name     string
 		request  *http.Request
-		expected *TestInputBodyInt
+		expected TestInputBodyInt
 	}{
 		{
 			name: "Int Body Request",
@@ -161,7 +161,7 @@ func TestMizuOai_Rx_Read_BodyInt(t *testing.T) {
 				req.Header.Set("Content-Type", "application/json")
 				return req
 			}(),
-			expected: &TestInputBodyInt{
+			expected: TestInputBodyInt{
 				Value: 12345,
 			},
 		},
@@ -174,7 +174,7 @@ func TestMizuOai_Rx_Read_BodyInt(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			var receivedInput *TestInputBodyInt
+			var receivedInput TestInputBodyInt
 			var err error
 
 			mizuoai.Get(srv, "/int", func(tx mizuoai.Tx[string], rx mizuoai.Rx[TestInputBodyInt]) {
@@ -193,7 +193,7 @@ func TestMizuOai_Rx_Read_BodyFloat(t *testing.T) {
 	testCases := []struct {
 		name     string
 		request  *http.Request
-		expected *TestInputBodyFloat
+		expected TestInputBodyFloat
 	}{
 		{
 			name: "Float Body Request",
@@ -203,7 +203,7 @@ func TestMizuOai_Rx_Read_BodyFloat(t *testing.T) {
 				req.Header.Set("Content-Type", "application/json")
 				return req
 			}(),
-			expected: &TestInputBodyFloat{
+			expected: TestInputBodyFloat{
 				Value: 123.45,
 			},
 		},
@@ -216,7 +216,7 @@ func TestMizuOai_Rx_Read_BodyFloat(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			var receivedInput *TestInputBodyFloat
+			var receivedInput TestInputBodyFloat
 			var err error
 
 			mizuoai.Get(srv, "/float", func(tx mizuoai.Tx[string], rx mizuoai.Rx[TestInputBodyFloat]) {
@@ -244,7 +244,7 @@ func TestMizuOai_Rx_Read_FormData(t *testing.T) {
 	testCases := []struct {
 		name     string
 		request  *http.Request
-		expected *TestInputForm
+		expected TestInputForm
 	}{
 		{
 			name: "Form Data Request with nested struct",
@@ -277,7 +277,7 @@ func TestMizuOai_Rx_Read_FormData(t *testing.T) {
 				req.Header.Set("Content-Type", writer.FormDataContentType())
 				return req
 			}(),
-			expected: &TestInputForm{
+			expected: TestInputForm{
 				Form: struct {
 					Name      string `form:"name"`
 					Email     string `form:"email"`
@@ -300,7 +300,7 @@ func TestMizuOai_Rx_Read_FormData(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			var receivedInput *TestInputForm
+			var receivedInput TestInputForm
 			var err error
 
 			mizuoai.Post(srv, "/form", func(tx mizuoai.Tx[string], rx mizuoai.Rx[TestInputForm]) {
