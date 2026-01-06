@@ -24,9 +24,9 @@ type Config struct {
 	Level string `yaml:"level"`
 }
 
-func init() {
+func Initialize(paths ...string) {
 	// Dependency Injection ---------------------------------------
-	if err := mizudi.Initialize("config"); err != nil {
+	if err := mizudi.Initialize("config", paths...); err != nil {
 		panic(err)
 	}
 

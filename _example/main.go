@@ -22,6 +22,9 @@ func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
+	config.Initialize()
+
+	// Below two entities are registered in config.Initialize
 	srv := mizudi.MustRetrieve[*mizu.Server]()
 	global := mizudi.MustRetrieve[*config.Config]()
 

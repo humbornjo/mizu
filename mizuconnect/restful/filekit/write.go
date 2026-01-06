@@ -27,9 +27,13 @@ type Writer struct {
 	inner      *bufio.Writer
 }
 
-// NewBodyWriter returns a new io.Writer that writes to the provided
-// connect.ServerStream. Response heaser must be set before
-// writing to the returned io.WriteCloser.
+// NewBodyWriter returns a new io.Writer that writes to the
+// provided connect.ServerStream. Response heaser must be set
+// before writing to the returned io.WriteCloser.
+//
+// Deprecated: NewBodyWriter is still under experimental
+// development, it does not guarantee expected behaviour on all
+// clients.
 func NewBodyWriter(stream StreamResponse, prologue *httpbody.HttpBody,
 ) (*Writer, error) {
 	stream.ResponseHeader().Set("Transfer-Encoding", "chunked")

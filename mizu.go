@@ -243,7 +243,6 @@ func WithRevealRoutes() Option {
 			s = old(s)
 
 			routes := new([]string)
-			s.inner.(*mux).paths = routes
 			Hook(s, _CTXKEY, routes, WithHookStartup(func(s *Server) {
 				fmt.Println("📦 [INFO] Available routes:")
 

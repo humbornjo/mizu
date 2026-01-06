@@ -98,3 +98,63 @@ scope := mizuconnect.NewScope(server,
     mizuconnect.WithCrpcVanguard("/api/v1/"),
 )
 ```
+
+## Scrape on RESTFUL toolkits
+
+The `restful` folder contains utility packages that make it super easy to develop RESTful APIs with Connect RPC, especially for common requirements like file handling.
+
+### package `filekit`
+
+**Effortless file upload/download with automatic proto parsing**
+
+The `filekit` package eliminates the complexity of handling multipart form data and file streams. Simply define your request/response types in protobuf, and the package automatically handles:
+
+- **Automatic form parsing** - Non-file fields are automatically mapped to your proto message
+- **Built-in validation** - Size limits, checksums (SHA256), and MIME type detection
+- **Stream support** - Both unary and streaming file operations
+
+**Just modify your proto definition and go developing with parsing free**
+
+```go
+// In your .proto file
+message UploadRequest {
+  string name = 1;    // Automatically parsed from form field "name"
+  int32 category = 2; // Automatically parse form field "category" to int32
+  google.api.HttpBody form = 1;
+}
+
+// "file" will be the form field name where the file is uploaded
+reader, err := filekit.NewFormReader("file", stream, &msg)
+```
+
+> All the parsing is constrainted withe a limit-reader to prevent unexpected attacks.
+
+### package `streamkit`
+
+**Iterator utilities for Connect streams**
+
+The `streamkit` package provides simple iterator functions to work with Connect RPC streams without manual EOF checking,
+transforming it into iterator.
+
+```go
+// Before: Manual EOF checking
+count := 0
+for {
+    if !stream.Receive() {
+        if err := stream.Err(); errors.Is(err, io.EOF) {
+            break
+        }
+        return err
+    }
+    msg := stream.Msg()
+    count++
+}
+
+// After: Clean iterator
+for msg, err := range streamkit.FromClientStream(&stream) {
+    if err != nil {
+        return err
+    }
+    // Process msg
+}
+```

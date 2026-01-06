@@ -73,6 +73,9 @@ func WithSubstitutePrefix(from string, to string) Option {
 // Environment variables with prefix "MIZU_" are automatically
 // loaded and mapped to configuration paths (e.g., MIZU_DB_HOST
 // becomes db.host).
+//
+// WARN: This function must be called exactly in the package that
+// defines configuration structs.
 func Initialize(relativePath string, loadPaths ...string) error {
 	if _KOANF != nil {
 		panic("mizudi already initialized")
@@ -114,16 +117,6 @@ func Initialize(relativePath string, loadPaths ...string) error {
 		return err
 	}
 	return nil
-}
-
-// Append loads a YAML file to the loaded configuration files.
-func Append(path string) error {
-	if err := _KOANF.Load(file.Provider(path), yaml.Parser()); err != nil {
-		return err
-	}
-	return _KOANF.Load(env.Provider("MIZU_", ".", func(s string) string {
-		return strings.ReplaceAll(strings.ToLower(strings.TrimPrefix(s, "MIZU_")), "_", ".")
-	}), nil)
 }
 
 // Reveal prints the loaded configuration to the provided
@@ -168,6 +161,9 @@ func RevealConfig(tx io.Writer) error {
 //	}
 //
 //	config := mizudi.Enchant[MyConfig](nil)
+//
+// WARN: This function must be called exactly in the package that
+// defines configuration structs.
 func Enchant[T any](defaultConfig *T, opts ...Option) *T {
 	_, runtimePath, _, ok := runtime.Caller(1)
 	if !ok {

@@ -9,27 +9,26 @@ import (
 )
 
 type multiplexer interface {
-	Handle(pattern string, handler http.Handler)
-	HandleFunc(pattern string, handlerFunc http.HandlerFunc)
+	Handle(pattern string, handler http.Handler) string
+	HandleFunc(pattern string, handlerFunc http.HandlerFunc) string
 
 	Handler() http.Handler
 	Use(middleware func(http.Handler) http.Handler) multiplexer
 
 	Group(prefix string) multiplexer
-	Get(pattern string, handler http.HandlerFunc)
-	Post(pattern string, handler http.HandlerFunc)
-	Put(pattern string, handler http.HandlerFunc)
-	Delete(pattern string, handler http.HandlerFunc)
-	Patch(pattern string, handler http.HandlerFunc)
-	Head(pattern string, handler http.HandlerFunc)
-	Trace(pattern string, handler http.HandlerFunc)
-	Options(pattern string, handler http.HandlerFunc)
-	Connect(pattern string, handler http.HandlerFunc)
+	Get(pattern string, handler http.HandlerFunc) string
+	Post(pattern string, handler http.HandlerFunc) string
+	Put(pattern string, handler http.HandlerFunc) string
+	Delete(pattern string, handler http.HandlerFunc) string
+	Patch(pattern string, handler http.HandlerFunc) string
+	Head(pattern string, handler http.HandlerFunc) string
+	Trace(pattern string, handler http.HandlerFunc) string
+	Options(pattern string, handler http.HandlerFunc) string
+	Connect(pattern string, handler http.HandlerFunc) string
 }
 
 type mux struct {
 	mu       *sync.Mutex // passed from server to prevent concurrent access
-	paths    *[]string
 	inner    *http.ServeMux
 	prefix   string
 	buckets  []*bucket // contains the middlewares passed by initializer
@@ -51,7 +50,6 @@ func (m *mux) Use(middleware func(http.Handler) http.Handler) multiplexer {
 
 	mm := &mux{
 		mu:     m.mu,
-		paths:  m.paths,
 		inner:  m.inner,
 		prefix: m.prefix,
 	}
@@ -64,48 +62,48 @@ func (m *mux) Use(middleware func(http.Handler) http.Handler) multiplexer {
 	return mm
 }
 
-func (m *mux) HandleFunc(pattern string, handlerFunc http.HandlerFunc) {
-	m.handle("", pattern, handlerFunc)
+func (m *mux) HandleFunc(pattern string, handlerFunc http.HandlerFunc) string {
+	return m.handle("", pattern, handlerFunc)
 }
 
-func (m *mux) Handle(pattern string, handler http.Handler) {
-	m.handle("", pattern, handler)
+func (m *mux) Handle(pattern string, handler http.Handler) string {
+	return m.handle("", pattern, handler)
 }
 
-func (m *mux) Get(pattern string, handler http.HandlerFunc) {
-	m.handle(http.MethodGet, pattern, handler)
+func (m *mux) Get(pattern string, handler http.HandlerFunc) string {
+	return m.handle(http.MethodGet, pattern, handler)
 }
 
-func (m *mux) Post(pattern string, handler http.HandlerFunc) {
-	m.handle(http.MethodPost, pattern, handler)
+func (m *mux) Post(pattern string, handler http.HandlerFunc) string {
+	return m.handle(http.MethodPost, pattern, handler)
 }
 
-func (m *mux) Put(pattern string, handler http.HandlerFunc) {
-	m.handle(http.MethodPut, pattern, handler)
+func (m *mux) Put(pattern string, handler http.HandlerFunc) string {
+	return m.handle(http.MethodPut, pattern, handler)
 }
 
-func (m *mux) Delete(pattern string, handler http.HandlerFunc) {
-	m.handle(http.MethodDelete, pattern, handler)
+func (m *mux) Delete(pattern string, handler http.HandlerFunc) string {
+	return m.handle(http.MethodDelete, pattern, handler)
 }
 
-func (m *mux) Patch(pattern string, handler http.HandlerFunc) {
-	m.handle(http.MethodPatch, pattern, handler)
+func (m *mux) Patch(pattern string, handler http.HandlerFunc) string {
+	return m.handle(http.MethodPatch, pattern, handler)
 }
 
-func (m *mux) Head(pattern string, handler http.HandlerFunc) {
-	m.handle(http.MethodHead, pattern, handler)
+func (m *mux) Head(pattern string, handler http.HandlerFunc) string {
+	return m.handle(http.MethodHead, pattern, handler)
 }
 
-func (m *mux) Trace(pattern string, handler http.HandlerFunc) {
-	m.handle(http.MethodTrace, pattern, handler)
+func (m *mux) Trace(pattern string, handler http.HandlerFunc) string {
+	return m.handle(http.MethodTrace, pattern, handler)
 }
 
-func (m *mux) Options(pattern string, handler http.HandlerFunc) {
-	m.handle(http.MethodOptions, pattern, handler)
+func (m *mux) Options(pattern string, handler http.HandlerFunc) string {
+	return m.handle(http.MethodOptions, pattern, handler)
 }
 
-func (m *mux) Connect(pattern string, handler http.HandlerFunc) {
-	m.handle(http.MethodConnect, pattern, handler)
+func (m *mux) Connect(pattern string, handler http.HandlerFunc) string {
+	return m.handle(http.MethodConnect, pattern, handler)
 }
 
 func (m *mux) Group(prefix string) multiplexer {
@@ -114,7 +112,6 @@ func (m *mux) Group(prefix string) multiplexer {
 
 	mm := &mux{
 		mu:      m.mu,
-		paths:   m.paths,
 		inner:   m.inner,
 		prefix:  path.Join(m.prefix, prefix),
 		buckets: append([]*bucket{}, m.buckets...),
@@ -145,7 +142,7 @@ func (m *mux) drain() []func(http.Handler) http.Handler {
 }
 
 // handle registers the handler for the given pattern
-func (m *mux) handle(method string, pattern string, handler http.Handler) {
+func (m *mux) handle(method string, pattern string, handler http.Handler) string {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -160,13 +157,10 @@ func (m *mux) handle(method string, pattern string, handler http.Handler) {
 		path = strings.Join([]string{method, path}, " ")
 	}
 
-	if paths := m.paths; paths != nil {
-		*paths = append(*paths, path)
-	}
-
 	for _, mw := range m.drain() {
 		handler = mw(handler)
 	}
 
 	m.inner.HandleFunc(strings.TrimSpace(path), handler.ServeHTTP)
+	return strings.TrimSpace(path)
 }

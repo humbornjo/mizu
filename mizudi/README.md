@@ -64,6 +64,9 @@ package config
 func init() {
     // "config" is the dir in "config/config.go", which is the
     // relative path from go.mod.
+    //
+    // If your path is "config", but your package name is "whatever",
+    // then you should call `mizudi.Initialize("config")`
     mizudi.Initialize("config")
 }
 
@@ -80,6 +83,12 @@ func Initialize(_ *config.Config) {
 }
 ```
 
+> - **`mizudi.Enchant` should be called exactly in the packge where each config is defined.**
+> - **`mizudi.Initialize` should be called exactly in the packge where the global config is defined.**
+>
+> All the configuration loading depends on the relative_path passed to `mizudi.Initialize`. After config has been
+> enchanted, you can directly use it or perform dependency injection to access it universally.
+
 Each service knows only about its own configuration:
 
 ```
@@ -88,6 +97,21 @@ service/
 ├── namastesvc/   → loads from "service.namastesvc.*" config path
 └── filesvc/      → loads from "service.filesvc.*"    config path
 ```
+
+### Flag style Configuration Loading
+
+It is common pattern to pass configuration path via command line flags:
+
+```bash
+./app --config /some/path/config.yaml
+```
+
+This pattern can also be applied easily in `mizudi`:
+
+- Create `func Initialize(paths ...string)` in your global config package
+- Invoke it in the main function (or the according cmd file). Just keep in mind that `Initialize` should always be called before any `Enchant`
+
+When referring to [examples](https://github.com/humbornjo/mizu/tree/main/_example), it is just transform `Initialize()` in package `config` into `Initialize(...string)`.
 
 ## Core Features
 

@@ -85,7 +85,7 @@ func WithHookHandler(hook func(*Server)) hookOption {
 // HookOption offer customization options for performing
 // additional actions on different phases in server lifecycle.
 // Returned value is the registered value for the key if value is
-// not nil, otherwise triggers panic.
+// not nil, otherwise nil pointer is returned.
 //
 // WARN: This is a advanced function which in most cases should
 // not be used.
@@ -94,12 +94,6 @@ func Hook[K any, V any](s *Server, key K, val *V, opts ...hookOption) *V {
 	defer s.mu.Unlock()
 	if val != nil {
 		s.ctx = context.WithValue(s.ctx, key, val)
-	}
-
-	if v := s.ctx.Value(key); v != nil {
-		val = v.(*V)
-	} else {
-		return nil
 	}
 
 	config := &hookConfig{}
@@ -112,7 +106,27 @@ func Hook[K any, V any](s *Server, key K, val *V, opts ...hookOption) *V {
 	if config.hookStartup != nil {
 		s.hookStartup = append(s.hookStartup, config.hookStartup)
 	}
-	return val
+
+	if v := s.ctx.Value(key); v != nil {
+		return v.(*V)
+	}
+	return nil
+}
+
+// Immediate offer the typed value for the given key for user to
+// access in closure, this access is concurrent safe.
+//
+// WARN: This is a advanced function which in most cases should
+// not be used.
+func Immediate[K any, V any](s *Server, key K, closure func(*V)) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if v := s.ctx.Value(key); v != nil {
+		closure(v.(*V))
+		return
+	}
+	closure(nil)
 }
 
 // Handler returns the base HTTP handler (mux) without
@@ -221,47 +235,113 @@ func (s *Server) ServeContext(ctx context.Context, addr string) error {
 }
 
 func (s *Server) HandleFunc(pattern string, handlerFunc http.HandlerFunc) {
-	s.inner.HandleFunc(pattern, handlerFunc)
+	Immediate(s, _CTXKEY, func(v *[]string) {
+		if v == nil {
+			s.inner.HandleFunc(pattern, handlerFunc)
+			return
+		}
+		*v = append(*v, s.inner.HandleFunc(pattern, handlerFunc))
+	})
 }
 
 func (s *Server) Handle(pattern string, handler http.Handler) {
-	s.inner.Handle(pattern, handler)
+	Immediate(s, _CTXKEY, func(v *[]string) {
+		if v == nil {
+			s.inner.Handle(pattern, handler)
+			return
+		}
+		*v = append(*v, s.inner.Handle(pattern, handler))
+	})
 }
 
 func (s *Server) Get(pattern string, handler http.HandlerFunc) {
-	s.inner.Get(pattern, handler)
+	Immediate(s, _CTXKEY, func(v *[]string) {
+		if v == nil {
+			s.inner.Get(pattern, handler)
+			return
+		}
+		*v = append(*v, s.inner.Get(pattern, handler))
+	})
 }
 
 func (s *Server) Post(pattern string, handler http.HandlerFunc) {
-	s.inner.Post(pattern, handler)
+	Immediate(s, _CTXKEY, func(v *[]string) {
+		if v == nil {
+			s.inner.Post(pattern, handler)
+			return
+		}
+		*v = append(*v, s.inner.Post(pattern, handler))
+	})
 }
 
 func (s *Server) Put(pattern string, handler http.HandlerFunc) {
-	s.inner.Put(pattern, handler)
+	Immediate(s, _CTXKEY, func(v *[]string) {
+		if v == nil {
+			s.inner.Put(pattern, handler)
+			return
+		}
+		*v = append(*v, s.inner.Put(pattern, handler))
+	})
 }
 
 func (s *Server) Delete(pattern string, handler http.HandlerFunc) {
-	s.inner.Delete(pattern, handler)
+	Immediate(s, _CTXKEY, func(v *[]string) {
+		if v == nil {
+			s.inner.Delete(pattern, handler)
+			return
+		}
+		*v = append(*v, s.inner.Delete(pattern, handler))
+	})
 }
 
 func (s *Server) Patch(pattern string, handler http.HandlerFunc) {
-	s.inner.Patch(pattern, handler)
+	Immediate(s, _CTXKEY, func(v *[]string) {
+		if v == nil {
+			s.inner.Patch(pattern, handler)
+			return
+		}
+		*v = append(*v, s.inner.Patch(pattern, handler))
+	})
 }
 
 func (s *Server) Head(pattern string, handler http.HandlerFunc) {
-	s.inner.Head(pattern, handler)
+	Immediate(s, _CTXKEY, func(v *[]string) {
+		if v == nil {
+			s.inner.Head(pattern, handler)
+			return
+		}
+		*v = append(*v, s.inner.Head(pattern, handler))
+	})
 }
 
 func (s *Server) Trace(pattern string, handler http.HandlerFunc) {
-	s.inner.Trace(pattern, handler)
+	Immediate(s, _CTXKEY, func(v *[]string) {
+		if v == nil {
+			s.inner.Trace(pattern, handler)
+			return
+		}
+		*v = append(*v, s.inner.Trace(pattern, handler))
+	})
 }
 
 func (s *Server) Options(pattern string, handler http.HandlerFunc) {
-	s.inner.Options(pattern, handler)
+	Immediate(s, _CTXKEY, func(v *[]string) {
+		if v == nil {
+			s.inner.Options(pattern, handler)
+			return
+		}
+		*v = append(*v, s.inner.Options(pattern, handler))
+	})
 }
 
 func (s *Server) Connect(pattern string, handler http.HandlerFunc) {
-	s.inner.Connect(pattern, handler)
+	Immediate(s, _CTXKEY, func(v *[]string) {
+		if v == nil {
+			s.inner.Connect(pattern, handler)
+			return
+		}
+		*v = append(*v, s.inner.Connect(pattern, handler))
+	})
 }
 
 func (s *Server) Group(prefix string) *Server {

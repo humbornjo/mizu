@@ -105,10 +105,10 @@ curl http://localhost:8080/healthz         # OK (built-in health check)
 
 ## Roadmap to Beta
 
-- [x] Complete documentation for each sub-module (but `mizuoai`)
-- [ ] Fix Connect-RPC download issue in `mizuconnect/restful/filekit`
+- [x] Complete documentation for each sub-module
 - [x] Add commonly used HTTP middleware implementations
 - [x] Compare mizuoai with popular OpenAPI Go frameworks like Fuego on performance
+- [ ] ~~Fix Connect-RPC download issue in `mizuconnect/restful/filekit`~~
 
 ## Configuration Options
 
