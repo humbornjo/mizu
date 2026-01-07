@@ -111,7 +111,7 @@ This pattern can also be applied easily in `mizudi`:
 - Create `func Initialize(paths ...string)` in your global config package
 - Invoke it in the main function (or the according cmd file). Just keep in mind that `Initialize` should always be called before any `Enchant`
 
-When referring to [examples](https://github.com/humbornjo/mizu/tree/main/_example), it is just transform `Initialize()` in package `config` into `Initialize(...string)`.
+Referring to [examples](https://github.com/humbornjo/mizu/tree/main/_example/config/config.go) for detailed example.
 
 ## Core Features
 

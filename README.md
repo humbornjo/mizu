@@ -11,13 +11,12 @@
 
 Mizu provides middleware composition, lifecycle hooks, and observability features while staying close to Go's native `net/http`.
 
-> ⚠️ **Alpha Status**: Mizu is currently in alpha development. APIs may change and the framework is not recommended for production use.
+> ⚠️ **Alpha Status**: Mizu is currently in alpha development. APIs may change and the framework is not recommended for production use. Go 1.26 will support `new` with init value, `mizu` will catch up when the release is published.
 
 ## Features
 
 - **Native Performance** - Built on Go's `net/http`
 - **Middleware** - Composable middleware system with scoping
-- **Observability** - Pluggable metrics and logging through independent modules
 - **Graceful Shutdown** - Configurable timeouts and drain periods for cloud native deployments
 - **Modular Design** - Each feature lives in its own independent module for minimal dependencies and small compiling output
 
@@ -156,11 +155,16 @@ Each module is self-contained with its own `go.mod` file and can be used indepen
 
 Go 1.25+
 
+```bash
+# package `mizuoai` requires `encoding/json/v2` support
+go env -w GOEXPERIMENT=jsonv2
+```
+
 ## References
 
 - [Twine Framework](http://127.0.0.1:5755)
 - [Graceful Shutdown in Go: Practical Patterns](https://victoriametrics.com/blog/go-graceful-shutdown/)
-- [Claude Code (mizuotel & unittest & CI & docs)](https://www.claudecode.io)
+- [Claude Code (`mizuotel` | unittest | CI | docs)](https://www.claudecode.io)
 
 ---
 

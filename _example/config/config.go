@@ -45,7 +45,8 @@ func Initialize(paths ...string) {
 		mizu.WithRevealRoutes(),
 		mizu.WithProfilingHandlers(),
 		mizu.WithReadinessDrainDelay(0*time.Second),
-		// Force Protocol can useful when dev locally (Go use HTTP/1 by default when TLS is disabled)
+		// Force Protocol can useful when dev locally
+		// (Go STD use HTTP/1 by default when TLS is disabled)
 		mizu.WithServerProtocols(mizu.PROTOCOLS_HTTP2_UNENCRYPTED),
 	)
 	mizudi.Register(func() (*mizu.Server, error) { return server, nil })

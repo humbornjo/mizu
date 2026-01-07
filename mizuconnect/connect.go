@@ -2,6 +2,7 @@ package mizuconnect
 
 import (
 	"net/http"
+	"path"
 	"reflect"
 	"strings"
 	"sync"
@@ -35,6 +36,8 @@ var (
 )
 
 type config struct {
+	prefix string
+
 	enabledCrpcVanguard bool
 	enabledGrpcHealth   bool
 	enabledGrpcReflect  bool
@@ -66,8 +69,8 @@ func WithGrpcReflect(opts ...connect.HandlerOption) Option {
 	}
 }
 
-// WithCrpcValidate enables buf proto validation for the registered
-// services.
+// WithCrpcValidate enables buf proto validation for the
+// registered services.
 func WithCrpcValidate() Option {
 	return func(m *config) {
 		interceptor := validate.NewInterceptor()
@@ -95,11 +98,22 @@ func WithCrpcVanguard(pattern string, transOpts ...vanguard.TranscoderOption) Op
 	}
 }
 
-// WithCrpcHandlerOptions adds Connect handler options that will be
-// applied to all registered services in this scope.
+// WithCrpcHandlerOptions adds Connect handler options that will
+// be applied to all registered services in this scope.
 func WithCrpcHandlerOptions(opts ...connect.HandlerOption) Option {
 	return func(m *config) {
 		m.connectOpts = append(m.connectOpts, opts...)
+	}
+}
+
+// WithPrefix sets the prefix for the scope. All service
+// registered in the scope will inherit this prefix. Prefix will
+// also apply to Vanguard pattern if Vanguard is enabled and the
+// pattern is not provided (Default of Vanguard pattern is
+// `prefix`).
+func WithPrefix(prefix string) Option {
+	return func(m *config) {
+		m.prefix = prefix
 	}
 }
 
@@ -151,7 +165,7 @@ func NewScope(srv *mizu.Server, opts ...Option) *Scope {
 		once := sync.Once{}
 		mizu.Hook(srv, _CTXKEY_CRPC_VANGUARD, &once, mizu.WithHookHandler(func(srv *mizu.Server) {
 			once.Do(func() {
-				pattern := "/"
+				pattern := path.Join(scope.config.prefix, "/")
 				if scope.config.vanguardPattern != "" {
 					pattern = scope.config.vanguardPattern
 				}
@@ -194,7 +208,7 @@ func (s *Scope) Register(impl any, newFunc any, opts ...connect.HandlerOption) {
 	}
 
 	// Register service
-	s.srv.Handle(pattern, handler)
+	s.srv.Handle(path.Join(s.config.prefix, pattern), handler)
 }
 
 type relayScope struct {
