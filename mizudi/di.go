@@ -74,8 +74,17 @@ func WithSubstitutePrefix(from string, to string) Option {
 // loaded and mapped to configuration paths (e.g., MIZU_DB_HOST
 // becomes db.host).
 //
-// WARN: This function must be called exactly in the package that
-// defines configuration structs.
+// INFO: Refer to https://github.com/humbornjo/mizu/tree/main/mizudi for definition of global and service configuration
+//
+// WARN: This function must be called exactly in the package that defines global configuration structs.
+//
+// @param relativePath:
+//
+//	Relative path to global config directory from go.mod. If file name differs from path name, use path name.
+//
+// @param loadPaths:
+//
+//	List of paths to load configuration from.
 func Initialize(relativePath string, loadPaths ...string) error {
 	if _KOANF != nil {
 		panic("mizudi already initialized")
@@ -162,8 +171,7 @@ func RevealConfig(tx io.Writer) error {
 //
 //	config := mizudi.Enchant[MyConfig](nil)
 //
-// WARN: This function must be called exactly in the package that
-// defines configuration structs.
+// WARN: This function must be called exactly in the package that defines configuration structs.
 func Enchant[T any](defaultConfig *T, opts ...Option) *T {
 	_, runtimePath, _, ok := runtime.Caller(1)
 	if !ok {
