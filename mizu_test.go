@@ -52,22 +52,6 @@ func TestMizu_NewServer(t *testing.T) {
 	}
 }
 
-func TestMizu_WithPrometheusMetrics(t *testing.T) {
-	srv := mizu.NewServer("metrics-test", mizu.WithPrometheusMetrics())
-
-	handler := srv.Handler()
-	req := httptest.NewRequest("GET", "/metrics", nil)
-	rr := httptest.NewRecorder()
-	handler.ServeHTTP(rr, req)
-	assert.Equal(t, http.StatusOK, rr.Code)
-
-	// Check that it returns Prometheus format metrics
-	body := rr.Body.String()
-	if !strings.Contains(body, "# HELP") || !strings.Contains(body, "# TYPE") {
-		t.Error("metrics endpoint doesn't return Prometheus format")
-	}
-}
-
 func TestMizu_WithWizardHandleReadiness(t *testing.T) {
 	testCases := []struct {
 		name               string
@@ -154,7 +138,7 @@ func TestMizu_WithProfilingHandlers(t *testing.T) {
 func TestMizu_OptionComposition(t *testing.T) {
 	// Test that multiple options work together
 	srv := mizu.NewServer("composed-test",
-		mizu.WithPrometheusMetrics(),
+		// mizu.WithPrometheusMetrics(),
 		mizu.WithProfilingHandlers(),
 	)
 
@@ -169,21 +153,12 @@ func TestMizu_OptionComposition(t *testing.T) {
 		t.Errorf("expected status 200 for /healthz, got %d", rr1.Code)
 	}
 
-	// Test Prometheus metrics
-	req2 := httptest.NewRequest("GET", "/metrics", nil)
+	// Test pprof endpoint
+	req2 := httptest.NewRequest("GET", "/debug/pprof/", nil)
 	rr2 := httptest.NewRecorder()
 	handler.ServeHTTP(rr2, req2)
 
-	if rr2.Code != http.StatusOK {
-		t.Errorf("expected status 200 for /metrics, got %d", rr2.Code)
-	}
-
-	// Test pprof endpoint
-	req3 := httptest.NewRequest("GET", "/debug/pprof/", nil)
-	rr3 := httptest.NewRecorder()
-	handler.ServeHTTP(rr3, req3)
-
-	if rr3.Code == http.StatusNotFound {
+	if rr2.Code == http.StatusNotFound {
 		t.Error("expected pprof endpoint to be available")
 	}
 }

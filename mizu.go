@@ -10,8 +10,6 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
-
-	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
 type ctxkey int
@@ -132,21 +130,6 @@ func WithHardShutdownPeriod(d time.Duration) Option {
 		new := func(s *Server) *Server {
 			s = old(s)
 			s.config.ShutdownHardPeriod = d
-			return s
-		}
-		*m = new
-	}
-}
-
-// WithPrometheusMetrics enables Prometheus metrics collection by
-// registering the /metrics endpoint with the default Prometheus
-// handler.
-func WithPrometheusMetrics() Option {
-	return func(m *config) {
-		old := *m
-		new := func(s *Server) *Server {
-			s = old(s)
-			s.Handle("/metrics", promhttp.Handler())
 			return s
 		}
 		*m = new

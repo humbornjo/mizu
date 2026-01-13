@@ -228,7 +228,7 @@ func (s *Server) ServeContext(ctx context.Context, addr string) error {
 			time.Sleep(shutdownHardPeriod)
 			return err
 		}
-		fmt.Println("✅ [INFO] Server shut down gracefully.")
+		fmt.Println("✅ [INFO] Server shutdown gracefully.")
 	}
 
 	return nil

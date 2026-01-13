@@ -49,6 +49,7 @@ type config struct {
 // Example:
 //
 //	# service/greetsvc/config/config.go
+//
 //	mizudi.Enchant[Config](nil,
 //	  mizudi.WithSubstitutePrefix("service/greetsvc/config", "service/greet"),
 //	)
