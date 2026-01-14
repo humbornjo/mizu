@@ -161,7 +161,10 @@ go env -w GOEXPERIMENT=jsonv2
 
 ## References
 
-- [Twine Framework](http://127.0.0.1:5755)
+- Twine Framework
+  - Twine framework is a prototype which is not published, the IDEA behind it is the `Register` function in `mizuconnect`,
+    using reflection to dynamically register ConnectRPC services. What I did extra in `mizuconnect` is more fine-grained
+    type check on the input and output parameters, scope management, cache intercepter and restful toolkits.
 - [Graceful Shutdown in Go: Practical Patterns](https://victoriametrics.com/blog/go-graceful-shutdown/)
 - [Larking](https://github.com/emcfarlane/larking)
 - [Claude Code](https://www.claudecode.io)
