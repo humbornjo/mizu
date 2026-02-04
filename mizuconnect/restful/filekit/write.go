@@ -8,13 +8,12 @@ import (
 	"google.golang.org/genproto/googleapis/api/httpbody"
 )
 
-// StreamResponse represents a Connect RPC server stream that can
-// send HttpForm messages. It embeds the standard Connect stream
-// interface methods.
+// StreamResponse represents a Connect RPC server stream that can send
+// HttpForm messages. It embeds the standard Connect stream interface
+// methods.
 //
-// INFO: This interface is equivalent to
-// *connect.ServerStream[httpbody.HttpBody]. It is provided for
-// test purposes.
+// INFO: This interface is equivalent to *connect.ServerStream[httpbody.HttpBody].
+// It is provided for test purposes.
 type StreamResponse interface {
 	Send(msg *httpbody.HttpBody) error
 	Conn() connect.StreamingHandlerConn
@@ -27,13 +26,12 @@ type Writer struct {
 	inner      *bufio.Writer
 }
 
-// NewBodyWriter returns a new io.Writer that writes to the
-// provided connect.ServerStream. Response heaser must be set
-// before writing to the returned io.WriteCloser.
+// NewBodyWriter returns a new io.Writer that writes to the provided
+// connect.ServerStream. Response heaser must be set before writing to
+// the returned io.WriteCloser.
 //
-// Deprecated: NewBodyWriter is still under experimental
-// development, it does not guarantee expected behaviour on all
-// clients.
+// Deprecated: NewBodyWriter is still under experimental development,
+// it does not guarantee expected behaviour on all clients.
 func NewBodyWriter(stream StreamResponse, prologue *httpbody.HttpBody,
 ) (*Writer, error) {
 	stream.ResponseHeader().Set("Transfer-Encoding", "chunked")
@@ -58,8 +56,8 @@ func NewBodyWriter(stream StreamResponse, prologue *httpbody.HttpBody,
 	return tx, nil
 }
 
-// Write implements io.Writer. whick writes data to the
-// underlying bufio.Writer
+// Write implements io.Writer. whick writes data to the underlying
+// bufio.Writer.
 func (w *Writer) Write(p []byte) (int, error) {
 	n, err := w.inner.Write(p)
 	w.writeBytes += int64(n)

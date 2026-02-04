@@ -43,8 +43,8 @@ type config struct {
 }
 
 // WithSubstitutePrefix is an option that allows you to specify a
-// mapping of strings to be replaced in configuration paths. An
-// empty second input parameter is with the trim semantics.
+// mapping of strings to be replaced in configuration paths. An empty
+// second input parameter is with the trim semantics.
 //
 // Example:
 //
@@ -62,18 +62,18 @@ func WithSubstitutePrefix(from string, to string) Option {
 	}
 }
 
-// Init initializes the mizudi package with the provided options.
-// It sets up the configuration system by loading YAML files and
-// environment variables. `relativePath` is the relative path to
-// the current directory from repository root.
+// Init initializes the mizudi package with the provided options. It
+// sets up the configuration system by loading YAML files and
+// environment variables. `relativePath` is the relative path to the
+// current directory from repository root.
 //
-// The function automatically determines the compiling time
-// prefix and loads configuration from the specified paths (or
-// defaults to "local.yaml" in the current working directory).
+// The function automatically determines the compiling time prefix and
+// loads configuration from the specified paths (or defaults to
+// "local.yaml" in the current working directory).
 //
-// Environment variables with prefix "MIZU_" are automatically
-// loaded and mapped to configuration paths (e.g., MIZU_DB_HOST
-// becomes db.host).
+// Environment variables with prefix "MIZU_" are automatically loaded
+// and mapped to configuration paths (e.g., MIZU_DB_HOST becomes
+// db.host).
 //
 // INFO: Refer to https://github.com/humbornjo/mizu/tree/main/mizudi for definition of global and service configuration
 //
@@ -129,9 +129,8 @@ func Initialize(relativePath string, loadPaths ...string) error {
 	return nil
 }
 
-// Reveal prints the loaded configuration to the provided
-// io.Writer. This function should be used after calling
-// Initialize.
+// Reveal prints the loaded configuration to the provided io.Writer.
+// This function should be used after calling Initialize.
 func RevealConfig(tx io.Writer) error {
 	if _KOANF == nil {
 		return ErrNotInitialized
@@ -151,17 +150,16 @@ func RevealConfig(tx io.Writer) error {
 // Enchant extracts configuration for a specific type T from the
 // loaded configuration files.
 //
-// It uses the caller's directory path to determine the
-// configuration path within the YAML structure.
+// It uses the caller's directory path to determine the configuration
+// path within the YAML structure.
 //
-// The function automatically determines the configuration path
-// based on the caller's file location relative to project root.
-// For example, if called from "service/greetsvc/config.go", it
-// will look for configuration under the "service/greetsvc" path
-// in the YAML files.
+// The function automatically determines the configuration path based
+// on the caller's file location relative to project root. For example,
+// if called from "service/greetsvc/config.go", it will look for
+// configuration under the "service/greetsvc" path in the YAML files.
 //
-// The configuration is unmarshaled into the provided type T
-// using YAML tags.
+// The configuration is unmarshaled into the provided type T using
+// YAML tags.
 //
 // Example:
 //
@@ -215,8 +213,7 @@ load:
 	return defaultConfig
 }
 
-// Retrieve is a handy wrapper around samber/do/v2's Invoke
-// function.
+// Retrieve is a handy wrapper around samber/do/v2's Invoke function.
 //
 // Example:
 //
@@ -234,14 +231,14 @@ func Retrieve[T any]() (T, error) {
 	return do.Invoke[T](_INJECTOR)
 }
 
-// MustRetrieve is a handy wrapper around samber/do/v2's
-// MustInvoke function.
+// MustRetrieve is a handy wrapper around samber/do/v2's MustInvoke
+// function.
 func MustRetrieve[T any]() T {
 	return do.MustInvoke[T](_INJECTOR)
 }
 
-// RetrieveNamed is a handy wrapper around samber/do/v2's
-// InvokeNamed function,
+// RetrieveNamed is a handy wrapper around samber/do/v2's InvokeNamed
+// function,
 //
 // RetrieveNamed allows:
 //  1. Retrieve multiple same type with different names.
@@ -258,14 +255,13 @@ func MustRetrieveNamed[T any](name string) T {
 	return do.MustInvokeNamed[T](_INJECTOR, typedName)
 }
 
-// Register is a handy wrapper around samber/do/v2's Provide
-// function.
+// Register is a handy wrapper around samber/do/v2's Provide function.
 func Register[T any](fn func() (T, error)) {
 	do.Provide(_INJECTOR, func(i do.Injector) (T, error) { return fn() })
 }
 
-// RegisterNamed is a handy wrapper around samber/do/v2's
-// ProvideNamed function.
+// RegisterNamed is a handy wrapper around samber/do/v2's ProvideNamed
+// function.
 //
 // RegisterNamed allows:
 //  1. Register multiple same type with different names.

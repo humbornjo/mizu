@@ -33,8 +33,8 @@ func WithServiceName(name string) Option {
 	return func(c *config) { c.serviceName = name }
 }
 
-// WithServiceVersion sets the service version for the
-// OpenTelemetry resource.
+// WithServiceVersion sets the service version for the OpenTelemetry
+// resource.
 func WithServiceVersion(version string) Option {
 	return func(c *config) { c.serviceVersion = version }
 }
@@ -51,8 +51,8 @@ func WithAttributes(attrs ...attribute.KeyValue) Option {
 	return func(c *config) { c.attrs = append(c.attrs, attrs...) }
 }
 
-// WithResource sets a custom OpenTelemetry resource, overriding
-// the default resource creation.
+// WithResource sets a custom OpenTelemetry resource, overriding the
+// default resource creation.
 func WithResource(res *resource.Resource) Option {
 	return func(c *config) { c.resource = res }
 }
@@ -69,10 +69,9 @@ func WithMeterProvider(mp metric.MeterProvider) Option {
 	return func(c *config) { c.meterProvider = mp }
 }
 
-// Initialize sets up OpenTelemetry with the given options. It
-// creates default tracer and meter providers with basic
-// configuration, or uses custom providers if specified in the
-// options.
+// Initialize sets up OpenTelemetry with the given options. It creates
+// default tracer and meter providers with basic configuration, or
+// uses custom providers if specified in the options.
 func Initialize(opts ...Option) error {
 	config := &config{
 		serviceName:    "mizu-service",
@@ -136,9 +135,9 @@ func Initialize(opts ...Option) error {
 	return nil
 }
 
-// Shutdown gracefully shuts down the OpenTelemetry providers.
-// It attempts to shutdown both tracer and meter providers and
-// returns the first error encountered.
+// Shutdown gracefully shuts down the OpenTelemetry providers. It
+// attempts to shutdown both tracer and meter providers and returns
+// the first error encountered.
 func Shutdown(ctx context.Context) error {
 	var errs []error
 

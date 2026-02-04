@@ -88,10 +88,9 @@ func fill(rules *rules, contentTypes ...string) {
 }
 
 // WithOverrideGzip sets a custom gzip encoder configuration or
-// disables gzip compression. Pass nil to disable gzip
-// compression entirely, or provide a custom EncoderGzip with
-// specific compression level settings to override the default
-// encoder.
+// disables gzip compression. Pass nil to disable gzip compression
+// entirely, or provide a custom EncoderGzip with specific compression
+// level settings to override the default encoder.
 func WithOverrideGzip(enc *EncoderGzip) Option {
 	return func(c *config) {
 		if enc == nil {
@@ -109,11 +108,10 @@ func WithOverrideGzip(enc *EncoderGzip) Option {
 	}
 }
 
-// WithOverrideDeflate sets a custom deflate encoder
-// configuration or disables deflate compression. Pass nil to
-// disable deflate compression entirely, or provide a custom
-// EncoderDeflate with specific compression level settings to
-// override the default encoder.
+// WithOverrideDeflate sets a custom deflate encoder configuration or
+// disables deflate compression. Pass nil to disable deflate
+// compression entirely, or provide a custom EncoderDeflate with
+// specific compression level settings to override the default encoder.
 func WithOverrideDeflate(enc *EncoderDeflate) Option {
 	return func(c *config) {
 		if enc == nil {
@@ -131,9 +129,9 @@ func WithOverrideDeflate(enc *EncoderDeflate) Option {
 	}
 }
 
-// WithContentTypes sets the list of content types to compress.
-// If no content types are provided, the default list is used
-// (see _DEFAULT_CONTENT_TYPES). Wildcards are supported.
+// WithContentTypes sets the list of content types to compress. If no
+// content types are provided, the default list is used (see
+// _DEFAULT_CONTENT_TYPES). Wildcards are supported.
 //
 // Example:
 //
@@ -152,8 +150,8 @@ func WithContentTypes(contentTypes ...string) Option {
 // Accept-Encoding headers. It supports both gzip and deflate
 // compression with configurable content type filtering. The
 // middleware determines the best compression algorithm based on
-// client preferences and serves the response through the
-// appropriate encoder.
+// client preferences and serves the response through the appropriate
+// encoder.
 func New(opts ...Option) func(http.Handler) http.Handler {
 	config := _DEFAULT_CONFIG.clone()
 	for _, opt := range opts {
@@ -190,8 +188,8 @@ func New(opts ...Option) func(http.Handler) http.Handler {
 
 // EncoderGzip -------------------------------------------------
 
-// EncoderGzip handles gzip compression for HTTP responses. It
-// wraps gzip.Writer and provides configurable compression levels.
+// EncoderGzip handles gzip compression for HTTP responses. It wraps
+// gzip.Writer and provides configurable compression levels.
 type EncoderGzip struct {
 	Level gzipLevel
 }
@@ -237,8 +235,7 @@ func (l gzipLevel) Int() int {
 // EncoderDeflate -----------------------------------------------
 
 // EncoderDeflate handles deflate compression for HTTP responses.
-// It wraps flate.Writer and provides configurable compression
-// levels.
+// It wraps flate.Writer and provides configurable compression levels.
 type EncoderDeflate struct {
 	Level deflateLevel
 }
