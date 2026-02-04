@@ -72,7 +72,7 @@ func TestMizu_WithWizardHandleReadiness(t *testing.T) {
 			server: mizu.NewServer(
 				"custom-readiness",
 				mizu.WithWizardHandleReadiness(
-					"GET /healthz",
+					"/healthz",
 					func(isShuttingDown *atomic.Bool) http.HandlerFunc {
 						return func(w http.ResponseWriter, r *http.Request) {
 							if isShuttingDown.Load() {

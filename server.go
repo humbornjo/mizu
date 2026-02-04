@@ -2,12 +2,14 @@ package mizu
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
+	"iter"
 	"net"
 	"net/http"
 	"os"
 	"os/signal"
+	"path"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -33,9 +35,9 @@ type serverConfig struct {
 	WizardHandleReadiness func(isShuttingDown *atomic.Bool) http.HandlerFunc
 }
 
-// Server is the main HTTP server that implements the Mux
-// interface. It provides HTTP routing, middleware support, and
-// graceful shutdown capabilities.
+// Server is the main HTTP server that implements the Mux interface.
+// It provides HTTP routing, middleware support, and graceful shutdown
+// capabilities.
 type Server struct {
 	inner multiplexer
 
@@ -48,8 +50,12 @@ type Server struct {
 	ctx         context.Context
 	name        string
 	config      *serverConfig
-	hookStartup []func(*Server)
-	hookHandler []func(*Server)
+	hookStartup *[]func(*Server)
+	hookHandler *[]func(*Server)
+
+	prefix   []string
+	buckets  []*bucket
+	volatile *bucket
 }
 
 // Name returns the name of the server.
@@ -72,23 +78,22 @@ func WithHookStartup(hook func(*Server)) hookOption {
 	}
 }
 
-// WithHookHandler registers a hook function when Calling
-// Handler.
+// WithHookHandler registers a hook function when Calling Handler.
 func WithHookHandler(hook func(*Server)) hookOption {
 	return func(config *hookConfig) {
 		config.hookHandler = hook
 	}
 }
 
-// Hook registers a hook function for the given key. If value is
-// not nil, it will be registered as the value for the key.
-// HookOption offer customization options for performing
-// additional actions on different phases in server lifecycle.
-// Returned value is the registered value for the key if value is
-// not nil, otherwise nil pointer is returned.
+// Hook registers a hook function for the given key. If value is not
+// nil, it will be registered as the value for the key. HookOption
+// offer customization options for performing additional actions on
+// different phases in server lifecycle. Returned value is the
+// registered value for the key if value is not nil, otherwise nil
+// pointer is returned.
 //
-// WARN: This is a advanced function which in most cases should
-// not be used.
+// WARN: This is a advanced function which in most cases should not be
+// used.
 func Hook[K any, V any](s *Server, key K, val *V, opts ...hookOption) *V {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -101,10 +106,10 @@ func Hook[K any, V any](s *Server, key K, val *V, opts ...hookOption) *V {
 		opt(config)
 	}
 	if config.hookHandler != nil {
-		s.hookHandler = append(s.hookHandler, config.hookHandler)
+		*s.hookHandler = append(*s.hookHandler, config.hookHandler)
 	}
 	if config.hookStartup != nil {
-		s.hookStartup = append(s.hookStartup, config.hookStartup)
+		*s.hookStartup = append(*s.hookStartup, config.hookStartup)
 	}
 
 	if v := s.ctx.Value(key); v != nil {
@@ -116,8 +121,8 @@ func Hook[K any, V any](s *Server, key K, val *V, opts ...hookOption) *V {
 // Immediate offer the typed value for the given key for user to
 // access in closure, this access is concurrent safe.
 //
-// WARN: This is a advanced function which in most cases should
-// not be used.
+// WARN: This is a advanced function which in most cases should not be
+// used.
 func Immediate[K any, V any](s *Server, key K, closure func(*V)) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -129,29 +134,24 @@ func Immediate[K any, V any](s *Server, key K, closure func(*V)) {
 	closure(nil)
 }
 
-// Handler returns the base HTTP handler (mux) without
-// middlewares. This method will be called before starting the
-// server. It can also be used to extract handlers for other
-// purposes.
+// Handler returns the base HTTP handler (mux) without middlewares.
+// This method will be called before starting the server. It can also
+// be used to extract handlers for other purposes.
 func (s *Server) Handler() http.Handler {
 	if s.initialized.CompareAndSwap(false, true) {
-		s.inner.HandleFunc(
-			s.config.ReadinessPath,
-			s.config.WizardHandleReadiness(s.isShuttingDown),
-		)
+		s.Get(s.config.ReadinessPath, s.config.WizardHandleReadiness(s.isShuttingDown))
 	}
 
-	for _, hook := range s.hookHandler {
+	for _, hook := range *s.hookHandler {
 		hook(s)
 	}
 
 	return s.inner.Handler()
 }
 
-// ServeContext starts the HTTP server on the given address and
-// blocks until the context is cancelled. It handles graceful
-// shutdown when the context is cancelled, draining connections
-// before stopping.
+// ServeContext starts the HTTP server on the given address and blocks
+// until the context is cancelled. It handles graceful shutdown when
+// the context is cancelled, draining connections before stopping.
 func (s *Server) ServeContext(ctx context.Context, addr string) error {
 	ctx, stop := signal.NotifyContext(ctx, os.Interrupt)
 	defer stop()
@@ -181,7 +181,7 @@ func (s *Server) ServeContext(ctx context.Context, addr string) error {
 	server.Handler = s.Handler()
 
 	fmt.Println("🚀 [INFO] Starting HTTP server on", addr)
-	for _, hook := range s.hookStartup {
+	for _, hook := range *s.hookStartup {
 		hook(s)
 	}
 
@@ -220,7 +220,7 @@ func (s *Server) ServeContext(ctx context.Context, addr string) error {
 			cleanupHookFunc()
 		}
 
-		// Cancel in-flight requests, disable it or customize it by setting http.Server via WithCustomHttpServer
+		// Cancel in-flight requests, disable it or customize it via WithCustomHttpServer
 		ingCancel()
 
 		if err != nil {
@@ -235,153 +235,288 @@ func (s *Server) ServeContext(ctx context.Context, addr string) error {
 }
 
 func (s *Server) HandleFunc(pattern string, handlerFunc http.HandlerFunc) {
-	Immediate(s, _CTXKEY, func(v *[]string) {
-		if v == nil {
-			s.inner.HandleFunc(pattern, handlerFunc)
-			return
+	registeredPath := path.Join(append(s.prefix, pattern)...)
+	if pattern != string(os.PathSeparator) &&
+		strings.TrimSuffix(pattern, string(os.PathSeparator)) != pattern {
+		registeredPath += string(os.PathSeparator)
+	}
+
+	var registeredFunc http.Handler = handlerFunc
+	Immediate(s, _CTXKEY, func(v *routes) {
+		for mw := range s.drain() {
+			registeredFunc = mw(registeredFunc)
 		}
-		*v = append(*v, s.inner.HandleFunc(pattern, handlerFunc))
+		if v != nil {
+			v.add("", registeredPath, s.prefix...)
+		}
+		s.inner.HandleFunc(registeredPath, registeredFunc.ServeHTTP)
 	})
 }
 
 func (s *Server) Handle(pattern string, handler http.Handler) {
-	Immediate(s, _CTXKEY, func(v *[]string) {
-		if v == nil {
-			s.inner.Handle(pattern, handler)
-			return
+	registeredPath := path.Join(append(s.prefix, pattern)...)
+	if pattern != string(os.PathSeparator) &&
+		strings.TrimSuffix(pattern, string(os.PathSeparator)) != pattern {
+		registeredPath += string(os.PathSeparator)
+	}
+
+	var registeredFunc = handler
+	Immediate(s, _CTXKEY, func(v *routes) {
+		for mw := range s.drain() {
+			registeredFunc = mw(registeredFunc)
 		}
-		*v = append(*v, s.inner.Handle(pattern, handler))
+		if v != nil {
+			v.add("", registeredPath, s.prefix...)
+		}
+		s.inner.Handle(registeredPath, registeredFunc)
 	})
 }
 
 func (s *Server) Get(pattern string, handler http.HandlerFunc) {
-	Immediate(s, _CTXKEY, func(v *[]string) {
-		if v == nil {
-			s.inner.Get(pattern, handler)
-			return
+	registeredPath := path.Join(append(s.prefix, pattern)...)
+	if pattern != string(os.PathSeparator) &&
+		strings.TrimSuffix(pattern, string(os.PathSeparator)) != pattern {
+		registeredPath += string(os.PathSeparator)
+	}
+
+	var registeredFunc http.Handler = handler
+	Immediate(s, _CTXKEY, func(v *routes) {
+		for mw := range s.drain() {
+			registeredFunc = mw(registeredFunc)
 		}
-		*v = append(*v, s.inner.Get(pattern, handler))
+		if v != nil {
+			v.add(http.MethodGet, registeredPath, s.prefix...)
+		}
+		s.inner.Get(registeredPath, registeredFunc.ServeHTTP)
 	})
 }
 
 func (s *Server) Post(pattern string, handler http.HandlerFunc) {
-	Immediate(s, _CTXKEY, func(v *[]string) {
-		if v == nil {
-			s.inner.Post(pattern, handler)
-			return
+	registeredPath := path.Join(append(s.prefix, pattern)...)
+	if pattern != string(os.PathSeparator) &&
+		strings.TrimSuffix(pattern, string(os.PathSeparator)) != pattern {
+		registeredPath += string(os.PathSeparator)
+	}
+
+	var registeredFunc http.Handler = handler
+	Immediate(s, _CTXKEY, func(v *routes) {
+		for mw := range s.drain() {
+			registeredFunc = mw(registeredFunc)
 		}
-		*v = append(*v, s.inner.Post(pattern, handler))
+		if v != nil {
+			v.add(http.MethodPost, registeredPath, s.prefix...)
+		}
+		s.inner.Post(registeredPath, registeredFunc.ServeHTTP)
 	})
 }
 
 func (s *Server) Put(pattern string, handler http.HandlerFunc) {
-	Immediate(s, _CTXKEY, func(v *[]string) {
-		if v == nil {
-			s.inner.Put(pattern, handler)
-			return
+	registeredPath := path.Join(append(s.prefix, pattern)...)
+	if pattern != string(os.PathSeparator) &&
+		strings.TrimSuffix(pattern, string(os.PathSeparator)) != pattern {
+		registeredPath += string(os.PathSeparator)
+	}
+
+	var registeredFunc http.Handler = handler
+	Immediate(s, _CTXKEY, func(v *routes) {
+		for mw := range s.drain() {
+			registeredFunc = mw(registeredFunc)
 		}
-		*v = append(*v, s.inner.Put(pattern, handler))
+		if v != nil {
+			v.add(http.MethodPut, registeredPath, s.prefix...)
+		}
+		s.inner.Put(registeredPath, registeredFunc.ServeHTTP)
 	})
 }
 
 func (s *Server) Delete(pattern string, handler http.HandlerFunc) {
-	Immediate(s, _CTXKEY, func(v *[]string) {
-		if v == nil {
-			s.inner.Delete(pattern, handler)
-			return
+	registeredPath := path.Join(append(s.prefix, pattern)...)
+	if pattern != string(os.PathSeparator) &&
+		strings.TrimSuffix(pattern, string(os.PathSeparator)) != pattern {
+		registeredPath += string(os.PathSeparator)
+	}
+
+	var registeredFunc http.Handler = handler
+	Immediate(s, _CTXKEY, func(v *routes) {
+		for mw := range s.drain() {
+			registeredFunc = mw(registeredFunc)
 		}
-		*v = append(*v, s.inner.Delete(pattern, handler))
+		if v != nil {
+			v.add(http.MethodDelete, registeredPath, s.prefix...)
+		}
+		s.inner.Delete(registeredPath, registeredFunc.ServeHTTP)
 	})
 }
 
 func (s *Server) Patch(pattern string, handler http.HandlerFunc) {
-	Immediate(s, _CTXKEY, func(v *[]string) {
-		if v == nil {
-			s.inner.Patch(pattern, handler)
-			return
+	registeredPath := path.Join(append(s.prefix, pattern)...)
+	if pattern != string(os.PathSeparator) &&
+		strings.TrimSuffix(pattern, string(os.PathSeparator)) != pattern {
+		registeredPath += string(os.PathSeparator)
+	}
+
+	var registeredFunc http.Handler = handler
+	Immediate(s, _CTXKEY, func(v *routes) {
+		for mw := range s.drain() {
+			registeredFunc = mw(registeredFunc)
 		}
-		*v = append(*v, s.inner.Patch(pattern, handler))
+		if v != nil {
+			v.add(http.MethodPatch, registeredPath, s.prefix...)
+		}
+		s.inner.Patch(registeredPath, registeredFunc.ServeHTTP)
 	})
 }
 
 func (s *Server) Head(pattern string, handler http.HandlerFunc) {
-	Immediate(s, _CTXKEY, func(v *[]string) {
-		if v == nil {
-			s.inner.Head(pattern, handler)
-			return
+	registeredPath := path.Join(append(s.prefix, pattern)...)
+	if pattern != string(os.PathSeparator) &&
+		strings.TrimSuffix(pattern, string(os.PathSeparator)) != pattern {
+		registeredPath += string(os.PathSeparator)
+	}
+
+	var registeredFunc http.Handler = handler
+	Immediate(s, _CTXKEY, func(v *routes) {
+		for mw := range s.drain() {
+			registeredFunc = mw(registeredFunc)
 		}
-		*v = append(*v, s.inner.Head(pattern, handler))
+		if v != nil {
+			v.add(http.MethodHead, registeredPath, s.prefix...)
+		}
+		s.inner.Head(registeredPath, registeredFunc.ServeHTTP)
 	})
 }
 
 func (s *Server) Trace(pattern string, handler http.HandlerFunc) {
-	Immediate(s, _CTXKEY, func(v *[]string) {
-		if v == nil {
-			s.inner.Trace(pattern, handler)
-			return
+	registeredPath := path.Join(append(s.prefix, pattern)...)
+	if pattern != string(os.PathSeparator) &&
+		strings.TrimSuffix(pattern, string(os.PathSeparator)) != pattern {
+		registeredPath += string(os.PathSeparator)
+	}
+
+	var registeredFunc http.Handler = handler
+	Immediate(s, _CTXKEY, func(v *routes) {
+		for mw := range s.drain() {
+			registeredFunc = mw(registeredFunc)
 		}
-		*v = append(*v, s.inner.Trace(pattern, handler))
+		if v != nil {
+			v.add(http.MethodTrace, registeredPath, s.prefix...)
+		}
+		s.inner.Trace(registeredPath, registeredFunc.ServeHTTP)
 	})
 }
 
 func (s *Server) Options(pattern string, handler http.HandlerFunc) {
-	Immediate(s, _CTXKEY, func(v *[]string) {
-		if v == nil {
-			s.inner.Options(pattern, handler)
-			return
+	registeredPath := path.Join(append(s.prefix, pattern)...)
+	if pattern != string(os.PathSeparator) &&
+		strings.TrimSuffix(pattern, string(os.PathSeparator)) != pattern {
+		registeredPath += string(os.PathSeparator)
+	}
+
+	var registeredFunc http.Handler = handler
+	Immediate(s, _CTXKEY, func(v *routes) {
+		for mw := range s.drain() {
+			registeredFunc = mw(registeredFunc)
 		}
-		*v = append(*v, s.inner.Options(pattern, handler))
+		if v != nil {
+			v.add(http.MethodOptions, registeredPath, s.prefix...)
+		}
+		s.inner.Options(registeredPath, registeredFunc.ServeHTTP)
 	})
 }
 
 func (s *Server) Connect(pattern string, handler http.HandlerFunc) {
-	Immediate(s, _CTXKEY, func(v *[]string) {
-		if v == nil {
-			s.inner.Connect(pattern, handler)
-			return
+	registeredPath := path.Join(append(s.prefix, pattern)...)
+	if pattern != string(os.PathSeparator) &&
+		strings.TrimSuffix(pattern, string(os.PathSeparator)) != pattern {
+		registeredPath += string(os.PathSeparator)
+	}
+
+	var registeredFunc http.Handler = handler
+	Immediate(s, _CTXKEY, func(v *routes) {
+		for mw := range s.drain() {
+			registeredFunc = mw(registeredFunc)
 		}
-		*v = append(*v, s.inner.Connect(pattern, handler))
+		if v != nil {
+			v.add(http.MethodConnect, registeredPath, s.prefix...)
+		}
+		s.inner.Connect(registeredPath, registeredFunc.ServeHTTP)
 	})
 }
 
+// Group add a prefix to the following serving patterns. Apply chained
+// Use before Group to apply the middleware group-wise.
+//
+// Example:
+//
+//	    // middleware mw will be applied to all routes in the group
+//			group := mizui.Use(mw).Group("/api")
+//
+//		  group.Get("/user", handlerUser)
+//		  group.Get("/goods", handlerGoods)
 func (s *Server) Group(prefix string) *Server {
+	s.mmu.Lock()
+	defer s.mmu.Unlock()
+
 	ss := *s
-	ss.inner = s.inner.Group(prefix)
+	ss.prefix = append(s.prefix, prefix)
+	ss.volatile = nil
+	ss.buckets = append([]*bucket{}, s.buckets...)
+
+	s.volatile = nil
 	return &ss
 }
 
+// Use adds a middleware to the server. You can either consume the
+// middleware in chained manner or leave it and make it apply to all
+// the routes added after it.
 func (s *Server) Use(middleware func(http.Handler) http.Handler) *Server {
+	s.mmu.Lock()
+	defer s.mmu.Unlock()
+
+	if s.volatile != nil {
+		s.volatile.Middlewares = append(s.volatile.Middlewares, middleware)
+		return s
+	}
+
 	ss := *s
-	ss.inner = s.inner.Use(middleware)
+
+	b := &bucket{Middlewares: []func(http.Handler) http.Handler{middleware}}
+	s.buckets = append(s.buckets, b)
+
+	ss.volatile = b
+	ss.buckets = append([]*bucket{}, s.buckets...)
 	return &ss
 }
 
 // Uses is a shortcut for chaining multiple middlewares.
 func (s *Server) Uses(middleware func(http.Handler) http.Handler, more ...func(http.Handler) http.Handler,
 ) *Server {
-	ss := *s
-	ss.inner = ss.inner.Use(middleware)
+	ss := s.Use(middleware)
 	for _, mw := range more {
-		ss.inner = ss.inner.Use(mw)
+		ss = ss.Use(mw)
 	}
-	return &ss
+	return ss
 }
 
-// WriteJson writes a JSON response to the client.
-func WriteJson(w http.ResponseWriter, val any, code ...int) error {
-	w.Header().Set("Content-Type", "application/json")
-	if len(code) > 0 {
-		w.WriteHeader(code[0])
+// drain applies all accumulated middlewares in the bucket to the
+// given handler and clears the bucket.
+func (s *Server) drain() iter.Seq[func(http.Handler) http.Handler] {
+	return func(yield func(func(http.Handler) http.Handler) bool) {
+		if s.volatile != nil {
+			for i := len(s.volatile.Middlewares) - 1; i >= 0; i-- {
+				if !yield(s.volatile.Middlewares[i]) {
+					return
+				}
+			}
+			s.volatile.Middlewares = s.volatile.Middlewares[:0]
+			s.volatile = nil
+		}
+		for i := len(s.buckets) - 1; i >= 0; i-- {
+			for j := len(s.buckets[i].Middlewares) - 1; j >= 0; j-- {
+				if !yield(s.buckets[i].Middlewares[j]) {
+					return
+				}
+			}
+		}
 	}
-	return json.NewEncoder(w).Encode(val)
-}
-
-// WriteString writes a string response to the client
-func WriteString(w http.ResponseWriter, val string, code ...int) error {
-	w.Header().Set("Content-Type", "text/plain")
-	if len(code) > 0 {
-		w.WriteHeader(code[0])
-	}
-	_, err := w.Write([]byte(val))
-	return err
 }
