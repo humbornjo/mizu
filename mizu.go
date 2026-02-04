@@ -1,12 +1,12 @@
 package mizu
 
 import (
+	"cmp"
 	"context"
 	"fmt"
 	"net/http"
 	"net/http/pprof"
 	"slices"
-	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -27,7 +27,7 @@ var (
 		ShutdownPeriod:      _SHUTDOWN_PERIOD,
 		ShutdownHardPeriod:  _SHUTDOWN_HARD_PERIOD,
 		ReadinessDrainDelay: _READINESS_DRAIN_DELAY,
-		ReadinessPath:       "GET /healthz",
+		ReadinessPath:       "/healthz",
 		WizardHandleReadiness: func(isShuttingDown *atomic.Bool) http.HandlerFunc {
 			return func(w http.ResponseWriter, r *http.Request) {
 				if isShuttingDown.Load() {
@@ -39,12 +39,10 @@ var (
 		},
 	}
 
-	// PROTOCOLS_HTTP2 supports HTTP/1 and HTTP/2 (both TLS and
-	// H2C)
+	// PROTOCOLS_HTTP2 supports HTTP/1 and HTTP/2 (both TLS and H2C)
 	PROTOCOLS_HTTP2 http.Protocols
 
-	// PROTOCOLS_HTTP2_UNENCRYPTED supports HTTP/1 and unencrypted
-	// HTTP/2
+	// PROTOCOLS_HTTP2_UNENCRYPTED supports HTTP/1 and unencrypted HTTP/2
 	PROTOCOLS_HTTP2_UNENCRYPTED http.Protocols
 )
 
@@ -59,11 +57,11 @@ func init() {
 	PROTOCOLS_HTTP2 = protocols
 }
 
-// NewServer creates a new mizu HTTP server with the given
-// service name and options. The service name is used for logging
-// and debugging purposes. Default configuration includes 5s
-// readiness drain delay (k8s integration), graceful shutdown
-// with 15s timeout and 3s hard timeout.
+// NewServer creates a new mizu HTTP server with the given service
+// name and options. The service name is used for logging and
+// debugging purposes. Default configuration includes 5s readiness
+// drain delay (k8s integration), graceful shutdown with 15s timeout
+// and 3s hard timeout.
 func NewServer(srvName string, opts ...Option) *Server {
 	var config = new(config)
 	*config = func(s *Server) *Server {
@@ -83,6 +81,9 @@ func NewServer(srvName string, opts ...Option) *Server {
 		name:           srvName,
 		initialized:    &atomic.Bool{},
 		isShuttingDown: &atomic.Bool{},
+
+		hookStartup: &[]func(*Server){},
+		hookHandler: &[]func(*Server){},
 	}
 	server.initialized.Store(false)
 	server.isShuttingDown.Store(false)
@@ -91,9 +92,9 @@ func NewServer(srvName string, opts ...Option) *Server {
 	return (*config)(server)
 }
 
-// WithReadinessDrainDelay sets the delay before starting
-// graceful shutdown. This allows load balancers and health
-// checks time to detect the server is shutting down.
+// WithReadinessDrainDelay sets the delay before starting graceful
+// shutdown. This allows load balancers and health checks time to
+// detect the server is shutting down.
 func WithReadinessDrainDelay(d time.Duration) Option {
 	return func(m *config) {
 		old := *m
@@ -107,8 +108,8 @@ func WithReadinessDrainDelay(d time.Duration) Option {
 }
 
 // WithShutdownPeriod sets the timeout for graceful shutdown. The
-// server will wait this long for ongoing requests to complete
-// before forcing shutdown.
+// server will wait this long for ongoing requests to complete before
+// forcing shutdown.
 func WithShutdownPeriod(d time.Duration) Option {
 	return func(m *config) {
 		old := *m
@@ -121,9 +122,9 @@ func WithShutdownPeriod(d time.Duration) Option {
 	}
 }
 
-// WithHardShutdownPeriod sets the timeout for hard shutdown
-// after graceful shutdown fails. This is the final wait time
-// before the server process terminates.
+// WithHardShutdownPeriod sets the timeout for hard shutdown after
+// graceful shutdown fails. This is the final wait time before the
+// server process terminates.
 func WithHardShutdownPeriod(d time.Duration) Option {
 	return func(m *config) {
 		old := *m
@@ -149,11 +150,11 @@ func WithServerProtocols(protocols http.Protocols) Option {
 	}
 }
 
-// WithCustomHttpServer allows using a custom http.Server instead
-// of the default one. This gives full control over server
-// configuration like timeouts, TLS, etc. cleanupFns are called
-// after the server completes shutdown, it is commonly used to
-// stop the in flight requests (e.g. context.CancelFunc).
+// WithCustomHttpServer allows using a custom http.Server instead of
+// the default one. This gives full control over server configuration
+// like timeouts, TLS, etc. cleanupFns are called after the server
+// completes shutdown, it is commonly used to stop the in flight
+// requests (e.g. context.CancelFunc).
 func WithCustomHttpServer(server *http.Server, cleanupFns ...func()) Option {
 	return func(m *config) {
 		old := *m
@@ -167,10 +168,10 @@ func WithCustomHttpServer(server *http.Server, cleanupFns ...func()) Option {
 	}
 }
 
-// WithWizardHandleReadiness sets a custom readiness check
-// handler. The wizard function receives the server's shutdown
-// state and should return an HTTP handler that responds to
-// readiness/health check requests.
+// WithWizardHandleReadiness sets a custom readiness check handler.
+// The wizard function receives the server's shutdown state and should
+// return an HTTP handler that responds to readiness/health check
+// requests.
 func WithWizardHandleReadiness(pattern string, wizard func(*atomic.Bool) http.HandlerFunc) Option {
 	return func(m *config) {
 		old := *m
@@ -216,32 +217,70 @@ func WithProfilingHandlers() Option {
 	}
 }
 
+type (
+	rpattern struct {
+		Method string
+		Path   string
+	}
+	routes struct {
+		Patterns []rpattern
+		Nested   map[string]*routes
+	}
+)
+
+func (r *routes) add(method, pattern string, prefixes ...string) {
+	if len(prefixes) == 0 {
+		r.Patterns = append(r.Patterns, rpattern{method, pattern})
+		return
+	}
+
+	prefix := prefixes[0]
+	if r.Nested == nil {
+		r.Nested = map[string]*routes{}
+	}
+	_, ok := r.Nested[prefix]
+	if !ok {
+		r.Nested[prefix] = &routes{}
+	}
+	rr := r.Nested[prefix]
+	rr.add(method, pattern, prefixes[1:]...)
+}
+
 // WithDisplayRoutesOnStartup enables logging of all registered
 // routes when the server starts. This is useful for debugging
 // and development to see what endpoints are available.
 func WithRevealRoutes() Option {
+	var re func(*routes, int)
+	re = func(r *routes, depth int) {
+		slices.SortFunc(r.Patterns, func(i, j rpattern) int {
+			if pres := cmp.Compare(i.Path, j.Path); pres != 0 {
+				return pres
+			}
+			return cmp.Compare(i.Method, j.Method)
+		})
+
+		for _, route := range r.Patterns {
+			method := route.Method
+			if route.Method == "" {
+				method = "*"
+			}
+			fmt.Printf("%*s     📍 %-7s %s\n", depth*2, "", method, route.Path)
+		}
+		for group, nested := range r.Nested {
+			fmt.Printf("%*s     📂 %s\n", depth*2, "", group)
+			re(nested, depth+1)
+		}
+	}
+
 	return func(m *config) {
 		old := *m
 		new := func(s *Server) *Server {
 			s = old(s)
 
-			routes := new([]string)
+			routes := new(routes)
 			Hook(s, _CTXKEY, routes, WithHookStartup(func(s *Server) {
 				fmt.Println("📦 [INFO] Available routes:")
-
-				slices.Sort(*routes)
-				for _, path := range *routes {
-					method := ""
-					uri := path
-					if fields := strings.Fields(path); len(fields) == 2 {
-						method, uri = fields[0], fields[1]
-					}
-					if method == "" {
-						fmt.Printf("     ➤ 📍 %-7s %s\n", "*", uri)
-					} else {
-						fmt.Printf("     ➤ 📍 %-7s %s\n", method, uri)
-					}
-				}
+				re(routes, 0)
 			}))
 			return s
 		}

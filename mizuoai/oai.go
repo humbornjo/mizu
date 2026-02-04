@@ -28,10 +28,10 @@ const (
 	_CTXKEY_OAI ctxkey = iota
 )
 
-// Initialize inject OpenAPI config into mizu.Server with the
-// given path and options. openapi.json will be served at
-// /{path}/openapi.json. HTML will be served at /{path}/openapi
-// if enabled. {path} can be set using WithOaiServePath
+// Initialize inject OpenAPI config into mizu.Server with the given
+// path and options. openapi.json will be served at /{path}/openapi.json.
+// HTML will be served at /{path}/openapi if enabled. {path} can be
+// set using WithOaiServePath
 func Initialize(srv *mizu.Server, title string, opts ...OaiOption) error {
 	if title == "" {
 		return errors.New("openapi spec title is required")
@@ -80,9 +80,8 @@ func Initialize(srv *mizu.Server, title string, opts ...OaiOption) error {
 	return nil
 }
 
-// Path registers a new path in the OpenAPI spec. It can be used
-// to set the path field that can't be accessed via Get, Post,
-// etc.
+// Path registers a new path in the OpenAPI spec. It can be used to
+// set the path field that can't be accessed via Get, Post, etc.
 //
 // See: https://spec.openapis.org/oas/v3.0.4.html#path-item-object
 func Path(server *mizu.Server, pattern string, opts ...PathOption) {
@@ -100,28 +99,27 @@ func Path(server *mizu.Server, pattern string, opts ...PathOption) {
 }
 
 // Rx represents the request side of an API endpoint. It provides
-// access to the parsed request data and the original request
-// context.
+// access to the parsed request data and the original request context.
 type Rx[T any] struct {
 	*http.Request
 	read func(*http.Request) (T, error)
 }
 
-// Read returns the parsed input from the request. The parsing
-// logic is generated based on the struct tags of the input type.
+// Read returns the parsed input from the request. The parsing logic
+// is generated based on the struct tags of the input type.
 func (rx Rx[T]) MizuRead() (T, error) {
 	return rx.read(rx.Request)
 }
 
-// Tx represents the response side of an API endpoint. It
-// provides methods to write the response.
+// Tx represents the response side of an API endpoint. It provides
+// methods to write the response.
 type Tx[T any] struct {
 	http.ResponseWriter
 	write func(*T) error
 }
 
-// Write writes the JSON-encoded output to the response writer.
-// It also sets the Content-Type header to "application/json".
+// Write writes the JSON-encoded output to the response writer. It
+// also sets the Content-Type header to "application/json".
 func (tx Tx[T]) MizuWrite(data *T) error {
 	return tx.write(data)
 }
@@ -144,8 +142,8 @@ const (
 // handler is a generic type for user-provided API logic.
 type handler[I any, O any] func(Tx[O], Rx[I])
 
-// newHandler wraps the user-provided handler with request
-// parsing logic.
+// newHandler wraps the user-provided handler with request parsing
+// logic.
 func (h handler[I, O]) newHandler() http.HandlerFunc {
 	encoder := newEncoder[O]()
 	decoder := newDecoder[I]()

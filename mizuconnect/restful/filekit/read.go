@@ -33,9 +33,9 @@ import (
 var ErrFileTooLarge = errors.New("file too large")
 
 // FileReader wraps an io.ReadCloser to provide file upload
-// functionality with size limiting, checksum calculation, and
-// MIME type detection. It tracks read bytes and enforces size
-// limits while calculating SHA256 checksum.
+// functionality with size limiting, checksum calculation, and MIME
+// type detection. It tracks read bytes and enforces size limits while
+// calculating SHA256 checksum.
 type FileReader struct {
 	readBytes  int64
 	limitBytes int64
@@ -51,9 +51,9 @@ type FileReader struct {
 // FileReaderOption configures a FileReader.
 type FileReaderOption func(*FileReader)
 
-// WithFileLimitBytes sets the maximum number of bytes that can
-// be read from the file. Files larger than this limit will
-// result in ErrFileTooLarge. Default math.MaxInt64 (no limit).
+// WithFileLimitBytes sets the maximum number of bytes that can be
+// read from the file. Files larger than this limit will result in
+// ErrFileTooLarge. Default math.MaxInt64 (no limit).
 func WithFileLimitBytes(limit int64) FileReaderOption {
 	return func(r *FileReader) {
 		r.limitBytes = limit
@@ -61,9 +61,9 @@ func WithFileLimitBytes(limit int64) FileReaderOption {
 }
 
 // NewFileReader creates a new FileReader that wraps the given
-// ReadCloser. It calculates SHA256 checksum while reading and
-// can enforce size limits. Options can be provided to configure
-// behavior like size limits.
+// ReadCloser. It calculates SHA256 checksum while reading and can
+// enforce size limits. Options can be provided to configure behavior
+// like size limits.
 func NewFileReader(rx io.ReadCloser, opts ...FileReaderOption) *FileReader {
 	hash := sha256.New()
 	reader := &FileReader{
@@ -88,15 +88,15 @@ func NewFileReader(rx io.ReadCloser, opts ...FileReaderOption) *FileReader {
 	return reader
 }
 
-// Checksum returns the SHA256 checksum of the data read so far
-// as a hex string.
+// Checksum returns the SHA256 checksum of the data read so far as a
+// hex string.
 func (r *FileReader) Checksum() string {
 	return hex.EncodeToString(r.hash.Sum(nil))
 }
 
-// Read implements io.Reader. It reads data while tracking bytes
-// read and calculating checksum. If size limit is exceeded, it
-// returns ErrFileTooLarge.
+// Read implements io.Reader. It reads data while tracking bytes read
+// and calculating checksum. If size limit is exceeded, it returns
+// ErrFileTooLarge.
 func (r *FileReader) Read(p []byte) (int, error) {
 	if r.large {
 		return 0, fmt.Errorf("%w: %d > %d", ErrFileTooLarge, r.readBytes, r.limitBytes)
@@ -113,14 +113,14 @@ func (r *FileReader) Read(p []byte) (int, error) {
 }
 
 // ContentType returns the detected MIME type of the file content
-// based on the first 512 bytes read. Uses http.DetectContentType
-// for detection.
+// based on the first 512 bytes read. Uses http.DetectContentType for
+// detection.
 func (r *FileReader) ContentType() string {
 	return http.DetectContentType(r.mimeSniffer[:r.sniffSize])
 }
 
-// MimeSniffer returns the first up to 512 bytes read from the
-// file. (Refer to http.DetectContentType for details.)
+// MimeSniffer returns the first up to 512 bytes read from the file.
+// (Refer to http.DetectContentType for details.)
 func (r *FileReader) MimeSniffer() []byte {
 	return slices.Clone(r.mimeSniffer[:r.sniffSize])
 }
@@ -135,19 +135,17 @@ func (r *FileReader) Close() error {
 	return r.closer.Close()
 }
 
-// HttpForm represents a protobuf message that contains HTTP form
-// data. It must implement proto.Message and provide access to
-// HttpBody content.
+// HttpForm represents a protobuf message that contains HTTP form data.
+// It must implement proto.Message and provide access to HttpBody content.
 type HttpForm interface {
 	proto.Message
 	GetForm() *httpbody.HttpBody
 }
 
-// StreamForm represents a Connect RPC client stream that can
-// receive HttpForm messages. It embeds the standard Connect
-// stream interface methods while ensuring the message type
-// satisfies the HttpForm interface for HTTP body content
-// handling.
+// StreamForm represents a Connect RPC client stream that can receive
+// HttpForm messages. It embeds the standard Connect stream interface
+// methods while ensuring the message type satisfies the HttpForm
+// interface for HTTP body content handling.
 type StreamForm[T HttpForm] interface {
 	Msg() T
 	Err() error
@@ -158,34 +156,32 @@ type StreamForm[T HttpForm] interface {
 	Conn() connect.StreamingHandlerConn
 }
 
-// FormReader provides an interface for reading multipart form
-// parts from HTTP form data. It abstracts the multipart.Reader
+// FormReader provides an interface for reading multipart form parts
+// from HTTP form data. It abstracts the multipart.Reader
 // functionality for processing form uploads.
 type FormReader interface {
-	// NextPart returns the next multipart form part. It
-	// automatically handles non-file fields by attempting to map
-	// them to the provided proto.Message. File field data is
-	// returned as-is for processing.
+	// NextPart returns the next multipart form part. It automatically
+	// handles non-file fields by attempting to map them to the provided
+	// proto.Message. File field data is returned as-is for processing.
 	//
-	// WARN: If msg in NewFormReader is not nil, all the part
-	// except file will be automatically consumed and mapped to
-	// msg. Comsume the part will trigger error on setting msg. If
-	// you want to manually handle the part, pass a nil value to
-	// msg when creating FormReader.
+	// WARN: If msg in NewFormReader is not nil, all the part except
+	// file will be automatically consumed and mapped to msg. Comsume
+	// the part will trigger error on setting msg. If you want to
+	// manually handle the part, pass a nil value to msg when creating
+	// FormReader.
 	NextPart() (part *multipart.Part, err error)
 
-	// File returns the file part in the form. Fields after file
-	// part can either be accessed with NextPart or be drained by
-	// calling the purge function. This function internally
-	// calls NextPart until the file part is found.
+	// File returns the file part in the form. Fields after file part
+	// can either be accessed with NextPart or be drained by calling the
+	// purge function. This function internally calls NextPart until the
+	// file part is found.
 	//
-	// purge internally calls NextPart and return nil on EOF. Thus
-	// msg still will be filled if none nil (see comment of
-	// NextPart).
+	// purge internally calls NextPart and return nil on EOF. Thus msg
+	// still will be filled if none nil (see comment of NextPart).
 	File() (filePart *multipart.Part, purge func() error, err error)
 
-	// Close put back the *bufio.Reader to the pool. It must be
-	// called after the form reader is done.
+	// Close put back the *bufio.Reader to the pool. It must be called
+	// after the form reader is done.
 	Close()
 }
 
@@ -206,15 +202,15 @@ const (
 	MODE_PROTO_TEXT enumProtoDetectMode = iota
 	// MODE_PROTO_JSON uses JSON name for proto field detection.
 	MODE_PROTO_JSON
-	// MODE_PROTO_HYBRID uses Text name if available, if got nil,
-	// will return result by JSON name.
+	// MODE_PROTO_HYBRID uses Text name if available, if got nil, will
+	// return result by JSON name.
 	MODE_PROTO_HYBRID
 )
 
 type FormReaderOption[T HttpForm] func(*formReader[T])
 
-// WithFormProtoMode sets the mode for proto field detection.
-// Default is MODE_PROTO_TEXT.
+// WithFormProtoMode sets the mode for proto field detection. Default
+// is MODE_PROTO_TEXT.
 func WithFormProtoMode[T HttpForm](mode enumProtoDetectMode) FormReaderOption[T] {
 	return func(rx *formReader[T]) {
 		switch mode {
@@ -238,22 +234,21 @@ func WithFormProtoMode[T HttpForm](mode enumProtoDetectMode) FormReaderOption[T]
 	}
 }
 
-// WithFormFieldLimitBytes sets the maximum number of bytes that
-// can be allocated for read the field other than file field.
-// the exceeding bytes will be discarded.
+// WithFormFieldLimitBytes sets the maximum number of bytes that can
+// be allocated for read the field other than file field. The
+// exceeding bytes will be discarded.
 func WithFormFieldLimitBytes[T HttpForm](limit int64) FormReaderOption[T] {
 	return func(rx *formReader[T]) {
 		rx.bufferSize = limit
 	}
 }
 
-// NewFormReader creates a new FormReader for processing
-// multipart form data from a Connect RPC stream. It validates
-// the stream and message types, extracts the content type and
-// boundary from the first HttpForm message, and sets up a
-// multipart reader. The fileField parameter specifies which form
-// field contains the file data, while other fields can be mapped
-// to the provided proto.Message.
+// NewFormReader creates a new FormReader for processing multipart
+// form data from a Connect RPC stream. It validates the stream and
+// message types, extracts the content type and boundary from the
+// first HttpForm message, and sets up a multipart reader. The
+// fileField parameter specifies which form field contains the file
+// data, while other fields can be mapped to the provided proto.Message.
 func NewFormReader[T HttpForm](fileField string, stream StreamForm[T], msg proto.Message, opts ...FormReaderOption[T],
 ) (FormReader, error) {
 	if ok := stream.Receive(); !ok {
@@ -310,16 +305,14 @@ func NewFormReader[T HttpForm](fileField string, stream StreamForm[T], msg proto
 	return rx, nil
 }
 
-// NextPart returns the next multipart form part. It
-// automatically handles non-file fields by attempting to map
-// them to the provided proto.Message. File field data is
-// returned as-is for processing.
+// NextPart returns the next multipart form part. It automatically
+// handles non-file fields by attempting to map them to the provided
+// proto.Message. File field data is returned as-is for processing.
 //
-// WARN: If msg in NewFormReader is not nil, all the part except
-// file will be automatically consumed and mapped to msg. Comsume
-// the part will trigger error on setting msg. If you want to
-// manually handle the part, pass a nil value to msg when
-// creating FormReader.
+// WARN: If msg in NewFormReader is not nil, all the part except file
+// will be automatically consumed and mapped to msg. Comsume the part
+// will trigger error on setting msg. If you want to manually handle
+// the part, pass a nil value to msg when creating FormReader.
 func (r *formReader[T]) NextPart() (*multipart.Part, error) {
 	part, err := r.inner.NextPart()
 	if err != nil {
@@ -333,9 +326,9 @@ func (r *formReader[T]) NextPart() (*multipart.Part, error) {
 	return part, nil
 }
 
-// File returns the file part in the form. Fields after file
-// part can be accessed with NextPart. This function internally
-// calls NextPart until the file part is found.
+// File returns the file part in the form. Fields after file part can
+// be accessed with NextPart. This function internally calls NextPart
+// until the file part is found.
 func (r *formReader[T]) File() (*multipart.Part, func() error, error) {
 	var fpart *multipart.Part
 	var err error

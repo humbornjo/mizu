@@ -5,8 +5,8 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/humbornjo/mizu"
 	"github.com/humbornjo/mizu/mizuoai"
+	"mizu.example/package/netkit"
 )
 
 type InputOaiScrape struct {
@@ -21,11 +21,11 @@ func HandleOaiScrape(tx mizuoai.Tx[OutputOaiScrape], rx mizuoai.Rx[InputOaiScrap
 	input, err := rx.MizuRead()
 	if err != nil {
 		slog.Error("failed to read input", "error", err)
-		_ = mizu.WriteString(tx, err.Error(), http.StatusBadRequest)
+		_ = netkit.WriteString(tx, err.Error(), http.StatusBadRequest)
 		return
 	}
 
-	_ = mizu.WriteString(tx, "Hello, "+input.Header.Key, http.StatusOK)
+	_ = netkit.WriteString(tx, "Hello, "+input.Header.Key, http.StatusOK)
 }
 
 type InputOaiOrder struct {
@@ -53,7 +53,7 @@ func HandleOaiOrder(tx mizuoai.Tx[OutputOaiOrder], rx mizuoai.Rx[InputOaiOrder])
 	input, err := rx.MizuRead()
 	if err != nil {
 		slog.Error("failed to read input", "error", err)
-		_ = mizu.WriteString(tx, err.Error(), http.StatusBadRequest)
+		_ = netkit.WriteString(tx, err.Error(), http.StatusBadRequest)
 		return
 	}
 

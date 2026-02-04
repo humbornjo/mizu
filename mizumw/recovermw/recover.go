@@ -22,16 +22,15 @@ type config struct {
 
 type Option func(*config)
 
-// WithMaxBytes sets the maximum number of bytes to write to the
-// log file.
+// WithMaxBytes sets the maximum number of bytes to write to the log file.
 func WithMaxBytes(maxBytes int) Option {
 	return func(c *config) {
 		c.maxBytes = maxBytes
 	}
 }
 
-// WithWriteCloser sets the WriteCloser to use for logging,
-// default is os.Stderr.
+// WithWriteCloser sets the WriteCloser to use for logging, default is
+// os.Stderr.
 func WithWriteCloser(tx io.WriteCloser) Option {
 	return func(c *config) {
 		c.tx = tx

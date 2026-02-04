@@ -90,8 +90,8 @@ func WithOaiDescription(description string) OaiOption {
 	}
 }
 
-// WithOaiTermsOfService provides a URL to the Terms of Service
-// for the API. Must be in the form of URI.
+// WithOaiTermsOfService provides a URL to the Terms of Service for
+// the API. Must be in the form of URI.
 //
 // - https://spec.openapis.org/oas/v3.0.4.html#info-object
 func WithOaiTermsOfService(url string) OaiOption {
@@ -100,8 +100,7 @@ func WithOaiTermsOfService(url string) OaiOption {
 	}
 }
 
-// WithOaiContact provides contact information for the exposed
-// API.
+// WithOaiContact provides contact information for the exposed API.
 //
 // - https://spec.openapis.org/oas/v3.0.4.html#contact-object
 func WithOaiContact(name string, url string, email string, extensions ...map[string]any) OaiOption {
@@ -120,8 +119,7 @@ func WithOaiContact(name string, url string, email string, extensions ...map[str
 	}
 }
 
-// WithOaiLicense provides the license information for the
-// exposed API.
+// WithOaiLicense provides the license information for the exposed API.
 //
 // - https://spec.openapis.org/oas/v3.0.4.html#license-object
 func WithOaiLicense(name string, url string, extensions ...map[string]any) OaiOption {
@@ -142,9 +140,9 @@ func WithOaiLicense(name string, url string, extensions ...map[string]any) OaiOp
 }
 
 // WithOaiServers adds an array of Server Objects, which provide
-// connectivity information to a target server. If the servers
-// field is not provided, or is an empty array, the default value
-// would be a Server Object with a url value of /.
+// connectivity information to a target server. If the servers field
+// is not provided, or is an empty array, the default value would be a
+// Server Object with a url value of /.
 //
 // - https://spec.openapis.org/oas/v3.0.4.html#server-object
 func WithOaiServer(url string, desc string, variables map[string]*v3.ServerVariable, extensions ...map[string]any,
@@ -164,9 +162,9 @@ func WithOaiServer(url string, desc string, variables map[string]*v3.ServerVaria
 	}
 }
 
-// WithOaiSecurity adds a security requirement to the operation.
-// Each name MUST correspond to a security scheme which is
-// declared in the Security Schemes under the Components Object.
+// WithOaiSecurity adds a security requirement to the operation. Each
+// name MUST correspond to a security scheme which is declared in the
+// Security Schemes under the Components Object.
 //
 // - https://spec.openapis.org/oas/v3.0.4.html#security-requirement-object
 func WithOaiSecurity(requirement map[string][]string) OaiOption {
@@ -203,8 +201,8 @@ func WithOaiTag(name string, desc string, externalDocs *base.ExternalDoc, extens
 	}
 }
 
-// WithOaiExternalDocs provides a reference to an external
-// resource for extended documentation.
+// WithOaiExternalDocs provides a reference to an external resource
+// for extended documentation.
 //
 // - https://spec.openapis.org/oas/v3.0.4.html#external-documentation-object
 func WithOaiExternalDocs(url string, description string, extensions ...map[string]any) OaiOption {
@@ -242,8 +240,8 @@ type pathConfig struct {
 }
 
 // WithPathSummary adds a summary for the path. An optional. An
-// optional string summary, intended to apply to all operations
-// in this path.
+// optional string summary, intended to apply to all operations in
+// this path.
 //
 // - https://spec.openapis.org/oas/v3.0.4.html#path-item-object
 func WithPathSummary(summary string) PathOption {
@@ -252,9 +250,8 @@ func WithPathSummary(summary string) PathOption {
 	}
 }
 
-// WithPathDescription adds a description for the path. An
-// optional string summary, intended to apply to all operations
-// in this path.
+// WithPathDescription adds a description for the path. An optional
+// string summary, intended to apply to all operations in this path.
 //
 // - https://spec.openapis.org/oas/v3.0.4.html#path-item-object
 func WithPathDescription(desc string) PathOption {
@@ -263,10 +260,10 @@ func WithPathDescription(desc string) PathOption {
 	}
 }
 
-// WithPathServers adds an Server Objects in Path Item Object,
-// which provide connectivity information to a target server. If
-// the servers field is not provided, or is an empty array, the
-// default value would be a Server Object with a url value of /.
+// WithPathServers adds an Server Objects in Path Item Object, which
+// provide connectivity information to a target server. If the servers
+// field is not provided, or is an empty array, the default value
+// would be a Server Object with a url value of /.
 //
 // - https://spec.openapis.org/oas/v3.0.4.html#server-object
 func WithPathServer(url string, desc string, variables map[string]*v3.ServerVariable, extensions ...map[string]any,
@@ -286,13 +283,13 @@ func WithPathServer(url string, desc string, variables map[string]*v3.ServerVari
 }
 
 // WithPathParameters adds parameters to the path. A list of
-// parameters that are applicable for all the operations
-// described under this path. These parameters can be overridden
-// at the operation level, but cannot be removed there. The list
-// MUST NOT include duplicated parameters. A unique parameter is
-// defined by a combination of a name and location. The list can
-// use the Reference Object to link to parameters that are
-// defined in the OpenAPI Object’s components.parameters.
+// parameters that are applicable for all the operations described
+// under this path. These parameters can be overridden at the
+// operation level, but cannot be removed there. The list MUST NOT
+// include duplicated parameters. A unique parameter is defined by a
+// combination of a name and location. The list can use the Reference
+// Object to link to parameters that are defined in the OpenAPI
+// Object’s components.parameters.
 //
 // - https://spec.openapis.org/oas/v3.0.4.html#path-item-object
 func WithPathParameters(parameters ...*v3.Parameter) PathOption {
@@ -329,8 +326,8 @@ type operationConfig struct {
 	method string
 }
 
-// WithOperationTags adds tags to the operation, for logical
-// grouping of operations.
+// WithOperationTags adds tags to the operation, for logical grouping
+// of operations.
 //
 // - https://spec.openapis.org/oas/v3.0.4.html#operation-object
 func WithOperationTags(tags ...string) OperationOption {
@@ -339,8 +336,7 @@ func WithOperationTags(tags ...string) OperationOption {
 	}
 }
 
-// WithOperationSummary provides a summary of what the operation
-// does.
+// WithOperationSummary provides a summary of what the operation does.
 //
 // - https://spec.openapis.org/oas/v3.0.4.html#operation-object
 func WithOperationSummary(summary string) OperationOption {
@@ -350,8 +346,8 @@ func WithOperationSummary(summary string) OperationOption {
 }
 
 // WithOperationDescription provides a verbose explanation of the
-// operation behavior. CommonMark syntax MAY be used for rich
-// text representation.
+// operation behavior. CommonMark syntax MAY be used for rich text
+// representation.
 //
 // - https://spec.openapis.org/oas/v3.0.4.html#operation-object
 func WithOperationDescription(description string) OperationOption {
@@ -378,10 +374,10 @@ func WithOperationExternalDocs(url string, description string, extensions ...map
 	}
 }
 
-// WithOperationOperationId provides a unique string used to
-// identify the operation. Unique string used to identify the
-// operation. The id MUST be unique among all operations
-// described in the API. The operationId value is case-sensitive.
+// WithOperationOperationId provides a unique string used to identify
+// the operation. Unique string used to identify the operation. The id
+// MUST be unique among all operations described in the API. The
+// operationId value is case-sensitive.
 //
 // - https://spec.openapis.org/oas/v3.0.4.html#operation-object
 func WithOperationOperationId(operationId string) OperationOption {
@@ -390,14 +386,14 @@ func WithOperationOperationId(operationId string) OperationOption {
 	}
 }
 
-// WithOperationParameters adds parameters to the operation. A
-// list of parameters that are applicable for this operation. If
-// a parameter is already defined in the Path Item, the new
-// definition will override it but can never remove it. The list
-// MUST NOT include duplicated parameters. A unique parameter is
-// defined by a combination of a name and location. The list can
-// use the Reference Object to link to parameters that are
-// defined in the OpenAPI Object’s
+// WithOperationParameters adds parameters to the operation. A list of
+// parameters that are applicable for this operation. If a parameter
+// is already defined in the Path Item, the new definition will
+// override it but can never remove it. The list MUST NOT include
+// duplicated parameters. A unique parameter is defined by a
+// combination of a name and location. The list can use the Reference
+// Object to link to parameters that are defined in the OpenAPI
+// Object’s.
 //
 // - https://spec.openapis.org/oas/v3.0.4.html#path-item-object
 func WithOperationParameters(parameters ...*v3.Parameter) OperationOption {
@@ -406,12 +402,11 @@ func WithOperationParameters(parameters ...*v3.Parameter) OperationOption {
 	}
 }
 
-// WithOperationCallback adds a callback to the operation. A
-// possible out-of band callbacks related to the parent
-// operation. The key is a unique identifier for the Callback
-// Object. Value is a Callback Object that describes a request
-// that may be initiated by the API provider and the expected
-// responses.
+// WithOperationCallback adds a callback to the operation. A possible
+// out-of band callbacks related to the parent operation. The key is
+// a unique identifier for the Callback Object. Value is a Callback
+// Object that describes a request that may be initiated by the API
+// provider and the expected responses.
 //
 // - https://spec.openapis.org/oas/v3.0.4.html#operation-object
 func WithOperationCallback(key string, value *v3.Callback) OperationOption {
@@ -429,10 +424,9 @@ func WithOperationDeprecated() OperationOption {
 	}
 }
 
-// WithOperationSecurity adds security requirements to the
-// operation. Each name MUST correspond to a security scheme
-// which is declared in the Security Schemes under the
-// Components Object.
+// WithOperationSecurity adds security requirements to the operation.
+// Each name MUST correspond to a security scheme which is declared in
+// the Security Schemes under the Components Object.
 //
 // - https://spec.openapis.org/oas/v3.0.4.html#security-requirement-object
 func WithOperationSecurity(requirement map[string][]string) OperationOption {
@@ -451,10 +445,10 @@ func WithOperationSecurity(requirement map[string][]string) OperationOption {
 	}
 }
 
-// WithOperationServer adds an Server Objects to the operation.
-// An alternative servers array to service this operation. If a
-// servers array is specified at the Path Item Object or OpenAPI
-// Object level, it will be overridden by this value.
+// WithOperationServer adds an Server Objects to the operation. An
+// alternative servers array to service this operation. If a servers
+// array is specified at the Path Item Object or OpenAPI Object level,
+// it will be overridden by this value.
 //
 // - https://spec.openapis.org/oas/v3.0.4.html#server-object
 func WithOperationServer(url string, desc string, variables map[string]*v3.ServerVariable,

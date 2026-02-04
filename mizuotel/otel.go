@@ -10,7 +10,7 @@ import (
 	metricsdk "go.opentelemetry.io/otel/sdk/metric"
 	"go.opentelemetry.io/otel/sdk/resource"
 	tracesdk "go.opentelemetry.io/otel/sdk/trace"
-	"go.opentelemetry.io/otel/semconv/v1.37.0"
+	"go.opentelemetry.io/otel/semconv/v1.39.0"
 	"go.opentelemetry.io/otel/trace"
 )
 
@@ -18,8 +18,13 @@ import (
 type Option func(*config)
 
 type config struct {
-	serviceName    string
-	serviceVersion string
+	// Service attributes (spec 1.39.0)
+	// https://opentelemetry.io/docs/specs/semconv/registry/attributes/service/
+	serviceName       string
+	serviceVersion    string
+	serviceNamespace  string
+	serviceInstanceId string
+
 	environment    string
 	attrs          []attribute.KeyValue
 	resource       *resource.Resource
@@ -27,16 +32,27 @@ type config struct {
 	tracerProvider trace.TracerProvider
 }
 
-// WithServiceName sets the service name for the OpenTelemetry
-// resource.
+// WithServiceName sets the service name for the OpenTelemetry resource.
 func WithServiceName(name string) Option {
 	return func(c *config) { c.serviceName = name }
 }
 
-// WithServiceVersion sets the service version for the
-// OpenTelemetry resource.
+// WithServiceVersion sets the service version for the OpenTelemetry
+// resource.
 func WithServiceVersion(version string) Option {
 	return func(c *config) { c.serviceVersion = version }
+}
+
+// WithServiceNamespace sets the service namespace for the
+// OpenTelemetry resource.
+func WithServiceNamespace(ns string) Option {
+	return func(c *config) { c.serviceNamespace = ns }
+}
+
+// WithServiceInstanceId sets the service instance id for the
+// OpenTelemetry resource.
+func WithServiceInstanceId(id string) Option {
+	return func(c *config) { c.serviceInstanceId = id }
 }
 
 // WithEnvironment sets the deployment environment for the
@@ -51,8 +67,8 @@ func WithAttributes(attrs ...attribute.KeyValue) Option {
 	return func(c *config) { c.attrs = append(c.attrs, attrs...) }
 }
 
-// WithResource sets a custom OpenTelemetry resource, overriding
-// the default resource creation.
+// WithResource sets a custom OpenTelemetry resource, overriding the
+// default resource creation.
 func WithResource(res *resource.Resource) Option {
 	return func(c *config) { c.resource = res }
 }
@@ -69,15 +85,16 @@ func WithMeterProvider(mp metric.MeterProvider) Option {
 	return func(c *config) { c.meterProvider = mp }
 }
 
-// Initialize sets up OpenTelemetry with the given options. It
-// creates default tracer and meter providers with basic
-// configuration, or uses custom providers if specified in the
-// options.
+// Initialize sets up OpenTelemetry with the given options. It creates
+// default tracer and meter providers with basic configuration, or
+// uses custom providers if specified in the options.
 func Initialize(opts ...Option) error {
 	config := &config{
-		serviceName:    "mizu-service",
-		serviceVersion: "1.0.0",
-		environment:    "development",
+		serviceName:       "mizu-service",
+		serviceVersion:    "1.0.0",
+		serviceNamespace:  "mizu",
+		serviceInstanceId: "-",
+		environment:       "development",
 	}
 
 	for _, opt := range opts {
@@ -93,6 +110,8 @@ func Initialize(opts ...Option) error {
 		attrs := []attribute.KeyValue{
 			semconv.ServiceName(config.serviceName),
 			semconv.ServiceVersion(config.serviceVersion),
+			semconv.ServiceNamespace(config.serviceNamespace),
+			semconv.ServiceInstanceID(config.serviceInstanceId),
 			semconv.DeploymentEnvironmentName(config.environment),
 		}
 
@@ -136,9 +155,9 @@ func Initialize(opts ...Option) error {
 	return nil
 }
 
-// Shutdown gracefully shuts down the OpenTelemetry providers.
-// It attempts to shutdown both tracer and meter providers and
-// returns the first error encountered.
+// Shutdown gracefully shuts down the OpenTelemetry providers. It
+// attempts to shutdown both tracer and meter providers and returns
+// the first error encountered.
 func Shutdown(ctx context.Context) error {
 	var errs []error
 

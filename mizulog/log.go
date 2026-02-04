@@ -42,10 +42,10 @@ func New(h slog.Handler, opts ...Option) *handler {
 	return (*config)(&handler{Handler: h})
 }
 
-// InjectContextAttrs adds slog attributes to the context that
-// will be automatically included in log records when using
-// context-aware logging functions like slog.InfoContext,
-// slog.ErrorContext, slog.DebugContext, etc.
+// InjectContextAttrs adds slog attributes to the context that will be
+// automatically included in log records when using context-aware
+// logging functions like slog.InfoContext, slog.ErrorContext,
+// slog.DebugContext, etc.
 //
 // Example:
 //
@@ -90,8 +90,8 @@ func WithLogLevel[T level](level T) Option {
 	}
 }
 
-// WithAttributes adds default attributes that will be included
-// in all log records.
+// WithAttributes adds default attributes that will be included in all
+// log records.
 func WithAttributes(attrs []slog.Attr) Option {
 	return func(m *config) {
 		old := *m

@@ -2,12 +2,14 @@ syntax = "proto3";
 
 package fooapp.namaste.v1;
 
+import "buf/validate/validate.proto";
+
 message Namaste {
   string message = 1;
 }
 
 message NamasteRequest {
-  string name = 1;
+  string name = 1 [(buf.validate.field).required = true];
 }
 
 message NamasteResponse {

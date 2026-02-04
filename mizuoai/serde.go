@@ -41,8 +41,8 @@ func (e encoder[T]) encode(w http.ResponseWriter, val *T) error {
 	return e(w, val)
 }
 
-// fieldlet holds metadata about a struct field to be parsed from
-// a request.
+// fieldlet holds metadata about a struct field to be parsed from a
+// request.
 type (
 	fieldBrief struct {
 		index int
@@ -222,8 +222,7 @@ func newDecoder[T any]() decoder[T] {
 	return *decoder
 }
 
-// setStreamValue sets a value to a reflect.Struct using jsonv2
-// decoder
+// setStreamValue sets a value to a reflect.Struct using jsonv2 decoder
 func setStreamValue(value reflect.Value, stream io.ReadCloser, kind reflect.Kind) error {
 	defer stream.Close() // nolint: errcheck
 	switch kind {
@@ -244,8 +243,7 @@ func setStreamValue(value reflect.Value, stream io.ReadCloser, kind reflect.Kind
 	}
 }
 
-// setParamValue sets a value to a reflect.Value based on its
-// kind
+// setParamValue sets a value to a reflect.Value based on its kind
 func setParamValue(value reflect.Value, paramValue string, kind reflect.Kind) error {
 	switch kind {
 	case reflect.String:
