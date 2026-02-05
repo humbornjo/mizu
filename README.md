@@ -118,6 +118,7 @@ curl http://localhost:8080/healthz         # OK (built-in health check)
 | `WithReadinessDrainDelay(duration)`           | Graceful shutdown delay for load balancer propagation                                        | `5s`        |
 | `WithShutdownPeriod(duration)`                | Timeout for graceful shutdown                                                                | `15s`       |
 | `WithHardShutdownPeriod(duration)`            | Hard shutdown timeout after graceful fails                                                   | `3s`        |
+| `WithCustomMux(Mux)`                          | Use custom mux to register routes (e.g. `github.com/go-chi/chi/v5/mux.go`)                   | `nil`       |
 | `WithCustomHttpServer(*http.Server)`          | Use custom HTTP server configuration                                                         | `nil`       |
 | `WithWizardHandleReadiness(pattern, handler)` | Custom health check endpoint and handler                                                     | `/healthz`  |
 | `WithProfilingHandlers()`                     | Enable pprof debugging endpoints                                                             | Disabled    |

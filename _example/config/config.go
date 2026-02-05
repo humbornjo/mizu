@@ -6,12 +6,14 @@ import (
 	"time"
 
 	"connectrpc.com/connect"
+	"github.com/go-chi/chi/v5"
 	"github.com/humbornjo/mizu"
 	"github.com/humbornjo/mizu/mizuconnect"
 	"github.com/humbornjo/mizu/mizudi"
 	"github.com/humbornjo/mizu/mizulog"
 	"github.com/humbornjo/mizu/mizuoai"
 	"github.com/humbornjo/mizu/mizuotel"
+
 	"mizu.example/package/debug"
 	"mizu.example/protogen"
 )
@@ -25,7 +27,7 @@ type Config struct {
 }
 
 func Initialize(paths ...string) {
-	// Dependency Injection ---------------------------------------
+	// Dependency Injection --------------------------------------------
 	if err := mizudi.Initialize("config", paths...); err != nil {
 		panic(err)
 	}
@@ -39,9 +41,14 @@ func Initialize(paths ...string) {
 	c := mizudi.Enchant[Config](nil)
 	mizudi.Register(func() (*Config, error) { return c, nil })
 
-	// Server -----------------------------------------------------
+	// Server ----------------------------------------------------------
 	server := mizu.NewServer(
 		ServiceName,
+
+		// You can even use chi.Mux, as long as you don't mind sort out
+		// the differences of the routing rules.
+		mizu.WithCustomMux(chi.NewMux()),
+
 		mizu.WithRevealRoutes(),
 		mizu.WithProfilingHandlers(),
 		mizu.WithReadinessDrainDelay(0*time.Second),
@@ -51,34 +58,37 @@ func Initialize(paths ...string) {
 	)
 	mizudi.Register(func() (*mizu.Server, error) { return server, nil })
 
-	// Connect RPC ------------------------------------------------
+	// Connect RPC -----------------------------------------------------
 	scope := mizuconnect.NewScope(server,
-		mizuconnect.WithGrpcHealth(),
-		mizuconnect.WithGrpcReflect(),
 		mizuconnect.WithCrpcValidate(),
-		mizuconnect.WithCrpcVanguard("/"),
+
+		// Use wildcard when enable chi.Mux
+		mizuconnect.WithGrpcHealth("/*"),
+		mizuconnect.WithGrpcReflect("/*"),
+		mizuconnect.WithCrpcVanguard("/*"),
+
 		mizuconnect.WithCrpcHandlerOptions(
 			connect.WithInterceptors(debug.NewInterceptor()),
 		),
 	)
 	mizudi.Register(func() (*mizuconnect.Scope, error) { return scope, nil })
 
-	// OPENAPI ----------------------------------------------------
+	// OPENAPI ---------------------------------------------------------
 	if err := mizuoai.Initialize(server, "mizu_example",
 		mizuoai.WithOaiDocumentation(),
 		mizuoai.WithOaiPreLoad(protogen.OPENAPI)); err != nil {
 		panic(err)
 	}
 
-	// Opentelemetry ----------------------------------------------
+	// Opentelemetry ---------------------------------------------------
 	if err := mizuotel.Initialize(); err != nil {
 		panic(err)
 	}
 
-	// Logging ----------------------------------------------------
+	// Logging ---------------------------------------------------------
 	mizulog.Initialize(nil, mizulog.WithLogLevel(c.Level))
 
-	// Other Registrations ----------------------------------------
+	// Other Registrations ---------------------------------------------
 	// e.g. Register Default Database using mizudi.Register and use
 	// them across services.
 	// ...

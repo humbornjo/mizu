@@ -31,8 +31,11 @@ func newEncoder[T any]() encoder[T] {
 		return func(w http.ResponseWriter, val *T) error {
 			w.Header().Set("Content-Type", "application/json")
 			err := json.NewEncoder(w).Encode(val)
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return err
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return err
+			}
+			return nil
 		}
 	}
 }

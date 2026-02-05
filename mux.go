@@ -8,10 +8,10 @@ import (
 
 // INFO: It should be noted that Mux is just a abstraction, it is not
 // tied to the http.ServeMux, instead, it can be any implementation.
-// It is planned to support delegate the registration to multiplexer
+// It is planned to support delegate the registration to Mux
 // provided by user in the future.
-type multiplexer interface {
-	Handler() http.Handler
+type Mux interface {
+	http.Handler
 
 	Handle(pattern string, handler http.Handler)
 	HandleFunc(pattern string, handlerFunc http.HandlerFunc)
@@ -26,13 +26,15 @@ type multiplexer interface {
 	Connect(pattern string, handler http.HandlerFunc)
 }
 
+var _ Mux = (*mux)(nil)
+
 type mux struct {
 	mu    *sync.Mutex // passed from server to prevent concurrent access
 	inner *http.ServeMux
 }
 
-func (m *mux) Handler() http.Handler {
-	return m.inner
+func (m *mux) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	m.inner.ServeHTTP(w, r)
 }
 
 func (m *mux) HandleFunc(pattern string, handlerFunc http.HandlerFunc) {

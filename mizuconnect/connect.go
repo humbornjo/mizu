@@ -42,9 +42,12 @@ type config struct {
 	enableGrpcHealth   bool
 	enableGrpcReflect  bool
 
+	grpcHealthSubPattern  string
+	grpcReflectSubPattern string
+	vanguardPattern       string
+
 	connectOpts            []connect.HandlerOption
 	reflectOpts            []connect.HandlerOption
-	vanguardPattern        string
 	vanguardTranscoderOpts []vanguard.TranscoderOption
 }
 
@@ -52,18 +55,31 @@ type config struct {
 type Option func(*config)
 
 // WithGrpcHealth enables gRPC health checks for the registered
-// services.
-func WithGrpcHealth() Option {
+// services. subPattern is used to either:
+//
+//   - Restrict the access to a specific path, or
+//   - Conform to the routing rule of customized Mux
+//
+// In most cases, subPattern should simply be "".
+func WithGrpcHealth(subPattern string) Option {
 	return func(m *config) {
 		m.enableGrpcHealth = true
+		m.grpcHealthSubPattern = subPattern
 	}
 }
 
 // WithGrpcReflect enables gRPC reflection for the registered services.
 // This allows clients to discover service definitions at runtime.
-func WithGrpcReflect(opts ...connect.HandlerOption) Option {
+// subPattern is used to either:
+//
+//   - Restrict the access to a specific path, or
+//   - Conform to the routing rule of customized Mux
+//
+// In most cases, subPattern should simply be "".
+func WithGrpcReflect(subPattern string, opts ...connect.HandlerOption) Option {
 	return func(m *config) {
 		m.enableGrpcReflect = true
+		m.grpcReflectSubPattern = subPattern
 		m.reflectOpts = append(m.reflectOpts, opts...)
 	}
 }
@@ -80,16 +96,18 @@ func WithCrpcValidate() Option {
 // WithCrpcVanguard enables Vanguard transcoding for REST API
 // compatibility. This allows Connect RPC services to be accessed via
 // HTTP/JSON. The pattern parameter specifies the path, should be
-// mounted on "/" in most cases to achieve RESTful. Service Option can
-// be applied with vanguard.WithDefaultServiceOptions or scope.Uses,
-// therefore only transcoder options are required on initializing scope.
+// mounted on "/" in most cases. Service Option can be applied with
+// vanguard.WithDefaultServiceOptions or scope.Uses, therefore only
+// transcoder options are required on initializing scope.
+//
+// WARN: If pattern is non-empty, it will override the default
+// Vanguard pattern without applying scope prefix.
 //
 // Example:
 //
-//	scope.WithCrpcVanguard("/")
+//	scope.WithCrpcVanguard("")
 func WithCrpcVanguard(pattern string, transOpts ...vanguard.TranscoderOption) Option {
 	return func(m *config) {
-
 		m.enableCrpcVanguard = true
 		m.vanguardPattern = pattern
 		m.vanguardTranscoderOpts = append(m.vanguardTranscoderOpts, transOpts...)
@@ -142,8 +160,15 @@ func NewScope(srv *mizu.Server, opts ...Option) *Scope {
 		mizu.Hook(srv, _CTXKEY_GRPC_REFLECT, &once, mizu.WithHookHandler(func(srv *mizu.Server) {
 			once.Do(func() {
 				reflector := grpcreflect.NewStaticReflector(scope.serviceNames...)
-				srv.Handle(grpcreflect.NewHandlerV1(reflector, scope.config.reflectOpts...))
-				srv.Handle(grpcreflect.NewHandlerV1Alpha(reflector, scope.config.reflectOpts...))
+				if scope.config.grpcReflectSubPattern == "" {
+					srv.Handle(grpcreflect.NewHandlerV1(reflector, scope.config.reflectOpts...))
+					srv.Handle(grpcreflect.NewHandlerV1Alpha(reflector, scope.config.reflectOpts...))
+				} else {
+					pv1, hv1 := grpcreflect.NewHandlerV1(reflector, scope.config.reflectOpts...)
+					srv.Handle(path.Join(pv1, scope.config.grpcReflectSubPattern), hv1)
+					pv1a, hv1a := grpcreflect.NewHandlerV1Alpha(reflector, scope.config.reflectOpts...)
+					srv.Handle(path.Join(pv1a, scope.config.grpcReflectSubPattern), hv1a)
+				}
 			})
 		}))
 	}
@@ -153,7 +178,12 @@ func NewScope(srv *mizu.Server, opts ...Option) *Scope {
 		mizu.Hook(srv, _CTXKEY_GRPC_HEALTH, &once, mizu.WithHookHandler(func(srv *mizu.Server) {
 			once.Do(func() {
 				checker := grpchealth.NewStaticChecker(scope.serviceNames...)
-				srv.Handle(grpchealth.NewHandler(checker))
+				if scope.config.grpcHealthSubPattern == "" {
+					srv.Handle(grpchealth.NewHandler(checker))
+				} else {
+					pc, hc := grpchealth.NewHandler(checker)
+					srv.Handle(path.Join(pc, scope.config.grpcHealthSubPattern), hc)
+				}
 			})
 		}))
 	}
