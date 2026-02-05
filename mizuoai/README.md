@@ -2,6 +2,12 @@
 
 Type-safe OpenAPI documentation and request/response handling for Mizu.
 
+## Installation
+
+```bash
+go get github.com/humbornjo/mizu/mizuoai
+```
+
 ## Philosophy
 
 ### Compile-Time Safety for HTTP APIs

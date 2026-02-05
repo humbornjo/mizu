@@ -120,13 +120,13 @@ Order processing endpoint with OpenAPI validation:
 
 ```bash
 # Process an order with path, query, header, and body parameters
-curl -X POST "http://localhost:18080/oai/order/123?timestamp=1699123456" \
+curl -X POST "http://localhost:18080/oai/user/123/order?timestamp=1699123456" \
   -H "X-Region: US" \
   -H "Content-Type: application/json" \
   -d '{"id": "order-456", "amount": 100, "comment": "Test order"}'
 
 # Scrape endpoint with header validation
-curl -X POST "http://localhost:18080/oai/scrape" \
+curl -X GET "http://localhost:18080/oai/scrape" \
   -H "key: magic-key-123"
 
 ```

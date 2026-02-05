@@ -4,6 +4,12 @@ Built with [samber/do](https://github.com/samber/do) for dependency injection an
 
 A powerful Go framework that combines automatic configuration loading with dependency injection, designed to simplify service-oriented architecture.
 
+## Installation
+
+```bash
+go get github.com/humbornjo/mizu/mizudi
+```
+
 ## Philosophy
 
 Configuration should be:

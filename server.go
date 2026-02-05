@@ -39,7 +39,7 @@ type serverConfig struct {
 // It provides HTTP routing, middleware support, and graceful shutdown
 // capabilities.
 type Server struct {
-	inner multiplexer
+	inner Mux
 
 	mu  *sync.Mutex // mutex for server initialization
 	mmu *sync.Mutex // mutex passed down to mux for concurrent registration
@@ -146,7 +146,7 @@ func (s *Server) Handler() http.Handler {
 		hook(s)
 	}
 
-	return s.inner.Handler()
+	return s.inner
 }
 
 // ServeContext starts the HTTP server on the given address and blocks

@@ -120,7 +120,7 @@ The `filekit` package eliminates the complexity of handling multipart form data 
 message UploadRequest {
   string name = 1;    // Automatically parsed from form field "name"
   int32 category = 2; // Automatically parse form field "category" to int32
-  google.api.HttpBody form = 1;
+  google.api.HttpBody form = 3;
 }
 
 // "file" will be the form field name where the file is uploaded
