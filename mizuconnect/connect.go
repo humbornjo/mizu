@@ -22,7 +22,8 @@ import (
 type ctxkey int
 
 const (
-	_CTXKEY_GRPC_HEALTH ctxkey = iota
+	_CTXKEY_SERVICE_NAMES ctxkey = iota
+	_CTXKEY_GRPC_HEALTH
 	_CTXKEY_GRPC_REFLECT
 	_CTXKEY_CRPC_VANGUARD
 )
@@ -136,7 +137,6 @@ type Scope struct {
 	srv *mizu.Server
 
 	config           *config
-	serviceNames     []string
 	vanguardServices []*vanguard.Service
 }
 
@@ -144,22 +144,24 @@ type Scope struct {
 // The scope manages registration of Connect services with optional
 // features like health checks, reflection, validation, and Vanguard
 // transcoding.
+//
+// One mizu Server can derive multiple scopes, all the scope share the
+// same registered service names slices, which comes with the side
+// effect that one scope with feature enabled (e.g., reflection) will
+// also reveal all the services registered in other scopes.
 func NewScope(srv *mizu.Server, opts ...Option) *Scope {
 	config := _DEFAULT_CONFIG
 	for _, opt := range opts {
 		opt(&config)
 	}
+	scope := &Scope{srv: srv, config: &config}
 
-	scope := &Scope{
-		srv:    srv,
-		config: &config,
-	}
-
+	serviceNames := mizu.Hook(srv, _CTXKEY_SERVICE_NAMES, &[]string{})
 	if config.enableGrpcReflect {
 		once := sync.Once{}
 		mizu.Hook(srv, _CTXKEY_GRPC_REFLECT, &once, mizu.WithHookHandler(func(srv *mizu.Server) {
 			once.Do(func() {
-				reflector := grpcreflect.NewStaticReflector(scope.serviceNames...)
+				reflector := grpcreflect.NewStaticReflector(*serviceNames...)
 				if scope.config.grpcReflectSubPattern == "" {
 					srv.Handle(grpcreflect.NewHandlerV1(reflector, scope.config.reflectOpts...))
 					srv.Handle(grpcreflect.NewHandlerV1Alpha(reflector, scope.config.reflectOpts...))
@@ -177,7 +179,7 @@ func NewScope(srv *mizu.Server, opts ...Option) *Scope {
 		once := sync.Once{}
 		mizu.Hook(srv, _CTXKEY_GRPC_HEALTH, &once, mizu.WithHookHandler(func(srv *mizu.Server) {
 			once.Do(func() {
-				checker := grpchealth.NewStaticChecker(scope.serviceNames...)
+				checker := grpchealth.NewStaticChecker(*serviceNames...)
 				if scope.config.grpcHealthSubPattern == "" {
 					srv.Handle(grpchealth.NewHandler(checker))
 				} else {
@@ -225,7 +227,10 @@ func (s *Scope) Register(impl any, newFunc any, opts ...connect.HandlerOption) {
 
 	pattern, handler := invoke(impl, newFunc, opts...)
 	fullyQualifiedServiceName, _ := detect(pattern)
-	s.serviceNames = append(s.serviceNames, fullyQualifiedServiceName)
+
+	mizu.Immediate(s.srv, _CTXKEY_SERVICE_NAMES, func(v *[]string) {
+		*v = append(*v, fullyQualifiedServiceName)
+	})
 
 	// Register vanguard service
 	if s.config.enableCrpcVanguard {
@@ -273,7 +278,10 @@ func (s relayScope) Register(impl any, newFunc any, opts ...connect.HandlerOptio
 
 	pattern, handler := invoke(impl, newFunc, opts...)
 	fullyQualifiedServiceName, _ := detect(pattern)
-	s.inner.serviceNames = append(s.inner.serviceNames, fullyQualifiedServiceName)
+
+	mizu.Immediate(s.inner.srv, _CTXKEY_SERVICE_NAMES, func(v *[]string) {
+		*v = append(*v, fullyQualifiedServiceName)
+	})
 
 	// Register vanguard service
 	if s.inner.config.enableCrpcVanguard {

@@ -136,5 +136,5 @@ curl -X GET "http://localhost:18080/oai/scrape" \
 HTTP middleware logging demonstration:
 
 ```bash
-curl "http://localhost:18080/greet/test"
+curl "http://localhost:18080/scrape"
 ```

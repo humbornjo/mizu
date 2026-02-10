@@ -6,6 +6,13 @@ import (
 	"sync"
 )
 
+// Mux is considered a common engine for registering routes. Different
+// from framework like `chi`, Mux in `mizu` only preserve the base
+// functionalities of Mux, additional features like Group, Middleware
+// which may vary from implementation to implementation are moved to
+// Server level so that Mux can finally focus on the core routing
+// engine implementation that is of vital importance to the performance
+// of service built on `net/http`.
 type Mux interface {
 	http.Handler
 
