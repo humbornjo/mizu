@@ -49,6 +49,7 @@ func (s *Service) UploadFile(ctx context.Context, stream *connect.ClientStream[f
 		slog.ErrorContext(ctx, "failed create form reader", "err", err)
 		return nil, connect.NewError(connect.CodeInternal, err)
 	}
+	defer rxForm.Close()
 
 	fpart, purge, err := rxForm.File()
 	if err != nil {

@@ -70,8 +70,7 @@ type hookConfig struct {
 	hookHandler func(*Server)
 }
 
-// WithHookStartup registers a hook function when Calling
-// ServeContext.
+// WithHookStartup registers a hook function when Calling ServeContext.
 func WithHookStartup(hook func(*Server)) hookOption {
 	return func(config *hookConfig) {
 		config.hookStartup = hook
@@ -85,19 +84,29 @@ func WithHookHandler(hook func(*Server)) hookOption {
 	}
 }
 
-// Hook registers a hook function for the given key. If value is not
-// nil, it will be registered as the value for the key. HookOption
-// offer customization options for performing additional actions on
-// different phases in server lifecycle. Returned value is the
-// registered value for the key if value is not nil, otherwise nil
+// Hook registers a hook function for the given key. If key is already
+// bounded with a none nil value, it is used. Otherwise, if the value
+// is nil, a new value will be initiated, bounding to the key. The
+// bounded value will be returned.
+//
+// HookOption offer customization options for performing additional
+// actions on different phases in server lifecycle. Returned value is
+// the registered value for the key if value is not nil, otherwise nil
 // pointer is returned.
 //
-// WARN: This is a advanced function which in most cases should not be
-// used.
+// WARN: This is advanced function which should be used with caution.
 func Hook[K any, V any](s *Server, key K, val *V, opts ...hookOption) *V {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if val != nil {
+
+	var ret *V
+	if v := s.ctx.Value(key); v != nil {
+		ret = v.(*V)
+	} else {
+		if val == nil {
+			val = new(V)
+		}
+		ret = val
 		s.ctx = context.WithValue(s.ctx, key, val)
 	}
 
@@ -112,17 +121,13 @@ func Hook[K any, V any](s *Server, key K, val *V, opts ...hookOption) *V {
 		*s.hookStartup = append(*s.hookStartup, config.hookStartup)
 	}
 
-	if v := s.ctx.Value(key); v != nil {
-		return v.(*V)
-	}
-	return nil
+	return ret
 }
 
 // Immediate offer the typed value for the given key for user to
-// access in closure, this access is concurrent safe.
+// access in closure, this access is concurrently safe.
 //
-// WARN: This is a advanced function which in most cases should not be
-// used.
+// WARN: This is advanced function which should be used with caution.
 func Immediate[K any, V any](s *Server, key K, closure func(*V)) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
