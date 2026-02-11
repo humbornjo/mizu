@@ -9,12 +9,14 @@ import (
 
 	"connectrpc.com/connect"
 	"github.com/go-chi/chi/v5"
+	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
 	"github.com/humbornjo/mizu"
 	"github.com/humbornjo/mizu/mizuconnect"
 	"github.com/humbornjo/mizu/mizudi"
 	"github.com/humbornjo/mizu/mizulog"
 	"github.com/humbornjo/mizu/mizuoai"
 	"github.com/humbornjo/mizu/mizuotel"
+	"google.golang.org/protobuf/encoding/protojson"
 
 	"mizu.example/package/debug"
 	"mizu.example/protogen"
@@ -71,7 +73,20 @@ func Initialize(paths ...string) {
 		mizuconnect.WithGrpcReflect(),
 
 		// Use either vanguard or gRPC-gateway as REST transcoder
-		mizuconnect.WithGrpcGateway(context.TODO(), "", c.Port),
+		mizuconnect.WithGrpcGateway(
+			context.TODO(), "", c.Port,
+			// multipart/form-data
+			runtime.WithMarshalerOption("multipart/form-data", &runtime.HTTPBodyMarshaler{
+				Marshaler: &runtime.JSONPb{
+					MarshalOptions: protojson.MarshalOptions{
+						EmitUnpopulated: false,
+					},
+					UnmarshalOptions: protojson.UnmarshalOptions{
+						DiscardUnknown: true,
+					},
+				},
+			}),
+		),
 		// mizuconnect.WithCrpcVanguard(""),
 
 		mizuconnect.WithCrpcHandlerOptions(
