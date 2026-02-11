@@ -3,6 +3,7 @@ syntax = "proto3";
 package fooapp.namaste.v1;
 
 import "buf/validate/validate.proto";
+import "google/api/annotations.proto";
 
 message Namaste {
   string message = 1;
@@ -17,5 +18,10 @@ message NamasteResponse {
 }
 
 service NamasteService {
-  rpc Namaste(stream NamasteRequest) returns (stream NamasteResponse);
+  rpc Namaste(NamasteRequest) returns (stream NamasteResponse) {
+    option (google.api.http) = {
+      post: "/namaste"
+      body: "*"
+    };
+  }
 }

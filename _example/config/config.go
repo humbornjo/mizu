@@ -1,6 +1,8 @@
 package config
 
 import (
+	"context"
+	// "context"
 	"errors"
 	"os"
 	"time"
@@ -51,7 +53,8 @@ func Initialize(paths ...string) {
 
 		mizu.WithRevealRoutes(),
 		mizu.WithProfilingHandlers(),
-		mizu.WithReadinessDrainDelay(0*time.Second),
+		mizu.WithReadinessDrainDelay(-1*time.Second),
+
 		// Force Protocol can useful when dev locally
 		// (Go STD use HTTP/1 by default when TLS is disabled)
 		mizu.WithServerProtocols(mizu.PROTOCOLS_HTTP2_UNENCRYPTED),
@@ -60,12 +63,16 @@ func Initialize(paths ...string) {
 
 	// Connect RPC -----------------------------------------------------
 	scope := mizuconnect.NewScope(server,
-		mizuconnect.WithCrpcValidate(),
-
 		// Use wildcard when enable chi.Mux
-		mizuconnect.WithGrpcHealth("/*"),
-		mizuconnect.WithGrpcReflect("/*"),
-		mizuconnect.WithCrpcVanguard("/*"),
+		mizuconnect.WithSuffix("/*"),
+
+		mizuconnect.WithCrpcValidate(),
+		mizuconnect.WithGrpcHealth(),
+		mizuconnect.WithGrpcReflect(),
+
+		// Use either vanguard or gRPC-gateway as REST transcoder
+		mizuconnect.WithGrpcGateway(context.TODO(), "", c.Port),
+		// mizuconnect.WithCrpcVanguard(""),
 
 		mizuconnect.WithCrpcHandlerOptions(
 			connect.WithInterceptors(debug.NewInterceptor()),

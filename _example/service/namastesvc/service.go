@@ -5,7 +5,6 @@ import (
 	"log/slog"
 
 	"connectrpc.com/connect"
-	"github.com/humbornjo/mizu/mizuconnect/restful/streamkit"
 
 	namastev1 "mizu.example/protogen/fooapp/namaste/v1"
 	"mizu.example/protogen/fooapp/namaste/v1/namastev1connect"
@@ -17,20 +16,14 @@ var _ namastev1connect.NamasteServiceHandler = (*Service)(nil)
 
 func (s *Service) Namaste(
 	ctx context.Context,
-	stream *connect.BidiStream[namastev1.NamasteRequest, namastev1.NamasteResponse],
+	req *connect.Request[namastev1.NamasteRequest],
+	stream *connect.ServerStream[namastev1.NamasteResponse],
 ) error {
+	name := req.Msg.GetName()
 
-	for req, err := range streamkit.FromBidiStream(stream) {
-		if err != nil {
-			slog.ErrorContext(ctx, "failed receive stream request", "error", err)
-			return connect.NewError(connect.CodeInternal, err)
-		}
-
-		name := req.GetName()
-		if err := stream.Send(&namastev1.NamasteResponse{Message: "Hello " + name}); err != nil {
-			slog.ErrorContext(ctx, "failed send stream response", "error", err)
-			return connect.NewError(connect.CodeInternal, nil)
-		}
+	if err := stream.Send(&namastev1.NamasteResponse{Message: "Hello " + name}); err != nil {
+		slog.ErrorContext(ctx, "failed send stream response", "error", err)
+		return connect.NewError(connect.CodeInternal, nil)
 	}
 
 	return nil

@@ -39,7 +39,7 @@ const (
 
 // NamasteServiceClient is a client for the fooapp.namaste.v1.NamasteService service.
 type NamasteServiceClient interface {
-	Namaste(context.Context) *connect.BidiStreamForClient[v1.NamasteRequest, v1.NamasteResponse]
+	Namaste(context.Context, *connect.Request[v1.NamasteRequest]) (*connect.ServerStreamForClient[v1.NamasteResponse], error)
 }
 
 // NewNamasteServiceClient constructs a client for the fooapp.namaste.v1.NamasteService service. By
@@ -68,13 +68,13 @@ type namasteServiceClient struct {
 }
 
 // Namaste calls fooapp.namaste.v1.NamasteService.Namaste.
-func (c *namasteServiceClient) Namaste(ctx context.Context) *connect.BidiStreamForClient[v1.NamasteRequest, v1.NamasteResponse] {
-	return c.namaste.CallBidiStream(ctx)
+func (c *namasteServiceClient) Namaste(ctx context.Context, req *connect.Request[v1.NamasteRequest]) (*connect.ServerStreamForClient[v1.NamasteResponse], error) {
+	return c.namaste.CallServerStream(ctx, req)
 }
 
 // NamasteServiceHandler is an implementation of the fooapp.namaste.v1.NamasteService service.
 type NamasteServiceHandler interface {
-	Namaste(context.Context, *connect.BidiStream[v1.NamasteRequest, v1.NamasteResponse]) error
+	Namaste(context.Context, *connect.Request[v1.NamasteRequest], *connect.ServerStream[v1.NamasteResponse]) error
 }
 
 // NewNamasteServiceHandler builds an HTTP handler from the service implementation. It returns the
@@ -84,7 +84,7 @@ type NamasteServiceHandler interface {
 // and JSON codecs. They also support gzip compression.
 func NewNamasteServiceHandler(svc NamasteServiceHandler, opts ...connect.HandlerOption) (string, http.Handler) {
 	namasteServiceMethods := v1.File_fooapp_namaste_v1_namaste_proto.Services().ByName("NamasteService").Methods()
-	namasteServiceNamasteHandler := connect.NewBidiStreamHandler(
+	namasteServiceNamasteHandler := connect.NewServerStreamHandler(
 		NamasteServiceNamasteProcedure,
 		svc.Namaste,
 		connect.WithSchema(namasteServiceMethods.ByName("Namaste")),
@@ -103,6 +103,6 @@ func NewNamasteServiceHandler(svc NamasteServiceHandler, opts ...connect.Handler
 // UnimplementedNamasteServiceHandler returns CodeUnimplemented from all methods.
 type UnimplementedNamasteServiceHandler struct{}
 
-func (UnimplementedNamasteServiceHandler) Namaste(context.Context, *connect.BidiStream[v1.NamasteRequest, v1.NamasteResponse]) error {
+func (UnimplementedNamasteServiceHandler) Namaste(context.Context, *connect.Request[v1.NamasteRequest], *connect.ServerStream[v1.NamasteResponse]) error {
 	return connect.NewError(connect.CodeUnimplemented, errors.New("fooapp.namaste.v1.NamasteService.Namaste is not implemented"))
 }

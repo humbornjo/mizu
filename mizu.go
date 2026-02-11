@@ -96,6 +96,9 @@ func NewServer(srvName string, opts ...Option) *Server {
 // shutdown. This allows load balancers and health checks time to
 // detect the server is shutting down.
 func WithReadinessDrainDelay(d time.Duration) Option {
+	if d < 0 {
+		d = 0
+	}
 	return func(m *config) {
 		old := *m
 		new := func(s *Server) *Server {

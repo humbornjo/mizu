@@ -1,6 +1,7 @@
 package mizuconnect
 
 import (
+	"context"
 	"net/http"
 	"path"
 	"reflect"
@@ -13,6 +14,8 @@ import (
 	"connectrpc.com/validate"
 	"connectrpc.com/vanguard"
 
+	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
+	"google.golang.org/grpc"
 	"google.golang.org/protobuf/reflect/protoreflect"
 	"google.golang.org/protobuf/reflect/protoregistry"
 
@@ -26,6 +29,7 @@ const (
 	_CTXKEY_GRPC_HEALTH
 	_CTXKEY_GRPC_REFLECT
 	_CTXKEY_CRPC_VANGUARD
+	_CTXKEY_GRPC_GATEWAY
 )
 
 var (
@@ -37,53 +41,28 @@ var (
 )
 
 type config struct {
-	prefix string
+	prefix      string
+	suffix      string
+	connectOpts []connect.HandlerOption
 
-	enableCrpcVanguard bool
-	enableGrpcHealth   bool
-	enableGrpcReflect  bool
+	enableGrpcHealth bool
 
-	grpcHealthSubPattern  string
-	grpcReflectSubPattern string
-	vanguardPattern       string
+	enableGrpcReflect bool
+	reflectOpts       []connect.HandlerOption
 
-	connectOpts            []connect.HandlerOption
-	reflectOpts            []connect.HandlerOption
+	enableCrpcVanguard     bool
+	vanguardPattern        string
 	vanguardTranscoderOpts []vanguard.TranscoderOption
+
+	enableGrpcGateway bool
+	gatewayMux        *runtime.ServeMux
+	gatewayPort       string
+	gatewayPattern    string
+	gatewayContext    context.Context
 }
 
 // Option configures the mizuconnect scope.
 type Option func(*config)
-
-// WithGrpcHealth enables gRPC health checks for the registered
-// services. subPattern is used to either:
-//
-//   - Restrict the access to a specific path, or
-//   - Conform to the routing rule of customized Mux
-//
-// In most cases, subPattern should simply be "".
-func WithGrpcHealth(subPattern string) Option {
-	return func(m *config) {
-		m.enableGrpcHealth = true
-		m.grpcHealthSubPattern = subPattern
-	}
-}
-
-// WithGrpcReflect enables gRPC reflection for the registered services.
-// This allows clients to discover service definitions at runtime.
-// subPattern is used to either:
-//
-//   - Restrict the access to a specific path, or
-//   - Conform to the routing rule of customized Mux
-//
-// In most cases, subPattern should simply be "".
-func WithGrpcReflect(subPattern string, opts ...connect.HandlerOption) Option {
-	return func(m *config) {
-		m.enableGrpcReflect = true
-		m.grpcReflectSubPattern = subPattern
-		m.reflectOpts = append(m.reflectOpts, opts...)
-	}
-}
 
 // WithCrpcValidate enables buf proto validation for the registered
 // services.
@@ -91,6 +70,35 @@ func WithCrpcValidate() Option {
 	return func(m *config) {
 		interceptor := validate.NewInterceptor()
 		m.connectOpts = append(m.connectOpts, connect.WithInterceptors(interceptor))
+	}
+}
+
+// WithGrpcHealth enables gRPC health checks for the registered
+func WithGrpcHealth() Option {
+	return func(m *config) {
+		m.enableGrpcHealth = true
+	}
+}
+
+// WithGrpcReflect enables gRPC reflection for the registered services.
+// This allows clients to discover service definitions at runtime
+func WithGrpcReflect(opts ...connect.HandlerOption) Option {
+	return func(m *config) {
+		m.enableGrpcReflect = true
+		m.reflectOpts = append(m.reflectOpts, opts...)
+	}
+}
+
+func WithGrpcGateway(ctx context.Context, pattern string, port string, opts ...runtime.ServeMuxOption) Option {
+	return func(m *config) {
+		if ctx == nil {
+			ctx = context.Background()
+		}
+		m.enableGrpcGateway = true
+		m.gatewayContext = ctx
+		m.gatewayPort = port
+		m.gatewayPattern = pattern
+		m.gatewayMux = runtime.NewServeMux(opts...)
 	}
 }
 
@@ -127,12 +135,26 @@ func WithCrpcHandlerOptions(opts ...connect.HandlerOption) Option {
 // the scope will inherit this prefix. Prefix will also apply to
 // Vanguard pattern if Vanguard is enabled and the pattern is not
 // provided (Default of Vanguard pattern is `prefix`).
+//
+// WARN: prefix will not be applied to gRPC-reflection and gRPC-health.
 func WithPrefix(prefix string) Option {
 	return func(m *config) {
 		m.prefix = prefix
 	}
 }
 
+// WithSuffix sets the suffix for the scope. All service registered in
+// the scope will inherit this suffix.
+func WithSuffix(suffix string) Option {
+	return func(m *config) {
+		m.suffix = suffix
+	}
+}
+
+// Scope is a mizu scope for Connect RPC services over mizu.Server.
+// Multiple scopes can be derived from a single mizu.Server as long as
+// the routes are well-managed. Transcoder like Vanguard and gRPC-gateway
+// is considered scope-wise and should be registered with care.
 type Scope struct {
 	srv *mizu.Server
 
@@ -162,14 +184,14 @@ func NewScope(srv *mizu.Server, opts ...Option) *Scope {
 		mizu.Hook(srv, _CTXKEY_GRPC_REFLECT, &once, mizu.WithHookHandler(func(srv *mizu.Server) {
 			once.Do(func() {
 				reflector := grpcreflect.NewStaticReflector(*serviceNames...)
-				if scope.config.grpcReflectSubPattern == "" {
+				if scope.config.suffix == "" {
 					srv.Handle(grpcreflect.NewHandlerV1(reflector, scope.config.reflectOpts...))
 					srv.Handle(grpcreflect.NewHandlerV1Alpha(reflector, scope.config.reflectOpts...))
 				} else {
 					pv1, hv1 := grpcreflect.NewHandlerV1(reflector, scope.config.reflectOpts...)
-					srv.Handle(path.Join(pv1, scope.config.grpcReflectSubPattern), hv1)
+					srv.Handle(path.Join(pv1, scope.config.suffix), hv1)
 					pv1a, hv1a := grpcreflect.NewHandlerV1Alpha(reflector, scope.config.reflectOpts...)
-					srv.Handle(path.Join(pv1a, scope.config.grpcReflectSubPattern), hv1a)
+					srv.Handle(path.Join(pv1a, scope.config.suffix), hv1a)
 				}
 			})
 		}))
@@ -180,11 +202,11 @@ func NewScope(srv *mizu.Server, opts ...Option) *Scope {
 		mizu.Hook(srv, _CTXKEY_GRPC_HEALTH, &once, mizu.WithHookHandler(func(srv *mizu.Server) {
 			once.Do(func() {
 				checker := grpchealth.NewStaticChecker(*serviceNames...)
-				if scope.config.grpcHealthSubPattern == "" {
+				if scope.config.suffix == "" {
 					srv.Handle(grpchealth.NewHandler(checker))
 				} else {
 					pc, hc := grpchealth.NewHandler(checker)
-					srv.Handle(path.Join(pc, scope.config.grpcHealthSubPattern), hc)
+					srv.Handle(path.Join(pc, scope.config.suffix), hc)
 				}
 			})
 		}))
@@ -194,7 +216,7 @@ func NewScope(srv *mizu.Server, opts ...Option) *Scope {
 		once := sync.Once{}
 		mizu.Hook(srv, _CTXKEY_CRPC_VANGUARD, &once, mizu.WithHookHandler(func(srv *mizu.Server) {
 			once.Do(func() {
-				pattern := path.Join(scope.config.prefix, "/")
+				pattern := path.Join(scope.config.prefix, "/", scope.config.suffix)
 				if scope.config.vanguardPattern != "" {
 					pattern = scope.config.vanguardPattern
 				}
@@ -203,6 +225,19 @@ func NewScope(srv *mizu.Server, opts ...Option) *Scope {
 					panic(err)
 				}
 				srv.Handle(pattern, transcoder)
+			})
+		}))
+	}
+
+	if config.enableGrpcGateway {
+		once := sync.Once{}
+		mizu.Hook(srv, _CTXKEY_GRPC_GATEWAY, &once, mizu.WithHookHandler(func(srv *mizu.Server) {
+			once.Do(func() {
+				pattern := path.Join(scope.config.prefix, "/", scope.config.suffix)
+				if scope.config.gatewayPattern != "" {
+					pattern = scope.config.gatewayPattern
+				}
+				srv.Handle(pattern, scope.config.gatewayMux)
 			})
 		}))
 	}
@@ -239,41 +274,33 @@ func (s *Scope) Register(impl any, newFunc any, opts ...connect.HandlerOption) {
 	}
 
 	// Register service
-	s.srv.Handle(path.Join(s.config.prefix, pattern), handler)
+	if s.config.suffix == "" {
+		s.srv.Handle(path.Join(s.config.prefix, pattern), handler)
+	} else {
+		s.srv.Handle(path.Join(s.config.prefix, pattern, s.config.suffix), handler)
+	}
 }
 
-type relayScope struct {
+type relayVanguardScope struct {
 	inner   *Scope
 	svcOpts []vanguard.ServiceOption
 }
 
-// Use creates a new relay scope with the given service option.
-// ServiceOption will not be applied to all the following registered
-// services. The Scopt level service options should be configured with
+// UseVanguard creates a new relay scope with the given service option.
+// svcOpts will only be applied to the following registered service.
+// The Scope level service options should be configured with
 // WithCrpcVanguard("/", vanguard.WithDefaultServiceOptions(...)) on
 // initialization.
-func (s *Scope) Use(svcOpt vanguard.ServiceOption) *relayScope {
+func (s *Scope) UseVanguard(svcOpts ...vanguard.ServiceOption) *relayVanguardScope {
 	if !s.config.enableCrpcVanguard {
 		panic("invalid call: vanguard is not enabled")
 	}
-	return &relayScope{inner: s, svcOpts: []vanguard.ServiceOption{svcOpt}}
-}
-
-// Uses creates a new relay scope with the given service options.
-// ServiceOption will not be applied to all the following registered
-// services. The Scopt level service options should be configured with
-// WithCrpcVanguard("/", vanguard.WithDefaultServiceOptions(...)) on
-// initialization.
-func (s *Scope) Uses(svcOpts ...vanguard.ServiceOption) *relayScope {
-	if !s.config.enableCrpcVanguard {
-		panic("invalid call: vanguard is not enabled")
-	}
-	return &relayScope{inner: s, svcOpts: svcOpts}
+	return &relayVanguardScope{inner: s, svcOpts: svcOpts}
 }
 
 // Register registers a Connect RPC service with the relay scope.
 // Which will apply vanguard service options to the registered service.
-func (s relayScope) Register(impl any, newFunc any, opts ...connect.HandlerOption) {
+func (s relayVanguardScope) Register(impl any, newFunc any, opts ...connect.HandlerOption) {
 	opts = append(opts, s.inner.config.connectOpts...)
 
 	pattern, handler := invoke(impl, newFunc, opts...)
@@ -291,6 +318,40 @@ func (s relayScope) Register(impl any, newFunc any, opts ...connect.HandlerOptio
 
 	// Register service
 	s.inner.srv.Handle(pattern, handler)
+}
+
+type relayGatewayScope struct {
+	inner        *Scope
+	dialOpts     []grpc.DialOption
+	registerFunc func(ctx context.Context, mux *runtime.ServeMux, endpoint string, opts []grpc.DialOption) (err error)
+}
+
+// UseGateway creates a new relay scope with the given gRPC gateway
+// configuration. dialOpts will only be applied to the following
+// registered service.
+func (s *Scope) UseGateway(
+	registerEndpointFunc func(
+		ctx context.Context,
+		mux *runtime.ServeMux, endpoint string, opts []grpc.DialOption) (err error),
+	dialOpts ...grpc.DialOption,
+) *relayGatewayScope {
+	return &relayGatewayScope{inner: s, dialOpts: dialOpts, registerFunc: registerEndpointFunc}
+}
+
+// Register registers a Connect RPC service with the relay scope.
+// Which will apply gRPC gateway configuration to the registered service.
+func (r *relayGatewayScope) Register(impl any, newFunc any, opts ...connect.HandlerOption) {
+	if r.inner.config.gatewayMux == nil {
+		panic("gRPC-gateway is not enabled")
+	}
+
+	if err := r.registerFunc(
+		r.inner.config.gatewayContext,
+		r.inner.config.gatewayMux, "127.0.0.1"+r.inner.config.gatewayPort, r.dialOpts,
+	); err != nil {
+		panic(err)
+	}
+	r.inner.Register(impl, newFunc, opts...)
 }
 
 // detect extracts the protobuf service descriptor from the Connect

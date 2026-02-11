@@ -87,7 +87,6 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/google.api.HttpBody'
-  /fooapp.namaste.v1.NamasteService/Namaste: {}
   /greet/{name}:
     get:
       tags:
@@ -109,6 +108,25 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/barapp.greet.v1.GreetResponse'
+  /namaste:
+    post:
+      tags:
+        - fooapp.namaste.v1.NamasteService
+      summary: Namaste
+      operationId: fooapp.namaste.v1.NamasteService.Namaste
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/fooapp.namaste.v1.NamasteRequest'
+        required: true
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/fooapp.namaste.v1.NamasteResponse'
 components:
   schemas:
     barapp.file.v1.DownloadFileRequest:
@@ -266,6 +284,8 @@ components:
           title: name
           description: (proto string)
       title: NamasteRequest
+      required:
+        - name
       additionalProperties: false
     fooapp.namaste.v1.NamasteResponse:
       type: object
