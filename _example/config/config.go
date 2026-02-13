@@ -2,7 +2,6 @@ package config
 
 import (
 	"context"
-	// "context"
 	"errors"
 	"os"
 	"time"
@@ -12,6 +11,7 @@ import (
 	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
 	"github.com/humbornjo/mizu"
 	"github.com/humbornjo/mizu/mizuconnect"
+	"github.com/humbornjo/mizu/mizuconnect/restful/filekit"
 	"github.com/humbornjo/mizu/mizudi"
 	"github.com/humbornjo/mizu/mizulog"
 	"github.com/humbornjo/mizu/mizuoai"
@@ -75,17 +75,14 @@ func Initialize(paths ...string) {
 		// Use either vanguard or gRPC-gateway as REST transcoder
 		mizuconnect.WithGrpcGateway(
 			context.TODO(), "", c.Port,
-			// multipart/form-data
-			runtime.WithMarshalerOption("multipart/form-data", &runtime.HTTPBodyMarshaler{
-				Marshaler: &runtime.JSONPb{
-					MarshalOptions: protojson.MarshalOptions{
-						EmitUnpopulated: false,
-					},
-					UnmarshalOptions: protojson.UnmarshalOptions{
-						DiscardUnknown: true,
-					},
-				},
-			}),
+			runtime.WithMarshalerOption("*", filekit.NewFileMarshaler(
+				protojson.MarshalOptions{UseProtoNames: true},
+				protojson.UnmarshalOptions{DiscardUnknown: true},
+			)),
+			runtime.WithMarshalerOption("multipart/form-data", filekit.NewFormMarshaler(
+				protojson.MarshalOptions{UseProtoNames: true},
+				protojson.UnmarshalOptions{DiscardUnknown: true},
+			)),
 		),
 		// mizuconnect.WithCrpcVanguard(""),
 

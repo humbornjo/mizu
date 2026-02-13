@@ -50,10 +50,14 @@ type MockFormStream struct {
 var _ filekit.StreamForm[MockFormFrame] = (*MockFormStream)(nil)
 
 func NewMockStreamForm(messages ...*MockFormFrame) *MockFormStream {
+	header := make(http.Header)
+	if len(messages) > 0 {
+		header.Set("Content-Type", messages[0].GetContentType())
+	}
 	return &MockFormStream{
 		currentIndex: -1,
 		messages:     messages,
-		header:       make(http.Header),
+		header:       header,
 	}
 }
 

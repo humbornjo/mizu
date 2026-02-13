@@ -52,13 +52,14 @@ func main() {
 
 ### Connect RPC Options
 
-| Option                               | Description                           | Default  |
-| ------------------------------------ | ------------------------------------- | -------- |
-| `WithGrpcHealth()`                   | Enable gRPC health check endpoint     | Disabled |
-| `WithGrpcReflect(opts...)`           | Enable gRPC reflection for discovery  | Disabled |
-| `WithCrpcValidate()`                 | Enable protocol buffer validation     | Disabled |
-| `WithCrpcVanguard(pattern, opts...)` | Enable REST transcoding with Vanguard | Disabled |
-| `WithCrpcHandlerOptions(opts...)`    | Additional Connect handler options    | `nil`    |
+| Option                   | Description                               | Default  |
+| ------------------------ | ----------------------------------------- | -------- |
+| `WithGrpcHealth`         | Enable gRPC health check endpoint         | Disabled |
+| `WithGrpcReflect`        | Enable gRPC reflection for discovery      | Disabled |
+| `WithCrpcValidate`       | Enable protocol buffer validation         | Disabled |
+| `WithCrpcVanguard`       | Enable REST transcoding with Vanguard     | Disabled |
+| `WithGrpcGateway`        | Enable REST transcoding with gRPC-gateway | Disabled |
+| `WithCrpcHandlerOptions` | Additional Connect handler options        | `nil`    |
 
 ## Examples
 

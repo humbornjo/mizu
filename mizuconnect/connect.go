@@ -26,9 +26,9 @@ type ctxkey int
 
 const (
 	_CTXKEY_SERVICE_NAMES ctxkey = iota
+	_CTXKEY_CRPC_VANGUARD
 	_CTXKEY_GRPC_HEALTH
 	_CTXKEY_GRPC_REFLECT
-	_CTXKEY_CRPC_VANGUARD
 	_CTXKEY_GRPC_GATEWAY
 )
 
@@ -81,7 +81,7 @@ func WithGrpcHealth() Option {
 }
 
 // WithGrpcReflect enables gRPC reflection for the registered services.
-// This allows clients to discover service definitions at runtime
+// This allows clients to discover service definitions at runtime.
 func WithGrpcReflect(opts ...connect.HandlerOption) Option {
 	return func(m *config) {
 		m.enableGrpcReflect = true
@@ -89,6 +89,11 @@ func WithGrpcReflect(opts ...connect.HandlerOption) Option {
 	}
 }
 
+// WithGrpcGateway enables gRPC gateway for the registered services.
+// ctx controls the lifespan of the proxy connections (see
+// `Register[SERVICE]HandlerFromEndpoint` of the gRPC gateway compiling
+// output). port is where the requests will be proxied. It should be
+// the same port used by the ConnectRPC server or gRPC server.
 func WithGrpcGateway(ctx context.Context, pattern string, port string, opts ...runtime.ServeMuxOption) Option {
 	return func(m *config) {
 		if ctx == nil {

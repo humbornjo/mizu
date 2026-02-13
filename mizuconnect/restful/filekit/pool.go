@@ -29,6 +29,7 @@ var (
 
 	readerPool *Pool[*bufio.Reader]
 	writerPool *Pool[*bufio.Writer]
+	bufferPool *Pool[[64 * 1024]byte]
 )
 
 func init() {
@@ -40,5 +41,9 @@ func init() {
 
 	writerPool = newpool(func() *bufio.Writer {
 		return bufio.NewWriter(nil)
+	})
+
+	bufferPool = newpool(func() [64 * 1024]byte {
+		return [64 * 1024]byte{}
 	})
 }

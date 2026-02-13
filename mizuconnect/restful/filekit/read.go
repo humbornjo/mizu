@@ -263,8 +263,11 @@ func NewFormReader[T HttpForm](fileField string, stream StreamForm[T], msg proto
 		}
 	}
 
-	prologue := stream.Msg()
-	contentType := prologue.GetForm().GetContentType()
+	// gRPC-gateway compatibility
+	contentType := stream.RequestHeader().Get("Grpcgateway-Content-Type")
+	if contentType == "" {
+		contentType = stream.RequestHeader().Get("Content-Type")
+	}
 	_, params, err := mime.ParseMediaType(contentType)
 	if err != nil {
 		return nil, err
@@ -274,6 +277,7 @@ func NewFormReader[T HttpForm](fileField string, stream StreamForm[T], msg proto
 		return nil, errors.New("form boundary not found")
 	}
 
+	prologue := stream.Msg()
 	sr := &streamReader[T]{stream, prologue.GetForm().GetData()}
 	rxPool := readerPool.Get()
 	rxPool.Reset(sr)
