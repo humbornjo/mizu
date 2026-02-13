@@ -107,14 +107,22 @@ curl --location 'http://localhost:18080/file/{FILE_ID}'
 
 ### Namaste Service (Streaming RPC)
 
-Bidirectional streaming (requires HTTP/2):
+server streaming:
 
 ```bash
  grpcurl -plaintext -d '{"name": "Mizu"}' \
    localhost:18080 fooapp.namaste.v1.NamasteService/Namaste
+
+ curl -XPOST "http://localhost:18080/namaste" -d '{"name":"I"}'
 ```
 
 ### OpenAPI Service (HTTP/REST)
+
+OpenAPI documentation:
+
+```bash
+open "http://localhost:18080/openapi"
+```
 
 Order processing endpoint with OpenAPI validation:
 

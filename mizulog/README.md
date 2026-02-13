@@ -71,10 +71,10 @@ mizulog.Initialize(nil,
 
 ### Initialize Options
 
-| Option                  | Description                                 | Default          |
-| ----------------------- | ------------------------------------------- | ---------------- |
-| `WithLogLevel(level)`   | Minimum log level (string or int)           | `slog.LevelInfo` |
-| `WithAttributes(attrs)` | Default attributes added to all log records | `nil`            |
+| Option           | Description                                 | Default          |
+| ---------------- | ------------------------------------------- | ---------------- |
+| `WithLogLevel`   | Minimum log level (string or int)           | `slog.LevelInfo` |
+| `WithAttributes` | Default attributes added to all log records | `nil`            |
 
 ## Examples
 

@@ -3,9 +3,12 @@ package filesvc
 import (
 	"github.com/humbornjo/mizu/mizuconnect"
 	"github.com/humbornjo/mizu/mizudi"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
 
 	"mizu.example/config"
 	"mizu.example/package/storage"
+	filev1 "mizu.example/protogen/barapp/file/v1"
 	"mizu.example/protogen/barapp/file/v1/filev1connect"
 )
 
@@ -34,6 +37,11 @@ func Initialize(global *config.Config) {
 		panic("serve prefix not loaded")
 	}
 
-	scp := mizudi.MustRetrieve[*mizuconnect.Scope]()
-	scp.Register(&Service{storage.NewStorage()}, filev1connect.NewFileServiceHandler)
+	scope := mizudi.MustRetrieve[*mizuconnect.Scope]()
+	scope.
+		UseGateway(
+			filev1.RegisterFileServiceHandlerFromEndpoint,
+			grpc.WithTransportCredentials(insecure.NewCredentials()),
+		).
+		Register(&Service{storage.NewStorage()}, filev1connect.NewFileServiceHandler)
 }

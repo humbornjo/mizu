@@ -9,11 +9,23 @@ managed:
       value: mizu.example/protogen
 
   disable:
+    - module: buf.build/bufbuild/protovalidate
+      file_option: go_package
     - module: buf.build/googleapis/googleapis
       file_option: go_package_prefix
 
 plugins:
   - remote: buf.build/connectrpc/go:v1.18.1
+    out: dist
+    opt:
+      - paths=source_relative
+
+  - remote: buf.build/grpc/go:v1.6.1
+    out: dist
+    opt:
+      - paths=source_relative
+
+  - remote: buf.build/grpc-ecosystem/gateway:v2.27.7
     out: dist
     opt:
       - paths=source_relative

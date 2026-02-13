@@ -15,8 +15,10 @@ replace github.com/humbornjo/mizu/mizuoai => ../mizuoai
 replace github.com/humbornjo/mizu/mizuotel => ../mizuotel
 
 require (
+	buf.build/gen/go/bufbuild/protovalidate/protocolbuffers/go v1.36.9-20250912141014-52f32327d4b0.1
 	connectrpc.com/connect v1.19.1
 	github.com/go-chi/chi/v5 v5.2.5
+	github.com/grpc-ecosystem/grpc-gateway/v2 v2.27.8
 	github.com/humbornjo/mizu v0.0.0-20251107130138-05723b1570b6
 	github.com/humbornjo/mizu/mizuconnect v0.0.0-20251107130138-05723b1570b6
 	github.com/humbornjo/mizu/mizudi v0.0.0-20251107130138-05723b1570b6
@@ -24,12 +26,12 @@ require (
 	github.com/humbornjo/mizu/mizuoai v0.0.0-20251107130138-05723b1570b6
 	github.com/humbornjo/mizu/mizuotel v0.0.0-20251107130138-05723b1570b6
 	go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.63.0
-	google.golang.org/genproto/googleapis/api v0.0.0-20251103181224-f26f9409b101
-	google.golang.org/protobuf v1.36.10
+	google.golang.org/genproto/googleapis/api v0.0.0-20260209200024-4cfbd4190f57
+	google.golang.org/grpc v1.78.0
+	google.golang.org/protobuf v1.36.11
 )
 
 require (
-	buf.build/gen/go/bufbuild/protovalidate/protocolbuffers/go v1.36.9-20250912141014-52f32327d4b0.1 // indirect
 	buf.build/go/protovalidate v1.0.0 // indirect
 	cel.dev/expr v0.24.0 // indirect
 	connectrpc.com/grpchealth v1.4.0 // indirect
@@ -66,10 +68,11 @@ require (
 	go.opentelemetry.io/otel/sdk v1.40.0 // indirect
 	go.opentelemetry.io/otel/sdk/metric v1.40.0 // indirect
 	go.opentelemetry.io/otel/trace v1.40.0 // indirect
-	go.yaml.in/yaml/v3 v3.0.3 // indirect
+	go.yaml.in/yaml/v3 v3.0.4 // indirect
 	go.yaml.in/yaml/v4 v4.0.0-rc.2 // indirect
 	golang.org/x/exp v0.0.0-20250911091902-df9299821621 // indirect
+	golang.org/x/net v0.47.0 // indirect
 	golang.org/x/sys v0.40.0 // indirect
-	golang.org/x/text v0.31.0 // indirect
-	google.golang.org/genproto/googleapis/rpc v0.0.0-20251029180050-ab9386a59fda // indirect
+	golang.org/x/text v0.34.0 // indirect
+	google.golang.org/genproto/googleapis/rpc v0.0.0-20260209200024-4cfbd4190f57 // indirect
 )

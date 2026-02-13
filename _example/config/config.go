@@ -1,18 +1,22 @@
 package config
 
 import (
+	"context"
 	"errors"
 	"os"
 	"time"
 
 	"connectrpc.com/connect"
 	"github.com/go-chi/chi/v5"
+	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
 	"github.com/humbornjo/mizu"
 	"github.com/humbornjo/mizu/mizuconnect"
+	"github.com/humbornjo/mizu/mizuconnect/restful/filekit"
 	"github.com/humbornjo/mizu/mizudi"
 	"github.com/humbornjo/mizu/mizulog"
 	"github.com/humbornjo/mizu/mizuoai"
 	"github.com/humbornjo/mizu/mizuotel"
+	"google.golang.org/protobuf/encoding/protojson"
 
 	"mizu.example/package/debug"
 	"mizu.example/protogen"
@@ -51,7 +55,8 @@ func Initialize(paths ...string) {
 
 		mizu.WithRevealRoutes(),
 		mizu.WithProfilingHandlers(),
-		mizu.WithReadinessDrainDelay(0*time.Second),
+		mizu.WithReadinessDrainDelay(-1*time.Second),
+
 		// Force Protocol can useful when dev locally
 		// (Go STD use HTTP/1 by default when TLS is disabled)
 		mizu.WithServerProtocols(mizu.PROTOCOLS_HTTP2_UNENCRYPTED),
@@ -60,12 +65,26 @@ func Initialize(paths ...string) {
 
 	// Connect RPC -----------------------------------------------------
 	scope := mizuconnect.NewScope(server,
-		mizuconnect.WithCrpcValidate(),
-
 		// Use wildcard when enable chi.Mux
-		mizuconnect.WithGrpcHealth("/*"),
-		mizuconnect.WithGrpcReflect("/*"),
-		mizuconnect.WithCrpcVanguard("/*"),
+		mizuconnect.WithSuffix("/*"),
+
+		mizuconnect.WithCrpcValidate(),
+		mizuconnect.WithGrpcHealth(),
+		mizuconnect.WithGrpcReflect(),
+
+		// Use either vanguard or gRPC-gateway as REST transcoder
+		mizuconnect.WithGrpcGateway(
+			context.TODO(), "", c.Port,
+			runtime.WithMarshalerOption("*", filekit.NewFileMarshaler(
+				protojson.MarshalOptions{UseProtoNames: true},
+				protojson.UnmarshalOptions{DiscardUnknown: true},
+			)),
+			runtime.WithMarshalerOption("multipart/form-data", filekit.NewFormMarshaler(
+				protojson.MarshalOptions{UseProtoNames: true},
+				protojson.UnmarshalOptions{DiscardUnknown: true},
+			)),
+		),
+		// mizuconnect.WithCrpcVanguard(""),
 
 		mizuconnect.WithCrpcHandlerOptions(
 			connect.WithInterceptors(debug.NewInterceptor()),

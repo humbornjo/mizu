@@ -7,6 +7,8 @@
 package namastev1
 
 import (
+	_ "buf.build/gen/go/bufbuild/protovalidate/protocolbuffers/go/buf/validate"
+	_ "google.golang.org/genproto/googleapis/api/annotations"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 	reflect "reflect"
@@ -157,15 +159,15 @@ var File_fooapp_namaste_v1_namaste_proto protoreflect.FileDescriptor
 
 const file_fooapp_namaste_v1_namaste_proto_rawDesc = "" +
 	"\n" +
-	"\x1ffooapp/namaste/v1/namaste.proto\x12\x11fooapp.namaste.v1\"#\n" +
+	"\x1ffooapp/namaste/v1/namaste.proto\x12\x11fooapp.namaste.v1\x1a\x1bbuf/validate/validate.proto\x1a\x1cgoogle/api/annotations.proto\"#\n" +
 	"\aNamaste\x12\x18\n" +
-	"\amessage\x18\x01 \x01(\tR\amessage\"$\n" +
-	"\x0eNamasteRequest\x12\x12\n" +
-	"\x04name\x18\x01 \x01(\tR\x04name\"+\n" +
+	"\amessage\x18\x01 \x01(\tR\amessage\",\n" +
+	"\x0eNamasteRequest\x12\x1a\n" +
+	"\x04name\x18\x01 \x01(\tB\x06\xbaH\x03\xc8\x01\x01R\x04name\"+\n" +
 	"\x0fNamasteResponse\x12\x18\n" +
-	"\amessage\x18\x01 \x01(\tR\amessage2f\n" +
-	"\x0eNamasteService\x12T\n" +
-	"\aNamaste\x12!.fooapp.namaste.v1.NamasteRequest\x1a\".fooapp.namaste.v1.NamasteResponse(\x010\x01B\xbe\x01\n" +
+	"\amessage\x18\x01 \x01(\tR\amessage2y\n" +
+	"\x0eNamasteService\x12g\n" +
+	"\aNamaste\x12!.fooapp.namaste.v1.NamasteRequest\x1a\".fooapp.namaste.v1.NamasteResponse\"\x13\x82\xd3\xe4\x93\x02\r:\x01*\"\b/namaste0\x01B\xbe\x01\n" +
 	"\x15com.fooapp.namaste.v1B\fNamasteProtoP\x01Z1mizu.example/protogen/fooapp/namaste/v1;namastev1\xa2\x02\x03FNX\xaa\x02\x11Fooapp.Namaste.V1\xca\x02\x11Fooapp\\Namaste\\V1\xe2\x02\x1dFooapp\\Namaste\\V1\\GPBMetadata\xea\x02\x13Fooapp::Namaste::V1b\x06proto3"
 
 var (

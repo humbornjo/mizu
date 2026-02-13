@@ -433,14 +433,14 @@ func TestServer_Hook_StoreAndRetrieveValue(t *testing.T) {
 	assert.Equal(t, "test-data", retrievedValue.data)
 }
 
-func TestServer_Hook_ReturnsNilForNonExistentKey(t *testing.T) {
+func TestServer_Hook_ReturnsNewForNonExistentKey(t *testing.T) {
 	srv := mizu.NewServer("test-server")
 
 	type testKey string
 	key := testKey("non-existent-key")
 	// Should return nil for non-existent key
 	result := mizu.Hook(srv, key, (*struct{})(nil))
-	assert.Nil(t, result)
+	assert.NotNil(t, result)
 }
 
 func TestServer_Hook_WithHookHandler(t *testing.T) {
