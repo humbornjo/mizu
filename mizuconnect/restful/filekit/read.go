@@ -373,10 +373,6 @@ type streamReader[T HttpForm] struct {
 }
 
 func (r *streamReader[T]) Read(p []byte) (int, error) {
-	if len(r.buffer) == 0 {
-		return 0, io.EOF
-	}
-
 	pLen := len(p)
 	nbyte := copy(p, r.buffer)
 	r.buffer = r.buffer[nbyte:]
