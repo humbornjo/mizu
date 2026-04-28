@@ -31,6 +31,8 @@ var (
 	_INJECTOR = do.New()
 	_KOANF    *koanf.Koanf
 
+	DEFAULT_UNMARSHAL_TAG = "yaml"
+
 	ErrNotInitialized = fmt.Errorf("mizudi is not initialized")
 )
 
@@ -39,7 +41,8 @@ var (
 type Option func(*config)
 
 type config struct {
-	substituteMap map[string]string
+	UnmarshalTag  string
+	SubstituteMap map[string]string
 }
 
 // WithSubstitutePrefix is an option that allows you to specify a
@@ -58,7 +61,15 @@ type config struct {
 // even if the current directory is "service/greetsvc/config/".
 func WithSubstitutePrefix(from string, to string) Option {
 	return func(c *config) {
-		c.substituteMap[from] = to
+		c.SubstituteMap[from] = to
+	}
+}
+
+// WithUnmarshalTag is an option that allows you to specify a custom
+// unmarshal tag used in koanf.UnmarshalConf.
+func WithUnmarshalTag(tag string) Option {
+	return func(c *config) {
+		c.UnmarshalTag = tag
 	}
 }
 
@@ -180,11 +191,15 @@ func Enchant[T any](defaultConfig *T, opts ...Option) *T {
 	if defaultConfig == nil {
 		defaultConfig = new(T)
 	}
-	unmarshalConf := koanf.UnmarshalConf{Tag: "yaml"}
+	unmarshalConf := koanf.UnmarshalConf{Tag: DEFAULT_UNMARSHAL_TAG}
 
-	config := &config{substituteMap: make(map[string]string)}
+	config := &config{SubstituteMap: make(map[string]string)}
 	for _, opt := range opts {
 		opt(config)
+	}
+
+	if config.UnmarshalTag != "" {
+		unmarshalConf.Tag = config.UnmarshalTag
 	}
 
 	unmarshalPath := strings.TrimPrefix(path.Dir(runtimePath), _ROOT)
@@ -192,7 +207,7 @@ func Enchant[T any](defaultConfig *T, opts ...Option) *T {
 
 	{ // Apply trim prefix and substitution
 		blocks := strings.Split(unmarshalPath, _PATH_SEPARATOR)
-		for from, to := range config.substituteMap {
+		for from, to := range config.SubstituteMap {
 			matchBlocks := strings.Split(from, _PATH_SEPARATOR)
 			if len(matchBlocks) > len(blocks) {
 				continue
