@@ -66,7 +66,8 @@ func WithSubstitutePrefix(from string, to string) Option {
 }
 
 // WithUnmarshalTag is an option that allows you to specify a custom
-// unmarshal tag used in koanf.UnmarshalConf.
+// unmarshal tag used in koanf.UnmarshalConf. This option will override
+// DEFAULT_UNMARSHAL_TAG, which is also customizable via direct access.
 func WithUnmarshalTag(tag string) Option {
 	return func(c *config) {
 		c.UnmarshalTag = tag
