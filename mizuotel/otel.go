@@ -10,7 +10,7 @@ import (
 	metricsdk "go.opentelemetry.io/otel/sdk/metric"
 	"go.opentelemetry.io/otel/sdk/resource"
 	tracesdk "go.opentelemetry.io/otel/sdk/trace"
-	"go.opentelemetry.io/otel/semconv/v1.39.0"
+	"go.opentelemetry.io/otel/semconv/v1.40.0"
 	"go.opentelemetry.io/otel/trace"
 )
 
@@ -18,7 +18,7 @@ import (
 type Option func(*config)
 
 type config struct {
-	// Service attributes (spec 1.39.0)
+	// Service attributes (spec 1.40.0)
 	// https://opentelemetry.io/docs/specs/semconv/registry/attributes/service/
 	serviceName       string
 	serviceVersion    string

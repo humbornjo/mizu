@@ -1,4 +1,4 @@
-.PHONY: help install-hooks test race-test
+.PHONY: help install-hooks test race-test publish
 
 # 🎨 Colors and symbols
 BLUE := \033[34m
