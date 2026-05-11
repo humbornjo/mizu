@@ -162,14 +162,12 @@ func handle[I any, O any](
 	method string, srv *mizu.Server, pattern string, oaiHandler func(Tx[O], Rx[I]), opts ...OperationOption,
 ) *v3.Operation {
 	config := &operationConfig{
-		path:   pattern,
 		method: method,
+		path:   srv.Pattern(pattern),
 		Operation: v3.Operation{
 			Deprecated: new(bool),
 			Callbacks:  orderedmap.New[string, *v3.Callback](),
-			Responses: &v3.Responses{
-				Codes: orderedmap.New[string, *v3.Response](),
-			},
+			Responses:  &v3.Responses{Codes: orderedmap.New[string, *v3.Response]()},
 		},
 	}
 	for _, opt := range opts {

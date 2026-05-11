@@ -471,6 +471,11 @@ func (s *Server) Group(prefix string) *Server {
 	return &ss
 }
 
+// Pattern returns the registered pattern with prefix
+func (s *Server) Pattern(pattern string) string {
+	return path.Join(append(s.prefix, pattern)...)
+}
+
 // Use adds a middleware to the server. You can either consume the
 // middleware in chained manner or leave it and make it apply to all
 // the routes added after it.
