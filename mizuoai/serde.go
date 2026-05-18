@@ -13,6 +13,7 @@ import (
 	"reflect"
 	"slices"
 	"strconv"
+	"strings"
 )
 
 type encoder[T any] func(http.ResponseWriter, *T) error
@@ -54,11 +55,11 @@ type (
 	fieldlet []fieldBrief
 )
 
-func newFieldlet(val reflect.Value, tagKey mizutag) fieldlet {
+func newFieldlet(val reflect.Value) fieldlet {
 	fieldlet := fieldlet(make(fieldlet, 0))
 	for i := range val.Type().NumField() {
 		field := val.Type().Field(i)
-		tagVal := field.Tag.Get(tagKey.String())
+		tagVal := field.Tag.Get("json")
 		if tagVal == "" {
 			panic("empty tag value from: " + fmt.Sprintf("%+v", field))
 		}
@@ -112,7 +113,8 @@ func decode_params[T any](tag mizutag, idx int, fieldlet fieldlet) func(r *http.
 		case _STRUCT_TAG_QUERY:
 			return r.URL.Query().Get(identifier)
 		case _STRUCT_TAG_HEADER:
-			return r.Header.Get(identifier)
+			// Replace all underline with hyphens for Canonical purposes
+			return r.Header.Get(strings.ReplaceAll(identifier, "_", "-"))
 		default:
 			panic("unreachable")
 		}
@@ -191,7 +193,7 @@ func newDecoder[T any]() decoder[T] {
 	decoder := new(decoder[T])
 	for i := range typ.NumField() {
 		fieldTyp := typ.Field(i)
-		t, ok := fieldTyp.Tag.Lookup("mizu")
+		t, ok := fieldTyp.Tag.Lookup("json")
 		if !ok {
 			continue
 		}
@@ -206,12 +208,12 @@ func newDecoder[T any]() decoder[T] {
 		case _STRUCT_TAG_FORM:
 			hasForm = true
 			fieldVal := val.FieldByName(fieldTyp.Name)
-			fieldlet := newFieldlet(fieldVal, mizuTag)
+			fieldlet := newFieldlet(fieldVal)
 			decoder.append(decode_form[T](i, fieldlet))
 
 		default:
 			fieldVal := val.FieldByName(fieldTyp.Name)
-			fieldlet := newFieldlet(fieldVal, mizuTag)
+			fieldlet := newFieldlet(fieldVal)
 			decoder.append(decode_params[T](mizuTag, i, fieldlet))
 		}
 	}

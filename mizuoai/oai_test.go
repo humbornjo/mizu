@@ -15,33 +15,33 @@ import (
 
 type TestInputBodyJSON struct {
 	Query struct {
-		Name  string `query:"name"`
-		Age   int    `query:"age"`
-		Admin bool   `query:"admin"`
-	} `mizu:"query"`
+		Name  string `json:"name"`
+		Age   int    `json:"age"`
+		Admin bool   `json:"admin"`
+	} `json:"query"`
 	Body struct {
 		Email string `json:"email"`
 		Role  string `json:"role"`
-	} `mizu:"body"`
+	} `json:"body"`
 	Path struct {
-		ID string `path:"id"`
-	} `mizu:"path"`
+		ID string `json:"id"`
+	} `json:"path"`
 	Header struct {
-		Authorization string `header:"Authorization"`
-		ContentType   string `header:"Content-Type"`
-	} `mizu:"header"`
+		Authorization string `json:"Authorization"`
+		ContentType   string `json:"Content-Type"`
+	} `json:"header"`
 }
 
 type TestInputBodyString struct {
-	Message string `mizu:"body"`
+	Message string `json:"body"`
 }
 
 type TestInputBodyInt struct {
-	Value int `mizu:"body"`
+	Value int `json:"body"`
 }
 
 type TestInputBodyFloat struct {
-	Value float64 `mizu:"body"`
+	Value float64 `json:"body"`
 }
 
 func TestMizuOai_Rx_Read_BodyJSON(t *testing.T) {
@@ -61,20 +61,20 @@ func TestMizuOai_Rx_Read_BodyJSON(t *testing.T) {
 			}(),
 			expected: TestInputBodyJSON{
 				Query: struct {
-					Name  string `query:"name"`
-					Age   int    `query:"age"`
-					Admin bool   `query:"admin"`
+					Name  string `json:"name"`
+					Age   int    `json:"age"`
+					Admin bool   `json:"admin"`
 				}{Name: "John", Age: 30, Admin: true},
 				Body: struct {
 					Email string `json:"email"`
 					Role  string `json:"role"`
 				}{Email: "test@example.com", Role: "user"},
 				Path: struct {
-					ID string `path:"id"`
+					ID string `json:"id"`
 				}{ID: "123"},
 				Header: struct {
-					Authorization string `header:"Authorization"`
-					ContentType   string `header:"Content-Type"`
+					Authorization string `json:"Authorization"`
+					ContentType   string `json:"Content-Type"`
 				}{Authorization: "Bearer xyz", ContentType: "application/json"},
 			},
 		},
@@ -233,11 +233,11 @@ func TestMizuOai_Rx_Read_BodyFloat(t *testing.T) {
 
 type TestInputForm struct {
 	Form struct {
-		Name      string `form:"name"`
-		Email     string `form:"email"`
-		Age       int    `form:"age"`
-		Subscribe bool   `form:"subscribe"`
-	} `mizu:"form"`
+		Name      string `json:"name"`
+		Email     string `json:"email"`
+		Age       int    `json:"age"`
+		Subscribe bool   `json:"subscribe"`
+	} `json:"form"`
 }
 
 func TestMizuOai_Rx_Read_FormData(t *testing.T) {
@@ -279,10 +279,10 @@ func TestMizuOai_Rx_Read_FormData(t *testing.T) {
 			}(),
 			expected: TestInputForm{
 				Form: struct {
-					Name      string `form:"name"`
-					Email     string `form:"email"`
-					Age       int    `form:"age"`
-					Subscribe bool   `form:"subscribe"`
+					Name      string `json:"name"`
+					Email     string `json:"email"`
+					Age       int    `json:"age"`
+					Subscribe bool   `json:"subscribe"`
 				}{
 					Name:      "John Doe",
 					Email:     "john@example.com",

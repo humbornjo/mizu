@@ -65,8 +65,7 @@ func createSchema(typ reflect.Type) *base.SchemaProxy {
 		schema.Type = append(schema.Type, "boolean")
 	case reflect.Struct:
 		schema.Type = append(schema.Type, "object")
-		for i := 0; i < typ.NumField(); i++ {
-			field := typ.Field(i)
+		for field := range typ.Fields() {
 			jsonTag := strings.Split(field.Tag.Get("json"), ",")[0]
 			if jsonTag == "" || jsonTag == "-" {
 				continue
@@ -223,17 +222,15 @@ func enrichOperation[I any, O any](config *operationConfig) {
 	typInput := valInput.Type()
 
 	// Process input type (request parameters/body)
-	for i := range typInput.NumField() {
-		field := typInput.Field(i)
-		mizuTag, ok := field.Tag.Lookup("mizu")
+	for field := range typInput.Fields() {
+		mizuTag, ok := field.Tag.Lookup("json")
 		if !ok {
 			continue
 		}
 		switch mizutag(mizuTag) {
 		case _STRUCT_TAG_PATH, _STRUCT_TAG_QUERY, _STRUCT_TAG_HEADER:
-			for i := range field.Type.NumField() {
-				subField := field.Type.Field(i)
-				config.createParameter(mizuTag, &subField)
+			for subfield := range field.Type.Fields() {
+				config.createParameter(mizuTag, &subfield)
 			}
 		case _STRUCT_TAG_BODY:
 			config.createRequestBody(&field, false)
