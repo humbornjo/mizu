@@ -206,6 +206,8 @@ func WithWizardHandleReadiness(pattern string, wizard func(*atomic.Bool) http.Ha
 // endpoints. This registers handlers at /debug/pprof/* for CPU,
 // memory, goroutine profiling, etc. Should only be enabled in
 // development environments, or with proper access control.
+//
+// nolint: gosec // G710: Open redirect via taint analysis
 func WithProfilingHandlers() Option {
 	return func(m *config) {
 		old := *m
