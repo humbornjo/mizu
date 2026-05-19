@@ -215,7 +215,7 @@ func WithProfilingHandlers() Option {
 			Hook[struct{}, struct{}](s, struct{}{}, nil, WithHookHandler(
 				func(s *Server) {
 					s.HandleFunc("/debug/pprof", func(w http.ResponseWriter, r *http.Request) {
-						http.Redirect(w, r, r.RequestURI+"/", http.StatusMovedPermanently)
+						http.Redirect(w, r, r.URL.Path+"/", http.StatusMovedPermanently)
 					})
 
 					s.HandleFunc("/debug/pprof/", pprof.Index)
