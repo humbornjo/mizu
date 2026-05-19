@@ -326,6 +326,10 @@ type operationConfig struct {
 	method string
 }
 
+func (c *operationConfig) key() string {
+	return fmt.Sprintf("%s %s", c.method, c.path)
+}
+
 // WithOperationTags adds tags to the operation, for logical grouping
 // of operations.
 //

@@ -139,7 +139,7 @@ func (c *oaiConfig) render(json bool) ([]byte, error) {
 	}
 
 	for _, handler := range c.handlers {
-		_, ok := model.Paths.PathItems.Get(handler.path)
+		_, ok := model.Paths.PathItems.Get(handler.key())
 		if ok {
 			fmt.Printf("⚠️ [WARN] Path %s is already defined, replaced.\n", handler.path)
 		}
@@ -164,7 +164,7 @@ func (c *oaiConfig) render(json bool) ([]byte, error) {
 		default:
 			panic("unreachable")
 		}
-		model.Paths.PathItems.Set(handler.path, item)
+		model.Paths.PathItems.Set(handler.key(), item)
 	}
 
 	if !json {
