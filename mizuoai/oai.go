@@ -39,7 +39,7 @@ func Initialize(srv *mizu.Server, title string, opts ...OaiOption) error {
 		return errors.New("openapi spec title is required")
 	}
 	alreadyInitialized := false
-	mizu.Immediate[ctxkey, oaiConfig](srv, _CTXKEY_OAI, func(existing *oaiConfig) {
+	mizu.Immediate(srv, _CTXKEY_OAI, func(existing *oaiConfig) {
 		alreadyInitialized = existing != nil
 	})
 	if alreadyInitialized {
@@ -65,7 +65,7 @@ func Initialize(srv *mizu.Server, title string, opts ...OaiOption) error {
 		return config.err
 	}
 	if len(config.baseData) > 0 {
-		document, err := ParseOpenAPI(config.baseData)
+		document, err := parseOpenApiDocument(config.baseData, false)
 		if err != nil {
 			return err
 		}

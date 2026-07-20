@@ -1,6 +1,7 @@
 package oaisvc
 
 import (
+	"fmt"
 	"log/slog"
 	"net/http"
 	"time"
@@ -16,6 +17,31 @@ type InputOaiScrape struct {
 }
 
 type OutputOaiScrape = string
+
+func HandleOaiEvents(w http.ResponseWriter, r *http.Request) {
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		http.Error(w, "streaming is not supported", http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	ticker := time.NewTicker(250 * time.Millisecond)
+	defer ticker.Stop()
+	for index, message := range []string{"connected", "working", "complete"} {
+		if index > 0 {
+			select {
+			case <-ticker.C:
+			case <-r.Context().Done():
+				return
+			}
+		}
+		if _, err := fmt.Fprintf(w, "data: %s\n\n", message); err != nil {
+			return
+		}
+		flusher.Flush()
+	}
+}
 
 func HandleOaiScrape(tx mizuoai.Tx[OutputOaiScrape], rx mizuoai.Rx[InputOaiScrape]) {
 	input, err := rx.MizuRead()

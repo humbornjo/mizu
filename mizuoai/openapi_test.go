@@ -1164,6 +1164,18 @@ paths:
 }
 
 func TestMizuoai_InitializationValidation(t *testing.T) {
+	t.Run("preload info completed by initialization", func(t *testing.T) {
+		srv := mizu.NewServer("test")
+		err := Initialize(srv, "completed title", WithOaiPreLoad([]byte(`openapi: 3.1.0
+info: {}
+paths: {}
+`)))
+		require.NoError(t, err)
+		model := retrieveDocument(t, srv)
+		require.Equal(t, "completed title", model.Info.Title)
+		require.Equal(t, "1.0.0", model.Info.Version)
+	})
+
 	t.Run("3.2 field in 3.1 output", func(t *testing.T) {
 		srv := mizu.NewServer("test")
 		err := Initialize(srv, "test", WithOaiVersion("3.1.1"), WithOaiSelf("https://example.com/openapi.yaml"))

@@ -45,6 +45,10 @@ type documentOperation struct {
 // operations by operationId. Output is normalized to the configured target
 // version when the document is registered.
 func ParseOpenAPI(data []byte) (*OpenApiDocument, error) {
+	return parseOpenApiDocument(data, true)
+}
+
+func parseOpenApiDocument(data []byte, validate bool) (*OpenApiDocument, error) {
 	if len(data) == 0 {
 		return nil, errors.New("openapi document is empty")
 	}
@@ -56,13 +60,15 @@ func ParseOpenAPI(data []byte) (*OpenApiDocument, error) {
 	if err != nil {
 		return nil, fmt.Errorf("parse openapi document: %w", err)
 	}
-	valid, validationErrors := schema_validation.ValidateOpenAPIDocument(document)
-	if !valid {
-		errs := make([]error, 0, len(validationErrors))
-		for _, validationError := range validationErrors {
-			errs = append(errs, validationError)
+	if validate {
+		valid, validationErrors := schema_validation.ValidateOpenAPIDocument(document)
+		if !valid {
+			errs := make([]error, 0, len(validationErrors))
+			for _, validationError := range validationErrors {
+				errs = append(errs, validationError)
+			}
+			return nil, fmt.Errorf("validate openapi document: %w", errors.Join(errs...))
 		}
-		return nil, fmt.Errorf("validate openapi document: %w", errors.Join(errs...))
 	}
 	sanitized, err := sanitizedLibopenapiData(data)
 	if err != nil {

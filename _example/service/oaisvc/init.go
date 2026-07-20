@@ -4,6 +4,10 @@ import (
 	"github.com/humbornjo/mizu"
 	"github.com/humbornjo/mizu/mizudi"
 	"github.com/humbornjo/mizu/mizuoai"
+	"github.com/pb33f/libopenapi/datamodel/high/base"
+	v3 "github.com/pb33f/libopenapi/datamodel/high/v3"
+	"github.com/pb33f/libopenapi/orderedmap"
+	"go.yaml.in/yaml/v4"
 	"mizu.example/config"
 )
 
@@ -15,6 +19,30 @@ func Initialize(_ *config.Config) {
 		mizuoai.WithOperationTags("scrape"),
 		mizuoai.WithOperationSummary("mizu_example http scrape"),
 		mizuoai.WithOperationDescription("nobody knows scrape more than I do"),
+	)
+	mizuoai.GetRaw(g, "/events", HandleOaiEvents,
+		mizuoai.WithOperation(&v3.Operation{
+			OperationId: "streamEvents",
+			Tags:        []string{"events"},
+			Summary:     "Stream server-sent events",
+			Description: "Sends three text events and flushes each event immediately.",
+			Responses: &v3.Responses{Codes: orderedmap.ToOrderedMap(map[string]*v3.Response{
+				"200": {
+					Description: "Event stream",
+					Content: orderedmap.ToOrderedMap(map[string]*v3.MediaType{
+						"text/event-stream": {
+							ItemSchema: base.CreateSchemaProxy(&base.Schema{Type: []string{"string"}}),
+							Example: &yaml.Node{
+								Kind:  yaml.ScalarNode,
+								Tag:   "!!str",
+								Style: yaml.LiteralStyle,
+								Value: "data: connected\n\ndata: working\n\ndata: complete\n\n",
+							},
+						},
+					}),
+				},
+			})},
+		}),
 	)
 
 	guser := g.Group("/user")

@@ -124,6 +124,12 @@ OpenAPI documentation:
 open "http://localhost:18080/openapi"
 ```
 
+Server-sent events with immediate flushing:
+
+```bash
+curl -N "http://localhost:18080/oai/events"
+```
+
 Order processing endpoint with OpenAPI validation:
 
 ```bash
