@@ -2,46 +2,78 @@ package mizuoai
 
 import (
 	"fmt"
+	"reflect"
+	"slices"
+	"sync"
 
-	"github.com/pb33f/libopenapi"
 	"github.com/pb33f/libopenapi/datamodel/high/base"
 	v3 "github.com/pb33f/libopenapi/datamodel/high/v3"
 	"github.com/pb33f/libopenapi/orderedmap"
 	"go.yaml.in/yaml/v4"
 )
 
-// INFO: mizuoai only support OPENAPI v3.0.4 Spec (version is not
-// customizable), but still compatible with OpenAPI v3.1.0, which
-// means you can load v3.1.0 document.
+const _OPENAPI_VERSION = "3.2.0"
 
 // --------------------------------------------------------------
 // OpenAPI Options
 
 type OaiOption func(*oaiConfig)
 
-// oaiConfig holds the configuration for an OpenAPI Object. It is
-// populated by the OaiOption functions and used to generate the
-// OpenAPI specification. Version is fixed as 3.0.4.
-//
-// Each field corresponds to a field in the OpenAPI Object.
-// - https://spec.openapis.org/oas/v3.0.4.html#openapi-object
-//
-// WARN: components are ignored for now.
+// oaiConfig holds the configuration and registrations used to build an
+// OpenAPI 3.2 document. OpenAPI 3.1 documents can be used as input.
 type oaiConfig struct {
+	mu             sync.Mutex
+	err            error
+	version        string
 	enableJson     bool
 	enableDocument bool
 	servePath      string
-	baseModel      *v3.Document
+	baseData       []byte
+	self           string
+	jsonDialect    string
 
-	info         *base.Info
-	tags         []*base.Tag
-	servers      []*v3.Server
-	externalDocs *base.ExternalDoc
-	security     []*base.SecurityRequirement
-	extensions   *orderedmap.Map[string, *yaml.Node]
-	paths        v3.Paths
+	info          *base.Info
+	tags          []*base.Tag
+	servers       []*v3.Server
+	externalDocs  *base.ExternalDoc
+	security      []*base.SecurityRequirement
+	extensions    *orderedmap.Map[string, *yaml.Node]
+	paths         *orderedmap.Map[string, *v3.PathItem]
+	components    *v3.Components
+	reflector     *schemaReflector
+	operationIds  map[string]string
+	routes        map[string]bool
+	rawComponents map[string]*yaml.Node
+	webhooks      *orderedmap.Map[string, *v3.PathItem]
 
 	handlers []*operationConfig
+}
+
+// WithOaiSelf sets the OpenAPI 3.2 $self URI used as the document base URI.
+func WithOaiSelf(uri string) OaiOption {
+	return func(c *oaiConfig) {
+		c.self = uri
+	}
+}
+
+// WithOaiJsonSchemaDialect sets the default JSON Schema dialect for Schema
+// Objects in the document.
+func WithOaiJsonSchemaDialect(uri string) OaiOption {
+	return func(c *oaiConfig) {
+		c.jsonDialect = uri
+	}
+}
+
+// WithOaiVersion selects the output OpenAPI version. Versions 3.1.x and 3.2.x
+// are supported. The default is 3.2.0.
+func WithOaiVersion(version string) OaiOption {
+	return func(c *oaiConfig) {
+		if err := validateTargetVersion(version); err != nil {
+			c.err = err
+			return
+		}
+		c.version = version
+	}
 }
 
 // WithOaiServePath sets the path to serve openapi.json.
@@ -67,16 +99,30 @@ func WithOaiDocumentation() OaiOption {
 
 // WithOaiPreLoad loads an OpenAPI document from data.
 func WithOaiPreLoad(data []byte) OaiOption {
-	document, err := libopenapi.NewDocument(data)
-	if err != nil {
-		fmt.Printf("🚨 [ERROR] Failed to load OpenAPI document: %s\n", err)
-	}
-	v3Model, err := document.BuildV3Model()
-	if err != nil {
-		fmt.Printf("🚨 [ERROR] Failed to build v3 model: %s\n", err)
-	}
 	return func(c *oaiConfig) {
-		c.baseModel = &v3Model.Model
+		c.baseData = append([]byte(nil), data...)
+	}
+}
+
+// WithOaiComponents adds reusable OpenAPI components to the generated
+// document. Incompatible components with the same name are rejected.
+func WithOaiComponents(components *v3.Components) OaiOption {
+	return func(c *oaiConfig) {
+		if components == nil {
+			return
+		}
+		if err := mergeComponents(c.components, components); err != nil {
+			c.err = err
+		}
+	}
+}
+
+// WithOaiSchemaName overrides the reflected component name for T.
+func WithOaiSchemaName[T any](name string) OaiOption {
+	return func(c *oaiConfig) {
+		if err := c.reflector.setName(reflect.TypeFor[T](), name); err != nil {
+			c.err = err
+		}
 	}
 }
 
@@ -87,6 +133,37 @@ func WithOaiPreLoad(data []byte) OaiOption {
 func WithOaiDescription(description string) OaiOption {
 	return func(c *oaiConfig) {
 		c.info.Description = description
+	}
+}
+
+// WithOaiSummary provides the OpenAPI 3.2 API summary.
+func WithOaiSummary(summary string) OaiOption {
+	return func(c *oaiConfig) {
+		c.info.Summary = summary
+	}
+}
+
+// WithOaiInfoVersion sets the version of the described API.
+func WithOaiInfoVersion(version string) OaiOption {
+	return func(c *oaiConfig) {
+		c.info.Version = version
+	}
+}
+
+// WithOaiInfo supplies a complete OpenAPI Info Object. Initialize's title is
+// retained when info does not specify one.
+func WithOaiInfo(info *base.Info) OaiOption {
+	return func(c *oaiConfig) {
+		if info == nil {
+			c.err = fmt.Errorf("OpenAPI info is nil")
+			return
+		}
+		title := c.info.Title
+		copied := *info
+		c.info = &copied
+		if c.info.Title == "" {
+			c.info.Title = title
+		}
 	}
 }
 
@@ -123,18 +200,52 @@ func WithOaiContact(name string, url string, email string, extensions ...map[str
 //
 // - https://spec.openapis.org/oas/v3.0.4.html#license-object
 func WithOaiLicense(name string, url string, extensions ...map[string]any) OaiOption {
-	if name == "" {
-		fmt.Println("🚨 [ERROR] License name cannot be empty")
-	}
 	var firstExtensions map[string]any
 	if len(extensions) > 0 {
 		firstExtensions = extensions[0]
 	}
 	return func(c *oaiConfig) {
+		if name == "" {
+			c.err = fmt.Errorf("OpenAPI license name cannot be empty")
+			return
+		}
 		c.info.License = &base.License{
 			Name:       name,
 			URL:        url,
 			Extensions: convExtensions(firstExtensions),
+		}
+	}
+}
+
+// WithOaiWebhook adds an OpenAPI 3.1+ webhook Path Item.
+func WithOaiWebhook(name string, item *v3.PathItem) OaiOption {
+	return func(c *oaiConfig) {
+		if name == "" || item == nil {
+			c.err = fmt.Errorf("OpenAPI webhook name and path item are required")
+			return
+		}
+		if previous, ok := c.webhooks.Get(name); ok {
+			equal, err := semanticEqual(previous, item)
+			if err != nil || !equal {
+				c.err = fmt.Errorf("incompatible OpenAPI webhook collision at %s", name)
+			}
+			return
+		}
+		c.webhooks.Set(name, item)
+	}
+}
+
+// WithOaiSecurityScheme adds a reusable security scheme component.
+func WithOaiSecurityScheme(name string, scheme *v3.SecurityScheme) OaiOption {
+	return func(c *oaiConfig) {
+		if name == "" || scheme == nil {
+			c.err = fmt.Errorf("OpenAPI security scheme name and value are required")
+			return
+		}
+		components := newComponents()
+		components.SecuritySchemes.Set(name, scheme)
+		if err := mergeComponents(c.components, components); err != nil {
+			c.err = err
 		}
 	}
 }
@@ -159,6 +270,17 @@ func WithOaiServer(url string, desc string, variables map[string]*v3.ServerVaria
 			Variables:   orderedmap.ToOrderedMap(variables),
 			Extensions:  convExtensions(firstExtensions),
 		})
+	}
+}
+
+// WithOaiServerObject adds a complete Server Object.
+func WithOaiServerObject(server *v3.Server) OaiOption {
+	return func(c *oaiConfig) {
+		if server == nil {
+			c.err = fmt.Errorf("OpenAPI server is nil")
+			return
+		}
+		c.servers = append(c.servers, server)
 	}
 }
 
@@ -192,12 +314,36 @@ func WithOaiTag(name string, desc string, externalDocs *base.ExternalDoc, extens
 		firstExtensions = extensions[0]
 	}
 	return func(c *oaiConfig) {
-		c.tags = append(c.tags, &base.Tag{
+		tag := &base.Tag{
 			Name:         name,
 			Description:  desc,
 			ExternalDocs: externalDocs,
 			Extensions:   convExtensions(firstExtensions),
-		})
+		}
+		if name == "" {
+			c.err = fmt.Errorf("OpenAPI tag name is required")
+			return
+		}
+		if err := mergeTags(&c.tags, []*base.Tag{tag}); err != nil {
+			c.err = err
+		}
+	}
+}
+
+// WithOaiTagObject adds a complete Tag Object.
+func WithOaiTagObject(tag *base.Tag) OaiOption {
+	return func(c *oaiConfig) {
+		if tag == nil {
+			c.err = fmt.Errorf("OpenAPI tag is nil")
+			return
+		}
+		if tag.Name == "" {
+			c.err = fmt.Errorf("OpenAPI tag name is required")
+			return
+		}
+		if err := mergeTags(&c.tags, []*base.Tag{tag}); err != nil {
+			c.err = err
+		}
 	}
 }
 
@@ -230,13 +376,26 @@ func WithOaiExtensions(extensions map[string]any) OaiOption {
 
 // --------------------------------------------------------------
 // Path Options
-//
-// WARN: $ref is not supported
-
 type PathOption func(*pathConfig)
 
 type pathConfig struct {
 	v3.PathItem
+}
+
+// WithPathItem supplies a complete OpenAPI Path Item Object.
+func WithPathItem(item *v3.PathItem) PathOption {
+	return func(c *pathConfig) {
+		if item != nil {
+			c.PathItem = *item
+		}
+	}
+}
+
+// WithPathReference sets the Path Item Object reference.
+func WithPathReference(reference string) PathOption {
+	return func(c *pathConfig) {
+		c.Reference = reference
+	}
 }
 
 // WithPathSummary adds a summary for the path. An optional. An
@@ -321,13 +480,16 @@ type operationConfig struct {
 	responseCode    *int
 	responseLinks   map[string]*v3.Link
 	responseHeaders map[string]*v3.Header
+	requestBodySet  bool
+	responsesSet    bool
+	external        *documentOperation
+	components      *v3.Components
+	pathItem        *v3.PathItem
+	documentTags    []*base.Tag
+	err             error
 
 	path   string
 	method string
-}
-
-func (c *operationConfig) key() string {
-	return fmt.Sprintf("%s %s", c.method, c.path)
 }
 
 // WithOperationTags adds tags to the operation, for logical grouping
@@ -336,7 +498,11 @@ func (c *operationConfig) key() string {
 // - https://spec.openapis.org/oas/v3.0.4.html#operation-object
 func WithOperationTags(tags ...string) OperationOption {
 	return func(c *operationConfig) {
-		c.Tags = tags
+		for _, tag := range tags {
+			if !slices.Contains(c.Tags, tag) {
+				c.Tags = append(c.Tags, tag)
+			}
+		}
 	}
 }
 
@@ -402,7 +568,113 @@ func WithOperationOperationId(operationId string) OperationOption {
 // - https://spec.openapis.org/oas/v3.0.4.html#path-item-object
 func WithOperationParameters(parameters ...*v3.Parameter) OperationOption {
 	return func(c *operationConfig) {
-		c.Parameters = parameters
+		merged, err := mergeParameters(c.Parameters, parameters)
+		if err != nil {
+			c.err = err
+			return
+		}
+		c.Parameters = merged
+	}
+}
+
+// WithOperation uses a complete OpenAPI operation. Typed reflection is
+// skipped, making the supplied operation authoritative.
+func WithOperation(operation *v3.Operation) OperationOption {
+	return func(c *operationConfig) {
+		if operation == nil {
+			c.err = fmt.Errorf("openapi operation is nil")
+			return
+		}
+		if c.external != nil {
+			c.err = fmt.Errorf("multiple authoritative OpenAPI operations supplied")
+			return
+		}
+		merged, err := supplementOperation(operation, &c.Operation)
+		if err != nil {
+			c.err = err
+			return
+		}
+		c.Operation = *merged
+		c.external = &documentOperation{operation: operation}
+	}
+}
+
+// WithOpenApiOperation selects an authoritative operation by operationId from
+// a parsed OpenAPI 3.0, 3.1, or 3.2 document.
+func WithOpenApiOperation(document *OpenApiDocument, operationId string) OperationOption {
+	return func(c *operationConfig) {
+		if document == nil {
+			c.err = fmt.Errorf("openapi document is nil")
+			return
+		}
+		if c.external != nil {
+			c.err = fmt.Errorf("multiple authoritative OpenAPI operations supplied")
+			return
+		}
+		operation, ok := document.operations[operationId]
+		if !ok {
+			c.err = fmt.Errorf("openapi operation %q not found", operationId)
+			return
+		}
+		merged, err := supplementOperation(operation.operation, &c.Operation)
+		if err != nil {
+			c.err = err
+			return
+		}
+		c.external = operation
+		c.Operation = *merged
+		c.components = operation.components
+		c.pathItem = operation.pathItem
+		c.documentTags = operation.tags
+	}
+}
+
+// WithOperationRequestBody replaces the reflected request body.
+func WithOperationRequestBody(requestBody *v3.RequestBody) OperationOption {
+	return func(c *operationConfig) {
+		c.RequestBody = requestBody
+		c.requestBodySet = true
+	}
+}
+
+// WithOperationResponses replaces the reflected responses object.
+func WithOperationResponses(responses *v3.Responses) OperationOption {
+	return func(c *operationConfig) {
+		c.Responses = responses
+		c.responsesSet = true
+	}
+}
+
+// WithOperationExtensions adds specification extensions to the operation.
+func WithOperationExtensions(extensions map[string]any) OperationOption {
+	return func(c *operationConfig) {
+		merged, err := mergeNamedValues("extension", c.Extensions, convExtensions(extensions))
+		if err != nil {
+			c.err = err
+			return
+		}
+		c.Extensions = merged
+	}
+}
+
+// WithResponse adds or replaces one response by status code.
+func WithResponse(code int, response *v3.Response) OperationOption {
+	return func(c *operationConfig) {
+		if code < 100 || code > 599 {
+			c.err = fmt.Errorf("invalid HTTP response status %d", code)
+			return
+		}
+		if response == nil {
+			c.err = fmt.Errorf("response for status %d is nil", code)
+			return
+		}
+		if c.Responses == nil {
+			c.Responses = &v3.Responses{Codes: orderedmap.New[string, *v3.Response]()}
+		}
+		if c.Responses.Codes == nil {
+			c.Responses.Codes = orderedmap.New[string, *v3.Response]()
+		}
+		c.Responses.Codes.Set(fmt.Sprintf("%d", code), response)
 	}
 }
 
@@ -415,6 +687,16 @@ func WithOperationParameters(parameters ...*v3.Parameter) OperationOption {
 // - https://spec.openapis.org/oas/v3.0.4.html#operation-object
 func WithOperationCallback(key string, value *v3.Callback) OperationOption {
 	return func(c *operationConfig) {
+		if c.Callbacks == nil {
+			c.Callbacks = orderedmap.New[string, *v3.Callback]()
+		}
+		if previous, ok := c.Callbacks.Get(key); ok {
+			equal, err := semanticEqual(previous, value)
+			if err != nil || !equal {
+				c.err = fmt.Errorf("conflicting OpenAPI operation callback %s", key)
+			}
+			return
+		}
 		c.Callbacks.Set(key, value)
 	}
 }
@@ -424,6 +706,9 @@ func WithOperationCallback(key string, value *v3.Callback) OperationOption {
 // - https://spec.openapis.org/oas/v3.0.4.html#operation-object
 func WithOperationDeprecated() OperationOption {
 	return func(c *operationConfig) {
+		if c.Deprecated == nil {
+			c.Deprecated = new(bool)
+		}
 		*c.Deprecated = true
 	}
 }
@@ -476,6 +761,10 @@ func WithOperationServer(url string, desc string, variables map[string]*v3.Serve
 // operation. Links and headers can be added if needed.
 func WithResponseOverride(code int, links map[string]*v3.Link, headers map[string]*v3.Header) OperationOption {
 	return func(c *operationConfig) {
+		if code < 100 || code > 599 {
+			c.err = fmt.Errorf("invalid HTTP response status %d", code)
+			return
+		}
 		c.responseCode = &code
 		c.responseLinks = links
 		c.responseHeaders = headers

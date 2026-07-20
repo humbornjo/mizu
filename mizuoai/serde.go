@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"mime"
 	"mime/multipart"
 	"net/http"
 	"reflect"
@@ -25,7 +26,7 @@ func newEncoder[T any]() encoder[T] {
 	case reflect.String:
 		return func(w http.ResponseWriter, val *T) error {
 			w.Header().Set("Content-Type", "text/plain")
-			_, err := w.Write([]byte(any(*val).(string)))
+			_, err := w.Write([]byte(reflect.ValueOf(*val).String()))
 			return err
 		}
 	default:
@@ -55,18 +56,27 @@ type (
 	fieldlet []fieldBrief
 )
 
-func newFieldlet(val reflect.Value) fieldlet {
+func newFieldlet(typ reflect.Type, location mizutag) (fieldlet, error) {
+	for typ.Kind() == reflect.Pointer {
+		typ = typ.Elem()
+	}
 	fieldlet := fieldlet(make(fieldlet, 0))
-	for i := range val.Type().NumField() {
-		field := val.Type().Field(i)
-		tagVal := field.Tag.Get("json")
-		if tagVal == "" {
+	for i := range typ.NumField() {
+		field := typ.Field(i)
+		name, ignored, err := requestFieldName(field, location)
+		if err != nil {
+			return nil, err
+		}
+		if ignored {
+			continue
+		}
+		if name == "" {
 			panic("empty tag value from: " + fmt.Sprintf("%+v", field))
 		}
-		fieldlet = append(fieldlet, fieldBrief{i, tagVal})
+		fieldlet = append(fieldlet, fieldBrief{i, name})
 	}
 	slices.SortFunc(fieldlet, func(a, b fieldBrief) int { return cmp.Compare(a.name, b.name) })
-	return fieldlet
+	return fieldlet, nil
 }
 
 func (fl fieldlet) find(fieldName string) (fieldBrief, bool) {
@@ -106,15 +116,23 @@ func (d decoder[T]) decode(r *http.Request, val *T) error {
 }
 
 func decode_params[T any](tag mizutag, idx int, fieldlet fieldlet) func(r *http.Request, val *T) error {
-	retrieve := func(tag mizutag, r *http.Request, identifier string) string {
+	retrieve := func(tag mizutag, r *http.Request, identifier string) ([]string, bool) {
 		switch tag {
 		case _STRUCT_TAG_PATH:
-			return r.PathValue(identifier)
+			return []string{r.PathValue(identifier)}, true
 		case _STRUCT_TAG_QUERY:
-			return r.URL.Query().Get(identifier)
+			values, ok := r.URL.Query()[identifier]
+			if !ok || len(values) == 0 {
+				return nil, false
+			}
+			return values, true
 		case _STRUCT_TAG_HEADER:
 			// Replace all underline with hyphens for Canonical purposes
-			return r.Header.Get(strings.ReplaceAll(identifier, "_", "-"))
+			values := r.Header.Values(strings.ReplaceAll(identifier, "_", "-"))
+			if len(values) == 0 {
+				return nil, false
+			}
+			return values, true
 		default:
 			panic("unreachable")
 		}
@@ -123,10 +141,19 @@ func decode_params[T any](tag mizutag, idx int, fieldlet fieldlet) func(r *http.
 	return func(r *http.Request, val *T) error {
 		var err error
 		st := reflect.ValueOf(val).Elem().Field(idx)
+		for st.Kind() == reflect.Pointer {
+			if st.IsNil() {
+				st.Set(reflect.New(st.Type().Elem()))
+			}
+			st = st.Elem()
+		}
 		for _, brief := range fieldlet {
-			v := retrieve(tag, r, brief.name)
+			values, present := retrieve(tag, r, brief.name)
+			if !present {
+				continue
+			}
 			f := st.Field(brief.index)
-			if e := setParamValue(f, v, f.Kind()); e != nil {
+			if e := setFormValues(f, values); e != nil {
 				if err == nil {
 					err = fmt.Errorf("failed to decode %s: %w", brief.name, e)
 				} else {
@@ -151,6 +178,34 @@ func decode_body[T any](idx int, _ fieldlet) func(r *http.Request, val *T) error
 func decode_form[T any](idx int, fieldlet fieldlet) func(r *http.Request, val *T) error {
 	return func(r *http.Request, parentVal *T) error {
 		st := reflect.ValueOf(parentVal).Elem().Field(idx)
+		for st.Kind() == reflect.Pointer {
+			if st.IsNil() {
+				st.Set(reflect.New(st.Type().Elem()))
+			}
+			st = st.Elem()
+		}
+		mediaType, _, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
+		if err != nil {
+			return fmt.Errorf("failed to read form: %w", err)
+		}
+		if mediaType == "application/x-www-form-urlencoded" {
+			if err := r.ParseForm(); err != nil {
+				return fmt.Errorf("failed to read form: %w", err)
+			}
+			for _, brief := range fieldlet {
+				values, ok := r.PostForm[brief.name]
+				if !ok || len(values) == 0 {
+					continue
+				}
+				if err := setFormValues(st.Field(brief.index), values); err != nil {
+					return fmt.Errorf("failed to decode form field %s: %w", brief.name, err)
+				}
+			}
+			return nil
+		}
+		if !strings.HasPrefix(mediaType, "multipart/") {
+			return fmt.Errorf("failed to read form: unsupported content type %s", mediaType)
+		}
 		rx, err := consFormReader(r.Body, r.Header.Get("Content-Type"))
 		if err != nil {
 			return fmt.Errorf("failed to read form: %w", err)
@@ -173,12 +228,55 @@ func decode_form[T any](idx int, fieldlet fieldlet) func(r *http.Request, val *T
 	}
 }
 
+func setFormValues(value reflect.Value, values []string) error {
+	for value.Kind() == reflect.Pointer {
+		if value.IsNil() {
+			value.Set(reflect.New(value.Type().Elem()))
+		}
+		value = value.Elem()
+	}
+	if value.Kind() != reflect.Slice && value.Kind() != reflect.Array {
+		return setParamValue(value, values[0], value.Kind())
+	}
+	if value.Type().Elem().Kind() == reflect.Uint8 {
+		if value.Kind() == reflect.Slice {
+			value.SetBytes([]byte(values[0]))
+		} else {
+			reflect.Copy(value, reflect.ValueOf([]byte(values[0])))
+		}
+		return nil
+	}
+	if value.Kind() == reflect.Array {
+		if len(values) > value.Len() {
+			return fmt.Errorf("too many values for %s", value.Type())
+		}
+		for i, raw := range values {
+			if err := setParamValue(value.Index(i), raw, value.Index(i).Kind()); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+	result := reflect.MakeSlice(value.Type(), len(values), len(values))
+	for i, raw := range values {
+		if err := setParamValue(result.Index(i), raw, result.Index(i).Kind()); err != nil {
+			return err
+		}
+	}
+	value.Set(result)
+	return nil
+}
+
 func newDecoder[T any]() decoder[T] {
 	validate := func(tag mizutag, field *reflect.StructField) {
 		switch tag {
 		case _STRUCT_TAG_PATH, _STRUCT_TAG_QUERY, _STRUCT_TAG_HEADER:
-			if field.Type.Kind() != reflect.Struct {
-				panic("path must be a struct")
+			typ := field.Type
+			for typ.Kind() == reflect.Pointer {
+				typ = typ.Elem()
+			}
+			if typ.Kind() != reflect.Struct {
+				panic(tag.String() + " must be a struct")
 			}
 		case _STRUCT_TAG_BODY, _STRUCT_TAG_FORM:
 		default:
@@ -193,8 +291,14 @@ func newDecoder[T any]() decoder[T] {
 	decoder := new(decoder[T])
 	for i := range typ.NumField() {
 		fieldTyp := typ.Field(i)
-		t, ok := fieldTyp.Tag.Lookup("json")
-		if !ok {
+		t, _, ignored, err := requestLocation(fieldTyp)
+		if err != nil {
+			panic(err)
+		}
+		if ignored {
+			continue
+		}
+		if t == "" {
 			continue
 		}
 		mizuTag := mizutag(t)
@@ -207,13 +311,17 @@ func newDecoder[T any]() decoder[T] {
 
 		case _STRUCT_TAG_FORM:
 			hasForm = true
-			fieldVal := val.FieldByName(fieldTyp.Name)
-			fieldlet := newFieldlet(fieldVal)
+			fieldlet, err := newFieldlet(fieldTyp.Type, mizuTag)
+			if err != nil {
+				panic(err)
+			}
 			decoder.append(decode_form[T](i, fieldlet))
 
 		default:
-			fieldVal := val.FieldByName(fieldTyp.Name)
-			fieldlet := newFieldlet(fieldVal)
+			fieldlet, err := newFieldlet(fieldTyp.Type, mizuTag)
+			if err != nil {
+				panic(err)
+			}
 			decoder.append(decode_params[T](mizuTag, i, fieldlet))
 		}
 	}
@@ -230,7 +338,24 @@ func newDecoder[T any]() decoder[T] {
 // setStreamValue sets a value to a reflect.Struct using jsonv2 decoder
 func setStreamValue(value reflect.Value, stream io.ReadCloser, kind reflect.Kind) error {
 	defer stream.Close() // nolint: errcheck
+	for kind == reflect.Pointer {
+		if value.IsNil() {
+			value.Set(reflect.New(value.Type().Elem()))
+		}
+		value = value.Elem()
+		kind = value.Kind()
+	}
 	switch kind {
+	case reflect.Slice:
+		if value.Type().Elem().Kind() != reflect.Uint8 {
+			return fmt.Errorf("unsupported stream slice type %s", value.Type())
+		}
+		raw, err := io.ReadAll(stream)
+		if err != nil {
+			return err
+		}
+		value.SetBytes(raw)
+		return nil
 	case reflect.Struct:
 		decoder := jsontext.NewDecoder(stream)
 		object := reflect.New(value.Type()).Interface()
@@ -250,6 +375,13 @@ func setStreamValue(value reflect.Value, stream io.ReadCloser, kind reflect.Kind
 
 // setParamValue sets a value to a reflect.Value based on its kind
 func setParamValue(value reflect.Value, paramValue string, kind reflect.Kind) error {
+	for kind == reflect.Pointer {
+		if value.IsNil() {
+			value.Set(reflect.New(value.Type().Elem()))
+		}
+		value = value.Elem()
+		kind = value.Kind()
+	}
 	switch kind {
 	case reflect.String:
 		value.SetString(paramValue)
