@@ -2,19 +2,14 @@ package filekit
 
 import (
 	"bytes"
-	"crypto/sha256"
 	"encoding/base64"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"hash"
 	"io"
-	"math"
 	"mime"
 	"mime/multipart"
 	"net/http"
-	"slices"
 	"strconv"
 	"strings"
 
@@ -29,111 +24,6 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 	"google.golang.org/protobuf/types/known/wrapperspb"
 )
-
-var ErrFileTooLarge = errors.New("file too large")
-
-// FileReader wraps an io.ReadCloser to provide file upload
-// functionality with size limiting, checksum calculation, and MIME
-// type detection. It tracks read bytes and enforces size limits while
-// calculating SHA256 checksum.
-type FileReader struct {
-	readBytes  int64
-	limitBytes int64
-
-	large       bool
-	hash        hash.Hash
-	inner       io.Reader
-	closer      io.Closer
-	sniffSize   int
-	mimeSniffer [512]byte
-}
-
-// FileReaderOption configures a FileReader.
-type FileReaderOption func(*FileReader)
-
-// WithFileLimitBytes sets the maximum number of bytes that can be
-// read from the file. Files larger than this limit will result in
-// ErrFileTooLarge. Default math.MaxInt64 (no limit).
-func WithFileLimitBytes(limit int64) FileReaderOption {
-	return func(r *FileReader) {
-		r.limitBytes = limit
-	}
-}
-
-// NewFileReader creates a new FileReader that wraps the given
-// ReadCloser. It calculates SHA256 checksum while reading and can
-// enforce size limits. Options can be provided to configure behavior
-// like size limits.
-func NewFileReader(rx io.ReadCloser, opts ...FileReaderOption) *FileReader {
-	hash := sha256.New()
-	reader := &FileReader{
-		inner:  io.TeeReader(rx, hash),
-		hash:   hash,
-		closer: rx,
-	}
-
-	for _, opt := range opts {
-		opt(reader)
-	}
-
-	if reader.limitBytes <= 0 {
-		reader.limitBytes = math.MaxInt64
-	}
-
-	n, _ := reader.inner.Read(reader.mimeSniffer[:])
-	if reader.sniffSize = n; n > 0 {
-		reader.inner = io.MultiReader(bytes.NewReader(reader.mimeSniffer[:n]), reader.inner)
-	}
-
-	return reader
-}
-
-// Checksum returns the SHA256 checksum of the data read so far as a
-// hex string.
-func (r *FileReader) Checksum() string {
-	return hex.EncodeToString(r.hash.Sum(nil))
-}
-
-// Read implements io.Reader. It reads data while tracking bytes read
-// and calculating checksum. If size limit is exceeded, it returns
-// ErrFileTooLarge.
-func (r *FileReader) Read(p []byte) (int, error) {
-	if r.large {
-		return 0, fmt.Errorf("%w: %d > %d", ErrFileTooLarge, r.readBytes, r.limitBytes)
-	}
-
-	nbyte, err := r.inner.Read(p)
-	r.readBytes += int64(nbyte)
-
-	if r.readBytes > r.limitBytes {
-		r.large = true
-		return nbyte, fmt.Errorf("%w: %d > %d", ErrFileTooLarge, r.readBytes, r.limitBytes)
-	}
-	return nbyte, err
-}
-
-// ContentType returns the detected MIME type of the file content
-// based on the first 512 bytes read. Uses http.DetectContentType for
-// detection.
-func (r *FileReader) ContentType() string {
-	return http.DetectContentType(r.mimeSniffer[:r.sniffSize])
-}
-
-// MimeSniffer returns the first up to 512 bytes read from the file.
-// (Refer to http.DetectContentType for details.)
-func (r *FileReader) MimeSniffer() []byte {
-	return slices.Clone(r.mimeSniffer[:r.sniffSize])
-}
-
-// ReadSize returns the total number of bytes read so far.
-func (r *FileReader) ReadSize() int64 {
-	return r.readBytes
-}
-
-// Close closes the underlying ReadCloser.
-func (r *FileReader) Close() error {
-	return r.closer.Close()
-}
 
 // HttpForm represents a protobuf message that contains HTTP form data.
 // It must implement proto.Message and provide access to HttpBody content.
@@ -154,35 +44,6 @@ type StreamForm[T HttpForm] interface {
 	Spec() connect.Spec
 	RequestHeader() http.Header
 	Conn() connect.StreamingHandlerConn
-}
-
-// FormReader provides an interface for reading multipart form parts
-// from HTTP form data. It abstracts the multipart.Reader
-// functionality for processing form uploads.
-type FormReader interface {
-	// NextPart returns the next multipart form part. It automatically
-	// handles non-file fields by attempting to map them to the provided
-	// proto.Message. File field data is returned as-is for processing.
-	//
-	// WARN: If msg in NewFormReader is not nil, all the part except
-	// file will be automatically consumed and mapped to msg. Comsume
-	// the part will trigger error on setting msg. If you want to
-	// manually handle the part, pass a nil value to msg when creating
-	// FormReader.
-	NextPart() (part *multipart.Part, err error)
-
-	// File returns the file part in the form. Fields after file part
-	// can either be accessed with NextPart or be drained by calling the
-	// purge function. This function internally calls NextPart until the
-	// file part is found.
-	//
-	// purge internally calls NextPart and return nil on EOF. Thus msg
-	// still will be filled if none nil (see comment of NextPart).
-	File() (filePart *multipart.Part, purge func() error, err error)
-
-	// Close put back the *bufio.Reader to the pool. It must be called
-	// after the form reader is done.
-	Close()
 }
 
 type formReader[T HttpForm] struct {

@@ -63,12 +63,10 @@ func init() {
 // drain delay (k8s integration), graceful shutdown with 15s timeout
 // and 3s hard timeout.
 func NewServer(srvName string, opts ...Option) *Server {
-	var config = new(config)
-	*config = func(s *Server) *Server {
-		cc := _DEFAULT_SERVER_CONFIG
-		s.config = &cc
+	config := new(config(func(s *Server) *Server {
+		s.config = new(_DEFAULT_SERVER_CONFIG)
 		return s
-	}
+	}))
 
 	for _, opt := range opts {
 		opt(config)

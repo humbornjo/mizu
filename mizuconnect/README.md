@@ -128,6 +128,16 @@ message UploadRequest {
 reader, err := filekit.NewFormReader("file", stream, &msg)
 ```
 
+The Connect stream adapter remains in `filekit`, while the transport-independent file reader lives in core Mizu and can be shared with ordinary HTTP handlers:
+
+```go
+part, purge, err := reader.File()
+file := mizu.NewFileReader(part, mizu.WithFileLimitBytes(64<<20))
+// Consume file, then call purge() to process trailing form fields.
+```
+
+The deprecated `filekit.NewFileReader` and related names remain as compatibility wrappers.
+
 > All the parsing is constrainted withe a limit-reader to prevent unexpected attacks.
 
 ### package `streamkit`

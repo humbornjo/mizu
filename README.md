@@ -2,7 +2,7 @@
 
 # 🌊 Mizu - HTTP Framework for Go
 
-[![Go Version](https://img.shields.io/badge/go-1.25+-blue.svg)](https://golang.org)
+[![Go Version](https://img.shields.io/badge/go-1.26+-blue.svg)](https://golang.org)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![CI Status](https://github.com/humbornjo/mizu/workflows/CI/badge.svg)](https://github.com/humbornjo/mizu/actions)
 ![Alpha](https://img.shields.io/badge/status-alpha-orange.svg)
@@ -11,7 +11,7 @@
 
 Mizu provides middleware composition, lifecycle hooks, and observability features while staying close to Go's native `net/http`.
 
-> ⚠️ **Alpha Status**: Mizu is currently in alpha development. APIs may change and the framework is not recommended for production use. Go 1.26 will support `new` with init value, `mizu` will catch up when the release is published.
+> ⚠️ **Alpha Status**: Mizu is currently in alpha development. APIs may change and the framework is not recommended for production use.
 
 ## Features
 
@@ -102,6 +102,50 @@ curl -X POST http://localhost:8080/users   # User created (with auth header)
 curl http://localhost:8080/healthz         # OK (built-in health check)
 ```
 
+## Typed Multipart Uploads
+
+`NewFormReader` keeps the uploaded file streaming while strictly decoding declared form fields into a Go struct. Fields may appear before or after the file; call `purge` after consuming the file to decode trailing fields and finish required-field validation.
+
+```go
+type UploadForm struct {
+	Name     string   `form:"name" required:"true"`
+	Labels   []string `form:"label"`
+	Scenario *int     `form:"scenario"`
+}
+
+func upload(w http.ResponseWriter, r *http.Request) {
+	var fields UploadForm
+	form, err := mizu.NewFormReader("package", r, &fields)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	defer form.Close()
+
+	part, purge, err := form.File()
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	file := mizu.NewFileReader(part, mizu.WithFileLimitBytes(64<<20))
+	defer file.Close()
+
+	if _, err := io.Copy(io.Discard, file); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	if err := purge(); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	log.Printf("name=%s labels=%v sha256=%s", fields.Name, fields.Labels, file.Checksum())
+	w.WriteHeader(http.StatusCreated)
+}
+```
+
+Field names resolve from `form` tags, then `json` tags, then Go field names. Singleton fields reject duplicates, slices append repeated values, and `required:"true"` is checked when the multipart stream reaches EOF. Unknown parts remain available through `NextPart` for handlers that need to manage extra or multiple parts themselves.
+
 ## Roadmap to Beta
 
 - [x] Complete documentation for each sub-module
@@ -153,7 +197,7 @@ Each module is self-contained with its own `go.mod` file and can be used indepen
 
 ### Prerequisites
 
-Go 1.25+
+Go 1.26+
 
 ```bash
 # package `mizuoai` requires `encoding/json/v2` support

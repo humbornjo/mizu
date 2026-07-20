@@ -6,6 +6,7 @@ import (
 	"log/slog"
 
 	"connectrpc.com/connect"
+	"github.com/humbornjo/mizu"
 	"github.com/humbornjo/mizu/mizuconnect/restful/filekit"
 	"google.golang.org/genproto/googleapis/api/httpbody"
 
@@ -57,7 +58,7 @@ func (s *Service) UploadFile(ctx context.Context, stream *connect.ClientStream[f
 		return nil, connect.NewError(connect.CodeInternal, err)
 	}
 
-	rxFile := filekit.NewFileReader(fpart, filekit.WithFileLimitBytes(64*1024*1024))
+	rxFile := mizu.NewFileReader(fpart, mizu.WithFileLimitBytes(64*1024*1024))
 	id, err := s.storage.Store(ctx, rxFile)
 	if err != nil {
 		slog.ErrorContext(ctx, "failed store file", "err", err)

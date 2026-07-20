@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/signal"
 	"path"
+	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -513,17 +514,17 @@ func (s *Server) Uses(middleware func(http.Handler) http.Handler, more ...func(h
 func (s *Server) drain() iter.Seq[func(http.Handler) http.Handler] {
 	return func(yield func(func(http.Handler) http.Handler) bool) {
 		if s.volatile != nil {
-			for i := len(s.volatile.Middlewares) - 1; i >= 0; i-- {
-				if !yield(s.volatile.Middlewares[i]) {
+			for _, middleware := range slices.Backward(s.volatile.Middlewares) {
+				if !yield(middleware) {
 					return
 				}
 			}
 			s.volatile.Middlewares = s.volatile.Middlewares[:0]
 			s.volatile = nil
 		}
-		for i := len(s.buckets) - 1; i >= 0; i-- {
-			for j := len(s.buckets[i].Middlewares) - 1; j >= 0; j-- {
-				if !yield(s.buckets[i].Middlewares[j]) {
+		for _, bucket := range slices.Backward(s.buckets) {
+			for _, middleware := range slices.Backward(bucket.Middlewares) {
+				if !yield(middleware) {
 					return
 				}
 			}
