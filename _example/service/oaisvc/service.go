@@ -18,6 +18,12 @@ type InputOaiScrape struct {
 
 type OutputOaiScrape = string
 
+func HandleOaiPackage(w http.ResponseWriter, _ *http.Request) {
+	w.Header().Set("Content-Type", "application/gzip")
+	w.Header().Set("Content-Disposition", `attachment; filename="mizu-example.tar.gz"`)
+	_, _ = w.Write([]byte{0x1f, 0x8b, 0x08})
+}
+
 func HandleOaiEvents(w http.ResponseWriter, r *http.Request) {
 	flusher, ok := w.(http.Flusher)
 	if !ok {

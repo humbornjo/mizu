@@ -187,6 +187,7 @@ Mizu is now organized as a collection of independent modules, each with their ow
 - **[mizudi](./mizudi/)** - Dependency injection utilities
 - **[mizumw](./mizumw/)** - Common HTTP middleware implementations
 - **[mizuoai](./mizuoai/)** - OpenAPI specification integration
+- **[mizucue](./mizucue/)** - CUE compilation, model validation, and OpenAPI generation
 - **[mizulog](./mizulog/)** - Structured logging with context-aware attributes
 - **[mizuotel](./mizuotel/)** - OpenTelemetry integration for distributed tracing and metrics
 - **[mizuconnect](./mizuconnect/)** - Connect-RPC integration for type-safe RPC services

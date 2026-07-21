@@ -13,7 +13,10 @@ import (
 
 func Initialize(_ *config.Config) {
 	srv := mizudi.MustRetrieve[*mizu.Server]()
+	registerRoutes(srv)
+}
 
+func registerRoutes(srv *mizu.Server) {
 	g := srv.Group("/oai")
 	mizuoai.Get(g, "/scrape", HandleOaiScrape,
 		mizuoai.WithOperationTags("scrape"),
@@ -43,6 +46,12 @@ func Initialize(_ *config.Config) {
 				},
 			})},
 		}),
+	)
+	mizuoai.GetRaw(g, "/package", HandleOaiPackage,
+		mizuoai.WithOpenApiOperation(_CUE_OPENAPI_DOCUMENT, "downloadPackage"),
+		mizuoai.WithOperationTags("package"),
+		mizuoai.WithOperationSummary("Download a CUE-documented package"),
+		mizuoai.WithOperationDescription("Streams a compressed example package using a CUE-owned transport contract."),
 	)
 
 	guser := g.Group("/user")

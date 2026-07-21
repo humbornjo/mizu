@@ -6,6 +6,8 @@ replace github.com/humbornjo/mizu => ../
 
 replace github.com/humbornjo/mizu/mizuconnect => ../mizuconnect
 
+replace github.com/humbornjo/mizu/mizucue => ../mizucue
+
 replace github.com/humbornjo/mizu/mizudi => ../mizudi
 
 replace github.com/humbornjo/mizu/mizumw => ../mizumw
@@ -21,6 +23,7 @@ require (
 	github.com/grpc-ecosystem/grpc-gateway/v2 v2.27.8
 	github.com/humbornjo/mizu v0.0.0-20251107130138-05723b1570b6
 	github.com/humbornjo/mizu/mizuconnect v0.0.0-20251107130138-05723b1570b6
+	github.com/humbornjo/mizu/mizucue v0.0.0-00010101000000-000000000000
 	github.com/humbornjo/mizu/mizudi v0.0.0-20251107130138-05723b1570b6
 	github.com/humbornjo/mizu/mizumw v0.0.0-20251107130138-05723b1570b6
 	github.com/humbornjo/mizu/mizuoai v0.0.0-20251107130138-05723b1570b6
@@ -40,11 +43,15 @@ require (
 	connectrpc.com/grpcreflect v1.3.0 // indirect
 	connectrpc.com/validate v0.6.0 // indirect
 	connectrpc.com/vanguard v0.3.0 // indirect
+	cuelabs.dev/go/oci/ociregistry v0.0.0-20251212221603-3adeb8663819 // indirect
+	cuelang.org/go v0.17.0-0.dev.0.20260320151706-d267795de4d3 // indirect
 	github.com/antlr4-go/antlr/v4 v4.13.1 // indirect
 	github.com/bahlo/generic-list-go v0.2.0 // indirect
 	github.com/basgys/goxml2json v1.1.1-0.20231018121955-e66ee54ceaad // indirect
 	github.com/buger/jsonparser v1.1.2 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
+	github.com/cockroachdb/apd/v3 v3.2.1 // indirect
+	github.com/emicklei/proto v1.14.3 // indirect
 	github.com/felixge/httpsnoop v1.0.4 // indirect
 	github.com/fsnotify/fsnotify v1.9.0 // indirect
 	github.com/go-logr/logr v1.4.3 // indirect
@@ -60,10 +67,16 @@ require (
 	github.com/knadh/koanf/providers/file v1.2.0 // indirect
 	github.com/knadh/koanf/v2 v2.3.0 // indirect
 	github.com/mitchellh/copystructure v1.2.0 // indirect
+	github.com/mitchellh/go-wordwrap v1.0.1 // indirect
 	github.com/mitchellh/reflectwalk v1.0.2 // indirect
+	github.com/opencontainers/go-digest v1.0.0 // indirect
+	github.com/opencontainers/image-spec v1.1.1 // indirect
 	github.com/pb33f/jsonpath v0.8.2 // indirect
 	github.com/pb33f/libopenapi-validator v0.14.0 // indirect
 	github.com/pb33f/ordered-map/v2 v2.3.1 // indirect
+	github.com/pelletier/go-toml/v2 v2.2.4 // indirect
+	github.com/protocolbuffers/txtpbfmt v0.0.0-20260217160748-a481f6a22f94 // indirect
+	github.com/rogpeppe/go-internal v1.14.1 // indirect
 	github.com/samber/do/v2 v2.0.0 // indirect
 	github.com/samber/go-type-to-string v1.8.0 // indirect
 	github.com/santhosh-tekuri/jsonschema/v6 v6.0.2 // indirect
@@ -77,6 +90,7 @@ require (
 	go.yaml.in/yaml/v3 v3.0.4 // indirect
 	golang.org/x/exp v0.0.0-20250911091902-df9299821621 // indirect
 	golang.org/x/net v0.50.0 // indirect
+	golang.org/x/oauth2 v0.35.0 // indirect
 	golang.org/x/sync v0.22.0 // indirect
 	golang.org/x/sys v0.43.0 // indirect
 	golang.org/x/text v0.38.0 // indirect

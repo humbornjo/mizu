@@ -43,7 +43,7 @@ install-hooks: ## 🪝 Install Git hooks
 	@echo "$(YELLOW)💡 The commit-msg hook will validate conventional commit message format$(RESET)"
 	@echo "$(YELLOW)💡 The pre-commit hook will now run 'make format' and 'make lint' before each commit$(RESET)"
 
-test: test-mizumw test-mizuoai test-mizudi test-mizuconnect test-mizuotel ## 🧪 Run mizu tests
+test: test-mizumw test-mizuoai test-mizucue test-mizudi test-mizuconnect test-mizuotel ## 🧪 Run mizu tests
 	@echo "$(BLUE)🧪 Running mizu tests...$(RESET)"
 	@go test ./...
 	@echo "$(GREEN)✅ Tests completed!$(RESET)"
@@ -53,7 +53,7 @@ test-%:
 	@cd $* && go test ./...
 	@echo "$(GREEN)✅ Tests completed!$(RESET)"
 
-race-test: race-test-mizumw race-test-mizuoai race-test-mizudi race-test-mizuconnect race-test-mizuotel ## 🏃 Run mizu tests with race detection
+race-test: race-test-mizumw race-test-mizuoai race-test-mizucue race-test-mizudi race-test-mizuconnect race-test-mizuotel ## 🏃 Run mizu tests with race detection
 	@echo "$(BLUE)🏃 Running mizu tests with race detection...$(RESET)"
 	@go test -race ./...
 	@echo "$(GREEN)🏁 Race tests completed!$(RESET)"
@@ -63,7 +63,7 @@ race-test-%:
 	@cd $* && go test -race ./...
 	@echo "$(GREEN)🏁 Race tests completed!$(RESET)"
 
-tidy: tidy-mizumw tidy-mizuoai tidy-mizudi tidy-mizuconnect tidy-mizuotel ## 🧹 Run go mod tidy all over the project
+tidy: tidy-mizumw tidy-mizuoai tidy-mizucue tidy-mizudi tidy-mizuconnect tidy-mizuotel ## 🧹 Run go mod tidy all over the project
 	@echo "$(BLUE)🧹 Running mizu go mod tidy...$(RESET)"
 	@go mod tidy
 	@echo "$(GREEN)✅ Go mod tidy completed!$(RESET)"
