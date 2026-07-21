@@ -1,4 +1,4 @@
-.PHONY: help install-hooks test race-test publish
+.PHONY: help install-hooks test race-test tidy release
 
 # 🎨 Colors and symbols
 BLUE := \033[34m
@@ -8,6 +8,9 @@ RED := \033[31m
 PURPLE := \033[35m
 CYAN := \033[36m
 RESET := \033[0m
+
+RELEASE_MODULES := mizuconnect mizucue mizudi mizumw mizuoai mizuotel
+RELEASE_TAGS = $(VERSION) $(addsuffix /$(VERSION),$(RELEASE_MODULES))
 
 
 help: ## 📚 Show this help message
@@ -72,3 +75,50 @@ tidy-%:
 	@echo "$(BLUE)🧹 Running $* go mod tidy...$(RESET)"
 	@cd $* && go mod tidy
 	@echo "$(GREEN)✅ Go mod tidy completed!$(RESET)"
+
+release: ## 🚀 Verify, tag, and push a release (VERSION=vX.Y.Z)
+	@if ! echo "$(VERSION)" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+$$'; then \
+		echo "$(RED)❌ VERSION must use vX.Y.Z format$(RESET)"; \
+		exit 1; \
+	fi
+	@if [ -n "$$(git status --porcelain)" ]; then \
+		echo "$(RED)❌ Commit or remove worktree changes before releasing$(RESET)"; \
+		exit 1; \
+	fi
+	@$(MAKE) tidy
+	@if [ -n "$$(git status --porcelain)" ]; then \
+		echo "$(RED)❌ go mod tidy changed the worktree; commit those changes first$(RESET)"; \
+		exit 1; \
+	fi
+	@$(MAKE) test
+	@$(MAKE) race-test
+	@set -eu; \
+		branch="$$(git branch --show-current)"; \
+		if [ -z "$$branch" ]; then \
+			echo "$(RED)❌ Cannot release from a detached HEAD$(RESET)"; \
+			exit 1; \
+		fi; \
+		for tag in $(RELEASE_TAGS); do \
+			if git show-ref --verify --quiet "refs/tags/$$tag"; then \
+				echo "$(RED)❌ Local tag already exists: $$tag$(RESET)"; \
+				exit 1; \
+			fi; \
+		done; \
+		remote_tags="$$(git ls-remote --tags origin $(addprefix refs/tags/,$(RELEASE_TAGS)))"; \
+		if [ -n "$$remote_tags" ]; then \
+			echo "$(RED)❌ One or more release tags already exist on origin$(RESET)"; \
+			echo "$$remote_tags"; \
+			exit 1; \
+		fi; \
+		created=""; \
+		cleanup() { \
+			for tag in $$created; do git tag -d "$$tag" >/dev/null 2>&1 || true; done; \
+		}; \
+		trap cleanup 0 1 2 15; \
+		for tag in $(RELEASE_TAGS); do \
+			git tag "$$tag"; \
+			created="$$created $$tag"; \
+		done; \
+		git push --atomic origin "HEAD:refs/heads/$$branch" $(addprefix refs/tags/,$(RELEASE_TAGS)); \
+		trap - 0 1 2 15
+	@echo "$(GREEN)🚀 Released $(VERSION)$(RESET)"
