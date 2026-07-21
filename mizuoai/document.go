@@ -3,6 +3,7 @@ package mizuoai
 import (
 	"errors"
 	"fmt"
+	"maps"
 	"net/http"
 	"reflect"
 	"regexp"
@@ -48,6 +49,7 @@ func ParseOpenAPI(data []byte) (*OpenApiDocument, error) {
 	return parseOpenApiDocument(data, true)
 }
 
+// nolint: gocyclo
 func parseOpenApiDocument(data []byte, validate bool) (*OpenApiDocument, error) {
 	if len(data) == 0 {
 		return nil, errors.New("openapi document is empty")
@@ -760,7 +762,7 @@ func mergeNamedValues[T any](
 	return result, nil
 }
 
-func mergeValueList[T any](kind string, target, source []T) ([]T, error) {
+func mergeValueList[T any](_ string, target, source []T) ([]T, error) {
 	result := append([]T(nil), target...)
 	for _, value := range source {
 		found := false
@@ -894,9 +896,8 @@ func (c *oaiConfig) addOperation(operation *operationConfig) error {
 		c.operationIds[operation.OperationId] = location
 	}
 	c.routes[location] = true
-	for key, component := range operation.externalRawComponents() {
-		c.rawComponents[key] = component
-	}
+
+	maps.Copy(c.rawComponents, operation.externalRawComponents())
 	return nil
 }
 

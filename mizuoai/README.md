@@ -197,6 +197,27 @@ and incompatible component collisions fail before the runtime route is added.
 Use `MustParseOpenAPI` for immutable embedded documents that should panic on an
 invalid generated artifact during process initialization.
 
+[`mizucue`](../mizucue/) can produce the same OpenAPI 3.1 input boundary from
+an embedded CUE schema while remaining independent from Mizu routing:
+
+```go
+schema := mizucue.MustCompile(_SCHEMA_CUE)
+document := mizuoai.MustParseOpenAPI(
+	mizucue.MustGenerateOpenAPI(schema, "Service API", "v1", "ServiceV1"),
+)
+
+mizuoai.GetRaw(srv, "/package", handlePackage,
+	mizuoai.WithOpenApiOperation(document, "downloadPackage"),
+)
+```
+
+This is useful for multipart, binary, upgrade, and other raw transports whose
+contract is clearer in CUE. `mizucue` owns CUE compilation and OpenAPI 3.1
+generation; `mizuoai` continues to own operation selection, route validation,
+component import, and final document rendering. See the
+[example application](../_example/service/oaisvc/) for a complete binary
+download integration.
+
 Imported artifacts retain the complete raw OpenAPI representation while
 `libopenapi` models provide routing and typed construction. This preserves the
 full OpenAPI 3.2 surface, including fields not yet represented by libopenapi's

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 	"net/http"
 	"path"
 	"strings"
@@ -89,9 +90,8 @@ func Initialize(srv *mizu.Server, title string, opts ...OaiOption) error {
 				}
 			}
 		}
-		for key, component := range document.components {
-			config.rawComponents[key] = component
-		}
+
+		maps.Copy(config.rawComponents, document.components)
 	}
 	if _, err := config.render(false); err != nil {
 		return fmt.Errorf("initialize OpenAPI document: %w", err)
@@ -209,9 +209,8 @@ func Path(server *mizu.Server, pattern string, opts ...PathOption) {
 	for _, location := range locations {
 		oai.routes[location] = true
 	}
-	for operationId, location := range operationIds {
-		oai.operationIds[operationId] = location
-	}
+
+	maps.Copy(oai.operationIds, operationIds)
 }
 
 // Rx represents the request side of an API endpoint. It provides

@@ -198,6 +198,7 @@ func (c *oaiConfig) buildModel() (*v3.Document, error) {
 	return model, nil
 }
 
+// nolint: gocyclo
 func validateModel(model *v3.Document) error {
 	if err := validateTargetVersion(model.Version); err != nil {
 		return err

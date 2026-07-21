@@ -43,14 +43,17 @@ package test
 	if err := Validate[any](schema, nil); err == nil {
 		t.Fatal("Validate() succeeded for nil")
 	}
-	if err := Validate(schema, MissingModel{}); err == nil || !strings.Contains(err.Error(), "lookup model schema MissingModel") {
+	if err := Validate(schema, MissingModel{}); err == nil ||
+		!strings.Contains(err.Error(), "lookup model schema MissingModel") {
 		t.Fatalf("Validate() missing definition error = %v", err)
 	}
-	if err := Validate(schema, IncompleteModel{}); err == nil || !strings.Contains(err.Error(), "validate IncompleteModel") {
+	if err := Validate(schema, IncompleteModel{}); err == nil ||
+		!strings.Contains(err.Error(), "validate IncompleteModel") {
 		t.Fatalf("Validate() non-concrete error = %v", err)
 	}
 
-	if _, err := Compile("package test\n#Broken: {"); err == nil || !strings.Contains(err.Error(), "compile CUE schema") {
+	if _, err := Compile("package test\n#Broken: {"); err == nil ||
+		!strings.Contains(err.Error(), "compile CUE schema") {
 		t.Fatalf("Compile() error = %v", err)
 	}
 	defer func() {
@@ -720,16 +723,14 @@ func TestMizucue_ExtractOpenAPIIsConcurrentAndDoesNotShareTopLevelMutation(t *te
 	schema := MustCompile("package test\n#TestModel: {name: string}")
 	var wait sync.WaitGroup
 	for range 16 {
-		wait.Add(1)
-		go func() {
-			defer wait.Done()
+		wait.Go(func() {
 			out, err := ExtractOpenAPI(schema, TestModel{})
 			if err != nil {
 				t.Error(err)
 				return
 			}
 			out["caller"] = true
-		}()
+		})
 	}
 	wait.Wait()
 	out, err := ExtractOpenAPI(schema, TestModel{})
@@ -750,7 +751,8 @@ func TestMizucue_ExtractOpenAPIIsConcurrentAndDoesNotShareTopLevelMutation(t *te
 
 func TestMizucue_ExtractOpenAPIErrors(t *testing.T) {
 	schema := MustCompile("package test\n#TestModel: {name: string}\n#Scalar: string")
-	if _, err := ExtractOpenAPI(schema, MissingModel{}); err == nil || !strings.Contains(err.Error(), "missing schema: MissingModel") {
+	if _, err := ExtractOpenAPI(schema, MissingModel{}); err == nil ||
+		!strings.Contains(err.Error(), "missing schema: MissingModel") {
 		t.Fatalf("ExtractOpenAPI() missing schema error = %v", err)
 	}
 	if _, err := ExtractOpenAPI[any](schema, nil); err == nil || !strings.Contains(err.Error(), "nil value") {
@@ -762,7 +764,8 @@ func TestMizucue_ExtractOpenAPIErrors(t *testing.T) {
 		t.Fatalf("scalar properties = %#v", scalar["properties"])
 	}
 	defer func() {
-		if recovered := recover(); recovered == nil || !strings.Contains(fmt.Sprint(recovered), "missing schema: MissingModel") {
+		if recovered := recover(); recovered == nil ||
+			!strings.Contains(fmt.Sprint(recovered), "missing schema: MissingModel") {
 			t.Fatalf("MustExtractOpenAPI() panic = %v", recovered)
 		}
 	}()

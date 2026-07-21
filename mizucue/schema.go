@@ -20,7 +20,8 @@ import (
 	"cuelang.org/go/encoding/openapi"
 )
 
-// Schema is a compiled CUE schema used for model validation and OpenAPI generation.
+// Schema is a compiled CUE schema used for model validation and OpenAPI
+// generation.
 type Schema struct {
 	context     *cue.Context
 	value       cue.Value
@@ -57,7 +58,7 @@ var _OPENAPI_PATH_PARAMETER = regexp.MustCompile(`\{([^{}]+)\}`)
 // GenerateOpenAPI combines CUE-generated component schemas with operations
 // declared by quoted double-underscore fields on request definitions.
 //
-//nolint:gocyclo // Projection, supplemental generation, and hint errors retain their local context.
+// nolint: gocyclo // Projection, supplemental generation, and hint errors retain their local context.
 func GenerateOpenAPI(schema *Schema, title, version, componentPrefix string) ([]byte, error) {
 	config := &openapi.Config{
 		Version:       "3.1.0",
@@ -65,7 +66,7 @@ func GenerateOpenAPI(schema *Schema, title, version, componentPrefix string) ([]
 		SelfContained: true,
 	}
 	config.NameFunc = func(_ cue.Value, path cue.Path) string {
-		return openAPIComponentName(path, componentPrefix)
+		return openApiComponentName(path, componentPrefix)
 	}
 	value := schema.value
 	definitions, err := value.Fields(cue.Definitions(true), cue.Hidden(true), cue.Optional(true))
@@ -190,10 +191,10 @@ func GenerateOpenAPI(schema *Schema, title, version, componentPrefix string) ([]
 			}
 		}
 	}
-	if err := applyOpenAPIHints(schema.value, document, componentPrefix); err != nil {
+	if err := applyOpenApiHints(schema.value, document, componentPrefix); err != nil {
 		return nil, err
 	}
-	if err := applyOpenAPIOperations(schema.value, document, componentPrefix); err != nil {
+	if err := applyOpenApiOperations(schema.value, document, componentPrefix); err != nil {
 		return nil, err
 	}
 	result, err := json.Marshal(document)
@@ -203,7 +204,7 @@ func GenerateOpenAPI(schema *Schema, title, version, componentPrefix string) ([]
 	return result, nil
 }
 
-func openAPIComponentName(path cue.Path, prefix string) string {
+func openApiComponentName(path cue.Path, prefix string) string {
 	parts := make([]string, 0, len(path.Selectors()))
 	for _, selector := range path.Selectors() {
 		if selector.Type().IsHidden() {
@@ -214,7 +215,7 @@ func openAPIComponentName(path cue.Path, prefix string) string {
 	return prefix + strings.Join(parts, ".")
 }
 
-func applyOpenAPIHints(value cue.Value, document map[string]any, componentPrefix string) error {
+func applyOpenApiHints(value cue.Value, document map[string]any, componentPrefix string) error {
 	components, ok := document["components"].(map[string]any)
 	if !ok {
 		return nil
@@ -237,15 +238,15 @@ func applyOpenAPIHints(value cue.Value, document map[string]any, componentPrefix
 		if !ok {
 			continue
 		}
-		if err := applyOpenAPIFieldHints(definitions.Value(), component, schemas, "components.schemas."+name); err != nil {
+		if err := applyOpenApiFieldHints(definitions.Value(), component, schemas, "components.schemas."+name); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func applyOpenAPIFieldHints(value cue.Value, schema map[string]any, schemas map[string]any, path string) error {
-	resolved, err := resolveOpenAPISchema(schemas, schema, path)
+func applyOpenApiFieldHints(value cue.Value, schema map[string]any, schemas map[string]any, path string) error {
+	resolved, err := resolveOpenApiSchema(schemas, schema, path)
 	if err != nil {
 		return err
 	}
@@ -280,7 +281,7 @@ func applyOpenAPIFieldHints(value cue.Value, schema map[string]any, schemas map[
 		if !ok {
 			return fmt.Errorf("OpenAPI hint %s._%s has no generated field", path, name)
 		}
-		addition, err := decodeOpenAPIObject(hint, path+"._"+name)
+		addition, err := decodeOpenApiObject(hint, path+"._"+name)
 		if err != nil {
 			return err
 		}
@@ -296,15 +297,15 @@ func applyOpenAPIFieldHints(value cue.Value, schema map[string]any, schemas map[
 		if !ok {
 			continue
 		}
-		if err := applyOpenAPIFieldHints(field, property, schemas, path+".properties."+name); err != nil {
+		if err := applyOpenApiFieldHints(field, property, schemas, path+".properties."+name); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-//nolint:gocyclo // Operation validation stays linear so each failure names its owning definition.
-func applyOpenAPIOperations(value cue.Value, document map[string]any, componentPrefix string) error {
+// nolint: gocyclo // Operation validation stays linear so each failure names its owning definition.
+func applyOpenApiOperations(value cue.Value, document map[string]any, componentPrefix string) error {
 	components, ok := document["components"].(map[string]any)
 	if !ok {
 		components = make(map[string]any)
@@ -372,7 +373,7 @@ func applyOpenAPIOperations(value cue.Value, document map[string]any, componentP
 		if !strings.HasPrefix(path, "/") {
 			return fmt.Errorf("OpenAPI operation %s path must start with /", definition)
 		}
-		operation, err := deriveOpenAPIOperation(
+		operation, err := deriveOpenApiOperation(
 			schemas, definitions.Value(), definition, componentPrefix, path,
 		)
 		if err != nil {
@@ -384,7 +385,7 @@ func applyOpenAPIOperations(value cue.Value, document map[string]any, componentP
 			case "method", "path":
 				continue
 			case "components":
-				addition, err := decodeOpenAPIObject(hint, definition+".__components")
+				addition, err := decodeOpenApiObject(hint, definition+".__components")
 				if err != nil {
 					return err
 				}
@@ -431,7 +432,7 @@ func applyOpenAPIOperations(value cue.Value, document map[string]any, componentP
 		if operationId, _ := operation["operationId"].(string); operationId == "" {
 			return fmt.Errorf("OpenAPI operation %s requires __operationId", definition)
 		}
-		if err := addOpenAPIResponse(value, schemas, operation, definition, componentPrefix); err != nil {
+		if err := addOpenApiResponse(value, schemas, operation, definition, componentPrefix); err != nil {
 			return err
 		}
 		pathItem, ok := paths[path].(map[string]any)
@@ -448,8 +449,8 @@ func applyOpenAPIOperations(value cue.Value, document map[string]any, componentP
 	return nil
 }
 
-//nolint:gocyclo // Path and transport derivation share request state and error context.
-func deriveOpenAPIOperation(
+// nolint: gocyclo // Path and transport derivation share request state and error context.
+func deriveOpenApiOperation(
 	schemas map[string]any, value cue.Value, definition, componentPrefix, path string,
 ) (map[string]any, error) {
 	component := componentPrefix + definition
@@ -457,7 +458,7 @@ func deriveOpenAPIOperation(
 	if !ok {
 		return nil, fmt.Errorf("missing OpenAPI request schema %s", component)
 	}
-	requestSchema, err := resolveOpenAPISchema(schemas, request, "components.schemas."+component)
+	requestSchema, err := resolveOpenApiSchema(schemas, request, "components.schemas."+component)
 	if err != nil {
 		return nil, err
 	}
@@ -493,7 +494,7 @@ func deriveOpenAPIOperation(
 		if !ok {
 			return nil, fmt.Errorf("missing OpenAPI request schema %s.path", definition)
 		}
-		pathSchema, err := resolveOpenAPISchema(schemas, pathSchemaValue, definition+".path")
+		pathSchema, err := resolveOpenApiSchema(schemas, pathSchemaValue, definition+".path")
 		if err != nil {
 			return nil, err
 		}
@@ -565,14 +566,14 @@ func deriveOpenAPIOperation(
 		}
 		mediaType := map[string]any{"schema": schemaValue}
 		if hasForm {
-			formSchema, err := resolveOpenAPISchema(schemas, schemaValue, definition+".form")
+			formSchema, err := resolveOpenApiSchema(schemas, schemaValue, definition+".form")
 			if err != nil {
 				return nil, err
 			}
 			formProperties, _ := formSchema["properties"].(map[string]any)
 			encoding := make(map[string]any)
 			for field, property := range formProperties {
-				propertySchema, err := resolveOpenAPISchema(schemas, property, definition+".form."+field)
+				propertySchema, err := resolveOpenApiSchema(schemas, property, definition+".form."+field)
 				if err != nil {
 					return nil, err
 				}
@@ -591,7 +592,7 @@ func deriveOpenAPIOperation(
 	return operation, nil
 }
 
-func addOpenAPIResponse(
+func addOpenApiResponse(
 	value cue.Value, schemas map[string]any, operation map[string]any, definition, componentPrefix string,
 ) error {
 	responses, ok := operation["responses"].(map[string]any)
@@ -624,7 +625,7 @@ func addOpenAPIResponse(
 	if _, ok := schemas[component]; !ok {
 		_, reference := responseValue.ReferencePath()
 		if len(reference.Selectors()) > 0 {
-			component = openAPIComponentName(reference, componentPrefix)
+			component = openApiComponentName(reference, componentPrefix)
 		}
 	}
 	if _, ok := schemas[component]; !ok {
@@ -638,7 +639,7 @@ func addOpenAPIResponse(
 	return nil
 }
 
-func resolveOpenAPISchema(schemas map[string]any, value any, path string) (map[string]any, error) {
+func resolveOpenApiSchema(schemas map[string]any, value any, path string) (map[string]any, error) {
 	seen := make(map[string]bool)
 	for {
 		schema, ok := value.(map[string]any)
@@ -666,7 +667,7 @@ func resolveOpenAPISchema(schemas map[string]any, value any, path string) (map[s
 	}
 }
 
-func decodeOpenAPIObject(value cue.Value, path string) (map[string]any, error) {
+func decodeOpenApiObject(value cue.Value, path string) (map[string]any, error) {
 	decoded, err := decodeOpenAPIValue(value, path)
 	if err != nil {
 		return nil, err

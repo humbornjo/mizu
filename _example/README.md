@@ -1,6 +1,6 @@
 # Mizu Example Application
 
-A comprehensive example demonstrating the Mizu framework for building multi-protocol microservices in Go. This application showcases Connect RPC, RESTful HTTP endpoints, OpenAPI documentation, and OpenTelemetry observability.
+A comprehensive example demonstrating the Mizu framework for building multi-protocol microservices in Go. This application showcases Connect RPC, RESTful HTTP endpoints, reflected and CUE-backed OpenAPI documentation, and OpenTelemetry observability.
 
 ## Overview
 
@@ -10,7 +10,7 @@ This example application implements multiple services to demonstrate various pro
 - **Greet Service**: Simple HTTP GET endpoint using Connect RPC
 - **Namaste Service**: Bidirectional streaming RPC using Connect RPC
 - **HTTP Service**: Basic HTTP middleware for logging
-- **OpenAPI Service**: OpenAPI documentation and validation endpoints
+- **OpenAPI Service**: Reflected, hand-built, and CUE-generated OpenAPI operations
 
 ## Project Structure
 
@@ -33,7 +33,7 @@ _example/
 │   ├── greetsvc/           # Greeting service
 │   ├── httpsvc/            # HTTP middleware service
 │   ├── namastesvc/         # Namaste streaming service
-│   └── oaisvc/             # OpenAPI service
+│   └── oaisvc/             # OpenAPI service, including an embedded CUE contract
 ├── package/                # Shared packages
 │   ├── storage/            # In-memory file storage
 │   └── debug/              # Debug utilities
@@ -129,6 +129,18 @@ Server-sent events with immediate flushing:
 ```bash
 curl -N "http://localhost:18080/oai/events"
 ```
+
+CUE-documented binary download:
+
+```bash
+curl -D - "http://localhost:18080/oai/package" \
+  --output mizu-example.tar.gz
+```
+
+The package route is an ordinary raw HTTP handler. Its `application/gzip`
+response and `Content-Disposition` header come from the embedded CUE contract,
+which `mizucue` generates as OpenAPI 3.1 and `mizuoai` imports into the rendered
+OpenAPI 3.2 document.
 
 Order processing endpoint with OpenAPI validation:
 

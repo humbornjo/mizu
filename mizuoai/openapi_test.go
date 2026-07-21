@@ -727,7 +727,7 @@ func hasMapValue[T any](values *orderedmap.Map[string, T], name string) bool {
 
 func TestMizuoai_RejectsRawOpenApi32ComponentCollisions(t *testing.T) {
 	document := func(path, operationId, description string) *OpenApiDocument {
-		return MustParseOpenAPI([]byte(fmt.Sprintf(`openapi: 3.2.0
+		return MustParseOpenAPI(fmt.Appendf(nil, `openapi: 3.2.0
 info: {title: collision, version: v1}
 paths:
   %s:
@@ -744,7 +744,7 @@ components:
     Stream:
       description: %s
       itemSchema: {type: string}
-`, path, operationId, description)))
+`, path, operationId, description))
 	}
 	srv := mizu.NewServer("test")
 	require.NoError(t, Initialize(srv, "test"))
