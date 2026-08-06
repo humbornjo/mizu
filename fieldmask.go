@@ -38,9 +38,9 @@ type fieldMaskField struct {
 	typ    reflect.Type
 }
 
-// Intersect returns a field mask containing the structurally valid overlap
-// between allowed and requested. Malformed, unknown, and disallowed paths are
-// omitted.
+// Intersect returns a field mask containing the structurally valid
+// overlap between allowed and requested. Malformed, unknown, and
+// disallowed paths are omitted.
 func Intersect[T any](allowed, requested []string) *FieldMask[T] {
 	typ := reflect.TypeFor[T]()
 	mask := &FieldMask[T]{typ: typ, root: newFieldMaskNode()}
@@ -76,8 +76,8 @@ func (m *FieldMask[T]) Paths() []string {
 	return slices.Clone(m.paths)
 }
 
-// Filter keeps fields selected by the mask and clears all other JSON-visible
-// fields. An empty mask clears every JSON-visible field.
+// Filter keeps fields selected by the mask and clears all other
+// JSON-visible fields. An empty mask clears every JSON-visible field.
 func (m *FieldMask[T]) Filter(value *T) error {
 	target, err := m.target(value, "filter")
 	if err != nil {
@@ -98,9 +98,10 @@ func (m *FieldMask[T]) Prune(value *T) error {
 	return nil
 }
 
-// Overwrite copies fields selected by the mask from src to dest and leaves all
-// other destination fields untouched. Whole pointer, map, and slice fields use
-// normal Go assignment semantics and may alias src. An empty mask is a no-op.
+// Overwrite copies fields selected by the mask from src to dest and
+// leaves all other destination fields untouched. Whole pointer, map,
+// and slice fields use normal Go assignment semantics and may alias
+// src. An empty mask is a no-op.
 func (m *FieldMask[T]) Overwrite(src, dest *T) error {
 	source, err := m.target(src, "overwrite source")
 	if err != nil {

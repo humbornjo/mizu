@@ -38,8 +38,8 @@ type FileReader struct {
 // FileReaderOption configures a FileReader.
 type FileReaderOption func(*FileReader)
 
-// WithFileLimitBytes sets the maximum number of bytes that can be read from
-// the file. Files larger than this limit return ErrFileTooLarge.
+// WithFileLimitBytes sets the maximum number of bytes that can be read
+// from the file. Files larger than this limit return ErrFileTooLarge.
 func WithFileLimitBytes(limit int64) FileReaderOption {
 	return func(r *FileReader) {
 		r.limitBytes = limit
@@ -72,13 +72,14 @@ func NewFileReader(rx io.ReadCloser, opts ...FileReaderOption) *FileReader {
 	return reader
 }
 
-// Checksum returns the SHA-256 checksum of the data read so far as a hex
-// string.
+// Checksum returns the SHA-256 checksum of the data read so far as a
+// hex string.
 func (r *FileReader) Checksum() string {
 	return hex.EncodeToString(r.hash.Sum(nil))
 }
 
-// Read reads data while tracking its size and enforcing the configured limit.
+// Read reads data while tracking its size and enforcing the configured
+// limit.
 func (r *FileReader) Read(p []byte) (int, error) {
 	if r.large {
 		return 0, fmt.Errorf("%w: %d > %d", ErrFileTooLarge, r.readBytes, r.limitBytes)
@@ -114,12 +115,14 @@ func (r *FileReader) Close() error {
 	return r.closer.Close()
 }
 
-// FormReader streams multipart form parts and locates a configured file part.
+// FormReader streams multipart form parts and locates a configured
+// file part.
 type FormReader interface {
 	// NextPart returns the next multipart form part.
 	NextPart() (*multipart.Part, error)
 
-	// File advances to the configured file field. The returned purge function
+	// File advances to the configured file field. The returned purge
+	// function
 	// consumes the remaining parts.
 	File() (*multipart.Part, func() error, error)
 
@@ -161,8 +164,9 @@ type formField struct {
 }
 
 // NewFormReader creates a typed multipart/form-data reader for an HTTP
-// request. message must be a non-nil pointer to a struct. NextPart consumes
-// and decodes declared non-file fields while leaving unknown parts untouched.
+// request. message must be a non-nil pointer to a struct. NextPart
+// consumes and decodes declared non-file fields while leaving unknown
+// parts untouched.
 func NewFormReader[T any](
 	fileField string, request *http.Request, message *T, opts ...FormReaderOption,
 ) (FormReader, error) {

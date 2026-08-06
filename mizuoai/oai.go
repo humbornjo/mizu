@@ -233,10 +233,16 @@ type Tx[T any] struct {
 	write func(*T) error
 }
 
-// Write writes the JSON-encoded output to the response writer. It
+// MizuWrite writes the JSON-encoded output to the response writer. It
 // also sets the Content-Type header to "application/json".
 func (tx Tx[T]) MizuWrite(data *T) error {
 	return tx.write(data)
+}
+
+// MizuError writes an JSON-encoded error response to the response
+// writer.
+func (tx Tx[T]) MizuError(statusCode int, err error, details ...any) error {
+	return mizu.WriteError(tx.ResponseWriter, statusCode, err, details...)
 }
 
 // mizutag represents the source of request data (e.g., path, body).
