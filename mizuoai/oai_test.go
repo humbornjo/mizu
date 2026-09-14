@@ -90,8 +90,9 @@ func TestMizuOai_Rx_Read_BodyJSON(t *testing.T) {
 			var receivedInput TestInputBodyJSON
 			var err error
 
-			mizuoai.Get(srv, "/users/{id}", func(tx mizuoai.Tx[string], rx mizuoai.Rx[TestInputBodyJSON]) {
-				receivedInput, err = rx.MizuRead()
+			mizuoai.Get(srv, "/users/{id}", func(_ http.ResponseWriter, rx mizuoai.Rx[TestInputBodyJSON]) (string, error) {
+				receivedInput, err = rx.Xread()
+				return "", nil
 			})
 
 			w := httptest.NewRecorder()
@@ -135,8 +136,9 @@ func TestMizuOai_Rx_Read_BodyString(t *testing.T) {
 			var receivedInput TestInputBodyString
 			var err error
 
-			mizuoai.Get(srv, "/test", func(tx mizuoai.Tx[string], rx mizuoai.Rx[TestInputBodyString]) {
-				receivedInput, err = rx.MizuRead()
+			mizuoai.Get(srv, "/test", func(_ http.ResponseWriter, rx mizuoai.Rx[TestInputBodyString]) (string, error) {
+				receivedInput, err = rx.Xread()
+				return "", nil
 			})
 
 			w := httptest.NewRecorder()
@@ -177,8 +179,9 @@ func TestMizuOai_Rx_Read_BodyInt(t *testing.T) {
 			var receivedInput TestInputBodyInt
 			var err error
 
-			mizuoai.Get(srv, "/int", func(tx mizuoai.Tx[string], rx mizuoai.Rx[TestInputBodyInt]) {
-				receivedInput, err = rx.MizuRead()
+			mizuoai.Get(srv, "/int", func(_ http.ResponseWriter, rx mizuoai.Rx[TestInputBodyInt]) (string, error) {
+				receivedInput, err = rx.Xread()
+				return "", nil
 			})
 
 			rr := httptest.NewRecorder()
@@ -219,8 +222,9 @@ func TestMizuOai_Rx_Read_BodyFloat(t *testing.T) {
 			var receivedInput TestInputBodyFloat
 			var err error
 
-			mizuoai.Get(srv, "/float", func(tx mizuoai.Tx[string], rx mizuoai.Rx[TestInputBodyFloat]) {
-				receivedInput, err = rx.MizuRead()
+			mizuoai.Get(srv, "/float", func(_ http.ResponseWriter, rx mizuoai.Rx[TestInputBodyFloat]) (string, error) {
+				receivedInput, err = rx.Xread()
+				return "", nil
 			})
 
 			w := httptest.NewRecorder()
@@ -303,8 +307,9 @@ func TestMizuOai_Rx_Read_FormData(t *testing.T) {
 			var receivedInput TestInputForm
 			var err error
 
-			mizuoai.Post(srv, "/form", func(tx mizuoai.Tx[string], rx mizuoai.Rx[TestInputForm]) {
-				receivedInput, err = rx.MizuRead()
+			mizuoai.Post(srv, "/form", func(_ http.ResponseWriter, rx mizuoai.Rx[TestInputForm]) (string, error) {
+				receivedInput, err = rx.Xread()
+				return "", nil
 			})
 
 			w := httptest.NewRecorder()
