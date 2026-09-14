@@ -1,4 +1,4 @@
-# mizulog - Structured Logging for Go
+# logx - Structured Logging for Go
 
 Enhanced structured logging with context-aware attribute injection built on Go's standard `log/slog` package.
 
@@ -11,7 +11,7 @@ Enhanced structured logging with context-aware attribute injection built on Go's
 ## Installation
 
 ```bash
-go get github.com/humbornjo/mizu/mizulog
+go get github.com/humbornjo/mizu/x/logx
 ```
 
 ## Quick Start
@@ -24,12 +24,12 @@ package main
 import (
     "context"
     "log/slog"
-    "github.com/humbornjo/mizu/mizulog"
+    "github.com/humbornjo/mizu/x/logx"
 )
 
 func main() {
-    // Initialize mizulog with default settings
-    mizulog.Initialize(nil)
+    // Initialize logx with default settings
+    logx.Initialize(nil)
 
     // Use standard slog functions
     slog.Info("Application started")
@@ -42,7 +42,7 @@ func main() {
 ```go
 func handleRequest(ctx context.Context, requestID string) {
     // Inject attributes into context
-    ctx = mizulog.InjectContextAttrs(ctx,
+    ctx = logx.LogContext(ctx,
         slog.String("request_id", requestID),
         slog.String("user_id", "123"),
     )
@@ -58,9 +58,9 @@ func handleRequest(ctx context.Context, requestID string) {
 import "log/slog"
 
 // Configure with options
-mizulog.Initialize(nil,
-    mizulog.WithLogLevel("debug"),
-    mizulog.WithAttributes([]slog.Attr{
+logx.Initialize(nil,
+    logx.WithLogLevel("debug"),
+    logx.WithAttributes([]slog.Attr{
         slog.String("service", "my-api"),
         slog.String("version", "1.0.0"),
     }),
@@ -87,7 +87,7 @@ func authMiddleware(next http.Handler) http.Handler {
         userID := extractUserID(r)
 
         // Add to context for all subsequent logs
-        ctx := mizulog.InjectContextAttrs(r.Context(),
+        ctx := logx.LogContext(r.Context(),
             slog.String("user_id", userID),
             slog.String("path", r.URL.Path),
         )
@@ -108,7 +108,7 @@ func handleUser(w http.ResponseWriter, r *http.Request) {
 
 ```go
 func processOrder(ctx context.Context, orderID string) error {
-    ctx = mizulog.InjectContextAttrs(ctx,
+    ctx = logx.LogContext(ctx,
         slog.String("order_id", orderID),
     )
 

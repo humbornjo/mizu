@@ -1,30 +1,36 @@
 package oaisvc
 
 import (
+	"reflect"
+
 	"github.com/humbornjo/mizu"
+	"github.com/humbornjo/mizu/mizucue"
 	"github.com/humbornjo/mizu/mizudi"
 	"github.com/humbornjo/mizu/mizuoai"
 	"github.com/pb33f/libopenapi/datamodel/high/base"
 	v3 "github.com/pb33f/libopenapi/datamodel/high/v3"
 	"github.com/pb33f/libopenapi/orderedmap"
 	"go.yaml.in/yaml/v4"
-	"mizu.example/config"
+
+	"example.com/mizu/config"
 )
 
 func Initialize(_ *config.Config) {
 	srv := mizudi.MustRetrieve[*mizu.Server]()
-	registerRoutes(srv)
-}
+	schema := mizudi.MustRetrieve[mizucue.Module]().MustExtract("oaisvc")
+	svc := &Service{schema: schema}
 
-func registerRoutes(srv *mizu.Server) {
 	g := srv.Group("/oai")
-	mizuoai.Get(g, "/scrape", HandleOaiScrape,
+	mizuoai.Get(g, "/scrape", svc.HandleScrape,
 		mizuoai.WithOperationTags("scrape"),
 		mizuoai.WithOperationSummary("mizu_example http scrape"),
 		mizuoai.WithOperationDescription("nobody knows scrape more than I do"),
 	)
-	mizuoai.GetRaw(g, "/events", HandleOaiEvents,
-		mizuoai.WithOperation(&v3.Operation{
+
+	// A raw SSE stream documented by a hand-built operation — the
+	// Go-side escape hatch.
+	mizuoai.GetRaw(g, "/events", svc.HandleEvents,
+		mizuoai.WithOperationBase(&v3.Operation{
 			OperationId: "streamEvents",
 			Tags:        []string{"events"},
 			Summary:     "Stream server-sent events",
@@ -47,16 +53,19 @@ func registerRoutes(srv *mizu.Server) {
 			})},
 		}),
 	)
-	mizuoai.GetRaw(g, "/package", HandleOaiPackage,
-		mizuoai.WithOpenApiOperation(_CUE_OPENAPI_DOCUMENT, "downloadPackage"),
+
+	// A raw download documented by the CUE operation fragment — what
+	// reflection cannot infer, the schema states outright.
+	mizuoai.GetRaw(g, "/package", svc.HandlePackage,
+		mizuoai.WithOperationPatch(svc.schema.MustOperation(reflect.TypeFor[DownloadPackageOperation]())),
 		mizuoai.WithOperationTags("package"),
 		mizuoai.WithOperationSummary("Download a CUE-documented package"),
 		mizuoai.WithOperationDescription("Streams a compressed example package using a CUE-owned transport contract."),
 	)
 
 	guser := g.Group("/user")
-	mizuoai.Post(guser, "/{user_id}/order", HandleOaiOrder,
-		mizuoai.WithOperationTags("bisiness", "order"),
+	mizuoai.Post(guser, "/{user_id}/order", svc.HandleCreateOrder,
+		mizuoai.WithOperationTags("business", "order"),
 		mizuoai.WithOperationSummary("mizu_example order service"),
 		mizuoai.WithOperationDescription("nobody knows order more than I do"),
 	)

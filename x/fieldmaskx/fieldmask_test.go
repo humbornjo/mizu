@@ -1,11 +1,12 @@
-package mizu_test
+package fieldmaskx_test
 
 import (
 	"testing"
 
-	"github.com/humbornjo/mizu"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/humbornjo/mizu/x/fieldmaskx"
 )
 
 type fieldMaskAddress struct {
@@ -104,7 +105,7 @@ func newFieldMaskProfile() fieldMaskProfile {
 	}
 }
 
-func TestMizu_FieldMaskIntersect(t *testing.T) {
+func TestFieldMaskx_FieldMaskIntersect(t *testing.T) {
 	tests := []struct {
 		name      string
 		allowed   []string
@@ -168,7 +169,7 @@ func TestMizu_FieldMaskIntersect(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			allowed := append([]string(nil), tc.allowed...)
 			requested := append([]string(nil), tc.requested...)
-			mask := mizu.Intersect[fieldMaskProfile](allowed, requested)
+			mask := fieldmaskx.Intersect[fieldMaskProfile](allowed, requested)
 			assert.Equal(t, tc.want, mask.Paths())
 			assert.Equal(t, tc.allowed, allowed, "allowed input must not be modified")
 			assert.Equal(t, tc.requested, requested, "requested input must not be modified")
@@ -176,26 +177,26 @@ func TestMizu_FieldMaskIntersect(t *testing.T) {
 	}
 }
 
-func TestMizu_FieldMaskIntersectCollision(t *testing.T) {
-	mask := mizu.Intersect[fieldMaskCollision](
+func TestFieldMaskx_FieldMaskIntersectCollision(t *testing.T) {
+	mask := fieldmaskx.Intersect[fieldMaskCollision](
 		[]string{"Shared", "direct"},
 		[]string{"Shared", "direct"},
 	)
 	assert.Equal(t, []string{"direct"}, mask.Paths())
 }
 
-func TestMizu_FieldMaskIntersectUnsupportedNesting(t *testing.T) {
+func TestFieldMaskx_FieldMaskIntersectUnsupportedNesting(t *testing.T) {
 	paths := []string{
 		"numbers", "numbers.value",
 		"numericMap", "numericMap.key.city",
 		"dynamic", "dynamic.value",
 	}
-	mask := mizu.Intersect[fieldMaskUnsupportedNesting](paths, paths)
+	mask := fieldmaskx.Intersect[fieldMaskUnsupportedNesting](paths, paths)
 	assert.Equal(t, []string{"dynamic", "numbers", "numericMap"}, mask.Paths())
 }
 
-func TestMizu_FieldMaskPaths(t *testing.T) {
-	mask := mizu.Intersect[fieldMaskProfile](
+func TestFieldMaskx_FieldMaskPaths(t *testing.T) {
+	mask := fieldmaskx.Intersect[fieldMaskProfile](
 		[]string{"displayName", "age"},
 		[]string{"displayName", "age"},
 	)
@@ -203,11 +204,11 @@ func TestMizu_FieldMaskPaths(t *testing.T) {
 	paths[0] = "changed"
 	assert.Equal(t, []string{"age", "displayName"}, mask.Paths())
 
-	var nilMask *mizu.FieldMask[fieldMaskProfile]
+	var nilMask *fieldmaskx.FieldMask[fieldMaskProfile]
 	assert.Nil(t, nilMask.Paths())
 }
 
-func TestMizu_FieldMaskFilter(t *testing.T) {
+func TestFieldMaskx_FieldMaskFilter(t *testing.T) {
 	profile := newFieldMaskProfile()
 	paths := []string{
 		"displayName",
@@ -218,7 +219,7 @@ func TestMizu_FieldMaskFilter(t *testing.T) {
 		"pointerAttributes.work.zip",
 		"custom",
 	}
-	mask := mizu.Intersect[fieldMaskProfile](paths, paths)
+	mask := fieldmaskx.Intersect[fieldMaskProfile](paths, paths)
 	require.NoError(t, mask.Filter(&profile))
 
 	assert.Empty(t, profile.Embedded)
@@ -236,9 +237,9 @@ func TestMizu_FieldMaskFilter(t *testing.T) {
 	assert.Equal(t, "hidden", profile.hidden)
 }
 
-func TestMizu_FieldMaskFilterEmpty(t *testing.T) {
+func TestFieldMaskx_FieldMaskFilterEmpty(t *testing.T) {
 	profile := newFieldMaskProfile()
-	mask := mizu.Intersect[fieldMaskProfile](nil, nil)
+	mask := fieldmaskx.Intersect[fieldMaskProfile](nil, nil)
 	require.Empty(t, mask.Paths())
 	require.NoError(t, mask.Filter(&profile))
 
@@ -256,13 +257,13 @@ func TestMizu_FieldMaskFilterEmpty(t *testing.T) {
 	assert.Equal(t, "hidden", profile.hidden)
 }
 
-func TestMizu_FieldMaskEmbeddedPointer(t *testing.T) {
+func TestFieldMaskx_FieldMaskEmbeddedPointer(t *testing.T) {
 	t.Run("filter traverses promoted pointer fields", func(t *testing.T) {
 		value := fieldMaskEmbeddedPointer{
 			FieldMaskOptionalEmbedded: &FieldMaskOptionalEmbedded{Optional: "keep", Sibling: "clear"},
 			Direct:                    "clear",
 		}
-		mask := mizu.Intersect[fieldMaskEmbeddedPointer](
+		mask := fieldmaskx.Intersect[fieldMaskEmbeddedPointer](
 			[]string{"optional"},
 			[]string{"optional"},
 		)
@@ -276,7 +277,7 @@ func TestMizu_FieldMaskEmbeddedPointer(t *testing.T) {
 			FieldMaskOptionalEmbedded: &FieldMaskOptionalEmbedded{Optional: "copied", Sibling: "ignored"},
 		}
 		target := fieldMaskEmbeddedPointer{}
-		mask := mizu.Intersect[fieldMaskEmbeddedPointer](
+		mask := fieldmaskx.Intersect[fieldMaskEmbeddedPointer](
 			[]string{"optional"},
 			[]string{"optional"},
 		)
@@ -289,7 +290,7 @@ func TestMizu_FieldMaskEmbeddedPointer(t *testing.T) {
 		target := fieldMaskEmbeddedPointer{
 			FieldMaskOptionalEmbedded: &FieldMaskOptionalEmbedded{Optional: "clear", Sibling: "keep"},
 		}
-		mask := mizu.Intersect[fieldMaskEmbeddedPointer](
+		mask := fieldmaskx.Intersect[fieldMaskEmbeddedPointer](
 			[]string{"optional"},
 			[]string{"optional"},
 		)
@@ -298,7 +299,7 @@ func TestMizu_FieldMaskEmbeddedPointer(t *testing.T) {
 	})
 }
 
-func TestMizu_FieldMaskPrune(t *testing.T) {
+func TestFieldMaskx_FieldMaskPrune(t *testing.T) {
 	profile := newFieldMaskProfile()
 	paths := []string{
 		"displayName",
@@ -308,7 +309,7 @@ func TestMizu_FieldMaskPrune(t *testing.T) {
 		"pointerAttributes.work",
 		"tags",
 	}
-	mask := mizu.Intersect[fieldMaskProfile](paths, paths)
+	mask := fieldmaskx.Intersect[fieldMaskProfile](paths, paths)
 	require.NoError(t, mask.Prune(&profile))
 
 	assert.Empty(t, profile.DisplayName)
@@ -323,24 +324,24 @@ func TestMizu_FieldMaskPrune(t *testing.T) {
 	assert.Equal(t, "secret", profile.Secret)
 }
 
-func TestMizu_FieldMaskPruneEmpty(t *testing.T) {
+func TestFieldMaskx_FieldMaskPruneEmpty(t *testing.T) {
 	profile := newFieldMaskProfile()
 	want := newFieldMaskProfile()
-	mask := mizu.Intersect[fieldMaskProfile](nil, nil)
+	mask := fieldmaskx.Intersect[fieldMaskProfile](nil, nil)
 	require.NoError(t, mask.Prune(&profile))
 	assert.Equal(t, want, profile)
 }
 
-func TestMizu_FieldMaskOverwriteEmpty(t *testing.T) {
+func TestFieldMaskx_FieldMaskOverwriteEmpty(t *testing.T) {
 	source := fieldMaskProfile{}
 	target := newFieldMaskProfile()
 	want := newFieldMaskProfile()
-	mask := mizu.Intersect[fieldMaskProfile](nil, nil)
+	mask := fieldmaskx.Intersect[fieldMaskProfile](nil, nil)
 	require.NoError(t, mask.Overwrite(&source, &target))
 	assert.Equal(t, want, target)
 }
 
-func TestMizu_FieldMaskOverwrite(t *testing.T) {
+func TestFieldMaskx_FieldMaskOverwrite(t *testing.T) {
 	source := newFieldMaskProfile()
 	source.DisplayName = ""
 	source.Address = &fieldMaskAddress{City: "Suzhou", Zip: "source-zip"}
@@ -370,7 +371,7 @@ func TestMizu_FieldMaskOverwrite(t *testing.T) {
 		"pointerAttributes.work.city",
 		"tags",
 	}
-	mask := mizu.Intersect[fieldMaskProfile](paths, paths)
+	mask := fieldmaskx.Intersect[fieldMaskProfile](paths, paths)
 	require.NoError(t, mask.Overwrite(&source, &target))
 
 	assert.Empty(t, target.DisplayName, "selected source zero value must clear destination")
@@ -394,11 +395,11 @@ func TestMizu_FieldMaskOverwrite(t *testing.T) {
 	assert.Equal(t, "aliased", target.Tags[0], "whole selected slices use Go assignment semantics")
 }
 
-func TestMizu_FieldMaskOverwritePointers(t *testing.T) {
+func TestFieldMaskx_FieldMaskOverwritePointers(t *testing.T) {
 	t.Run("allocates destination parent", func(t *testing.T) {
 		source := fieldMaskProfile{Address: &fieldMaskAddress{City: "Wuhan", Zip: "ignored"}}
 		target := fieldMaskProfile{}
-		mask := mizu.Intersect[fieldMaskProfile](
+		mask := fieldmaskx.Intersect[fieldMaskProfile](
 			[]string{"address.city"},
 			[]string{"address.city"},
 		)
@@ -409,7 +410,7 @@ func TestMizu_FieldMaskOverwritePointers(t *testing.T) {
 	t.Run("nil source clears selected child", func(t *testing.T) {
 		source := fieldMaskProfile{}
 		target := fieldMaskProfile{Address: &fieldMaskAddress{City: "old", Zip: "keep"}}
-		mask := mizu.Intersect[fieldMaskProfile](
+		mask := fieldmaskx.Intersect[fieldMaskProfile](
 			[]string{"address.city"},
 			[]string{"address.city"},
 		)
@@ -418,13 +419,13 @@ func TestMizu_FieldMaskOverwritePointers(t *testing.T) {
 	})
 }
 
-func TestMizu_FieldMaskOverwriteMissingMapKey(t *testing.T) {
+func TestFieldMaskx_FieldMaskOverwriteMissingMapKey(t *testing.T) {
 	t.Run("nested selection clears only selected fields", func(t *testing.T) {
 		source := fieldMaskProfile{Attributes: map[string]fieldMaskAddress{}}
 		target := fieldMaskProfile{Attributes: map[string]fieldMaskAddress{
 			"home": {City: "old", Zip: "keep"},
 		}}
-		mask := mizu.Intersect[fieldMaskProfile](
+		mask := fieldmaskx.Intersect[fieldMaskProfile](
 			[]string{"attributes.home.city"},
 			[]string{"attributes.home.city"},
 		)
@@ -437,7 +438,7 @@ func TestMizu_FieldMaskOverwriteMissingMapKey(t *testing.T) {
 		target := fieldMaskProfile{Attributes: map[string]fieldMaskAddress{
 			"home": {City: "old", Zip: "old"},
 		}}
-		mask := mizu.Intersect[fieldMaskProfile](
+		mask := fieldmaskx.Intersect[fieldMaskProfile](
 			[]string{"attributes.home"},
 			[]string{"attributes.home"},
 		)
@@ -446,10 +447,10 @@ func TestMizu_FieldMaskOverwriteMissingMapKey(t *testing.T) {
 	})
 }
 
-func TestMizu_FieldMaskErrors(t *testing.T) {
+func TestFieldMaskx_FieldMaskErrors(t *testing.T) {
 	t.Run("unsupported type", func(t *testing.T) {
 		value := 7
-		mask := mizu.Intersect[int]([]string{"value"}, []string{"value"})
+		mask := fieldmaskx.Intersect[int]([]string{"value"}, []string{"value"})
 		assert.Empty(t, mask.Paths())
 		require.ErrorContains(t, mask.Filter(&value), "must be a JSON struct")
 		assert.Equal(t, 7, value)
@@ -458,7 +459,7 @@ func TestMizu_FieldMaskErrors(t *testing.T) {
 	t.Run("nil receiver", func(t *testing.T) {
 		profile := newFieldMaskProfile()
 		want := newFieldMaskProfile()
-		var mask *mizu.FieldMask[fieldMaskProfile]
+		var mask *fieldmaskx.FieldMask[fieldMaskProfile]
 		require.ErrorContains(t, mask.Filter(&profile), "field mask is nil")
 		assert.Equal(t, want, profile)
 	})
@@ -466,7 +467,7 @@ func TestMizu_FieldMaskErrors(t *testing.T) {
 	t.Run("nil overwrite source is atomic", func(t *testing.T) {
 		target := newFieldMaskProfile()
 		want := newFieldMaskProfile()
-		mask := mizu.Intersect[fieldMaskProfile](
+		mask := fieldmaskx.Intersect[fieldMaskProfile](
 			[]string{"displayName"},
 			[]string{"displayName"},
 		)

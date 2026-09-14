@@ -5,8 +5,8 @@ import (
 
 	"connectrpc.com/connect"
 
-	greetv1 "mizu.example/protogen/barapp/greet/v1"
-	"mizu.example/protogen/barapp/greet/v1/greetv1connect"
+	greetv1 "example.com/mizu/protogen/barapp/greet/v1"
+	"example.com/mizu/protogen/barapp/greet/v1/greetv1connect"
 )
 
 type Service struct {

@@ -1,8 +1,8 @@
 # mizucue
 
-`mizucue` compiles CUE schemas, validates generated Go models, and turns request-local CUE metadata into OpenAPI 3.1 documents.
+`mizucue` compiles CUE schemas, validates generated Go models, and renders raw CUE OpenAPI documents.
 
-It is independent from `mizuoai`: `mizucue` owns CUE compilation and OpenAPI generation, while `mizuoai` owns HTTP registration, document validation, and final rendering. Their integration boundary is ordinary OpenAPI bytes.
+It is independent from `mizuoai`: `mizucue` owns CUE compilation, model validation, and per-package OpenAPI generation, while `mizuoai` owns assembling and serving the merged document. Their integration boundary is ordinary OpenAPI bytes.
 
 ## Installation
 
@@ -10,16 +10,16 @@ It is independent from `mizuoai`: `mizucue` owns CUE compilation and OpenAPI gen
 go get github.com/humbornjo/mizu/mizucue
 ```
 
-## Compile a schema
+## Load an inline schema
 
-Compile an inline schema when it is already embedded as a string:
+Load a schema that is already embedded as a string:
 
 ```go
-schema, err := mizucue.Compile(`
+schema, err := mizucue.LoadSchema(`
 package example
 
 #CreateWidgetRequest: {
-	body: name: string & != ""
+	name: string & != ""
 }
 `)
 if err != nil {
@@ -27,25 +27,47 @@ if err != nil {
 }
 ```
 
-Use `MustCompile` for package initialization where a schema error is unrecoverable:
+`MustLoadSchema` is the initialization-time variant, panicking on failure:
 
 ```go
-var SCHEMA = mizucue.MustCompile(_SCHEMA_CUE)
+var SCHEMA = mizucue.MustLoadSchema(_SCHEMA_CUE)
 ```
 
-For a CUE module containing imports, load the package from an explicit filesystem:
+## Load every package as one module
+
+`LoadModule` compiles every CUE package of a module into one shared `Module`. The filesystem must hold the module's `cue.mod/module.cue`; imports resolve through the declared module path:
 
 ```go
-//go:embed cue.mod schema
+//go:embed all:package all:service cue.mod
 var schemaFS embed.FS
 
-schema, err := mizucue.LoadFS("schema/v1", schemaFS)
+module, err := mizucue.LoadModule(schemaFS)
 if err != nil {
 	return err
 }
 ```
 
-`MustLoadFS` is the initialization-time variant. Loading errors and panics include the requested directory.
+Cross-package imports, stdlib packages, and build constraints are the CUE loader's standard semantics.
+
+`Module.Extract` builds a `Schema` from the first package whose package name matches. Package names are not unique across a module's directories; selection follows loader order:
+
+```go
+schema, err := module.Extract("agent")
+if err != nil {
+	return err
+}
+```
+
+`MustExtract` is the initialization-time variant.
+
+`Module.Instances` exposes the underlying CUE loader instances in loader order, for consumers that need more than the schema and OpenAPI views — import paths, package names, files, dependencies:
+
+```go
+for instance := range module.Instances() {
+	// instance is the loader's *build.Instance; its ImportPath
+	// carries the loader's canonical "@version" suffix.
+}
+```
 
 ## Validate generated Go models
 
@@ -53,121 +75,84 @@ if err != nil {
 
 ```go
 type CreateWidgetRequest struct {
-	Body struct {
-		Name string `json:"name"`
-	} `json:"body"`
+	Name string `json:"name"`
 }
 
-if err := mizucue.Validate(schema, &request); err != nil {
+if err := schema.Validate(&request); err != nil {
 	return fmt.Errorf("invalid request: %w", err)
 }
 ```
 
 Nil values, missing definitions, unsatisfied constraints, and non-concrete results are rejected.
 
-## OpenAPI hints
+## Render operation fragments
 
-CUE remains the source of validation. Hidden siblings add OpenAPI metadata without entering generated Go types.
-
-### Property hints
-
-A single-underscore sibling enhances an existing property:
+`Operation` renders the CUE member named after a Go type — mirroring `Validate`'s naming — as JSON bytes. The fragment carries what `mizuoai`'s reflection cannot infer per operation (request body media types, response tables) and merges over the reflected operation via `mizuoai.WithOperationPatch`. The member must be concrete:
 
 ```cue
-#UploadForm: {
-	name: string
-	"package": string @go(-)
-	_package: contentMediaType: "application/gzip"
-}
+#DownloadPackageOperation: {
+	operationId: "downloadPackage"
+	responses: "200": content: "application/gzip": schema: type: "string"
+} @go(-)
 ```
-
-`_package` is merged into the generated `package` property. A hint cannot manufacture a property, and conflicting generated and hinted values fail. Hints follow referenced schemas recursively.
-
-### Operation hints
-
-Quoted double-underscore fields describe one route-bound request definition:
-
-```cue
-#UploadPackageRequest: {
-	path: scope: string
-	form: #UploadForm
-	"__method": "post" @go(-)
-	"__path": "/registry/scopes/{scope}/packages" @go(-)
-	"__operationId": "uploadPackage" @go(-)
-	"__responses": {
-		"201": description: "Package uploaded"
-		"400": description: "Invalid package"
-	} @go(-)
-}
-
-#UploadPackageResponse: #Package
-```
-
-Operation hints are valid only on definitions ending in `Request`. `__method`, `__path`, `__operationId`, and `__responses` are required. Other `__name` fields map to the exact OpenAPI field `name`; `__components` is merged into document components.
-
-Derived request fields have these meanings:
-
-| CUE field | OpenAPI structure |
-| --- | --- |
-| required `path` | Required path parameters matching every `{placeholder}` exactly |
-| required `form` | Required `multipart/form-data` request body |
-| required `body` | Required `application/json` request body |
-
-Query and header parameters are supplied explicitly through `__parameters`. A request cannot contain both `form` and `body`. A form property's `contentMediaType` also becomes multipart encoding metadata.
-
-`XxxRequest` pairs with `XxxResponse`. When the single successful response has no explicit content, `mizucue` adds an `application/json` reference to the response component. Explicit content remains authoritative for binary downloads, SSE, WebSocket upgrades, and other raw transports; HTTP 101 counts as the success for an upgrade operation.
-
-## Generate and register an operation
-
-For a raw binary response, keep the transport contract in CUE:
-
-```cue
-#DownloadPackageRequest: {
-	"__method": "get" @go(-)
-	"__path": "/packages/latest" @go(-)
-	"__operationId": "downloadPackage" @go(-)
-	"__responses": "200": {
-		description: "Compressed package"
-		headers: "Content-Disposition": {
-			required: true
-			schema: type: "string"
-		}
-		content: "application/gzip": {}
-	} @go(-)
-}
-
-#DownloadPackageResponse: {}
-```
-
-Generate OpenAPI bytes, parse them once, and attach the selected operation to its matching raw route:
 
 ```go
-var document = mizuoai.MustParseOpenAPI(
-	mizucue.MustGenerateOpenAPI(schema, "Example API", "v1", "ExampleV1"),
-)
-
-mizuoai.GetRaw(server, "/packages/latest", handleDownload,
-	mizuoai.WithOpenApiOperation(document, "downloadPackage"),
-	mizuoai.WithOperationTags("packages"),
-	mizuoai.WithOperationSummary("Download the latest package"),
-	mizuoai.WithOperationDescription("Streams the latest compressed package."),
-)
+fragment, err := schema.Operation(reflect.TypeFor[DownloadPackageOperation]())
 ```
 
-`GenerateOpenAPI` returns errors; `MustGenerateOpenAPI` panics for initialization-time use. Generated documents remain OpenAPI 3.1.0. `mizuoai` accepts that document, imports the selected operation and its component closure, and renders it through its configured OpenAPI output version.
+`MustOperation` is the initialization-time variant. The Go type only needs to exist for `reflect.TypeFor` — `cue exp gengotypes` emits a near-empty struct when the member carries `@go(-)`. See the [example application](../_example/service/oaisvc/) for the full integration.
 
-## Operation projection
+## Generate OpenAPI documents
 
-When operation hints are present, `mizucue` projects only each request, its matching response, and recursively referenced definitions into CUE's OpenAPI generator. This prevents unrelated provider-neutral unions or arbitrary JSON definitions from breaking route generation.
-
-The projection restores named aliases and supplemental components that CUE may otherwise deduplicate. Property and operation hints are then applied against the complete original schema. Request operation-source components and every `__` hint are removed from the final document.
-
-## Extract one component
-
-For integrations that need an individual component schema:
+`Schema.OpenAPI` renders the schema's raw CUE OpenAPI document as JSON bytes. It is sugar over CUE's `openapi.Generate`: the config passes through untouched, nothing is post-processed, and every call regenerates from scratch:
 
 ```go
-component, err := mizucue.ExtractOpenAPI(schema, Widget{})
+raw, err := schema.OpenAPI(&openapi.Config{
+	Info: map[string]any{"title": "Example API", "version": "v1"},
+})
 ```
 
-Extraction is cached per `Schema`, safe for concurrent callers, and returns an independently mutable top-level map. `MustExtractOpenAPI` is the panic-on-error variant.
+`Module.OpenAPIs` does the same for every package in the module and returns the documents as an import-path-ordered sequence:
+
+```go
+documents, err := module.OpenAPIs(nil)
+if err != nil {
+	return err
+}
+for importPath, raw := range documents {
+	// importPath is the declared module path plus the package's
+	// relative dir; raw is the package's OpenAPI JSON document.
+}
+```
+
+Component names are qualified k8s-style with the definition's source package import path — `example.com.mizucue.test.app.TestModel`, the same shape as `mizuoai`'s `CanonicalTypeName` — so same-named definitions from different packages coexist in one assembled document and cross-package `$ref`s carry their provenance. A config `NameFunc` replaces the default naming; every other config field passes through untouched, and the caller's config is never mutated. `Schema.OpenAPI`, by contrast, stays verbatim.
+
+A package that fails generation aborts the whole call with an error naming the package. Constructs the CUE generator rejects (`!=` string bounds, for one) fail as-is; `mizucue` does not sanitize. `MustOpenAPI` and `MustOpenAPIs` are the initialization-time variants; `mizuoai` assembles the per-package documents, with each package's import path passed along as the sequence key.
+
+## Bake openapi.yaml from the command line
+
+`mizucuegen` writes every package's generated document to `openapi.yaml` next to the package's CUE files. Run it from anywhere inside the CUE module — it walks up from the argument directory (default `.`) until a `cue.mod/module.cue`, and errors when none is found:
+
+```bash
+go tool mizucuegen ./schemas
+```
+
+Track the tool in your module (Go 1.24+):
+
+```bash
+go get -tool github.com/humbornjo/mizu/mizucue/cmd/mizucuegen
+```
+
+or install it as a plain binary:
+
+```bash
+go install github.com/humbornjo/mizu/mizucue/cmd/mizucuegen@latest
+```
+
+It also hangs off `go:generate`:
+
+```go
+//go:generate go run github.com/humbornjo/mizu/mizucue/cmd/mizucuegen ./schemas
+```
+
+The baked files are the documents `Module.OpenAPIs` returns, as YAML — pass them to `mizuoai` for assembly.

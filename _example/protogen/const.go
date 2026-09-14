@@ -1,10 +1,10 @@
 package protogen
 
- import (
-   _ "embed"
- )
+import (
+	_ "embed"
+)
 
- var (
-   //go:embed openapi.yaml
-   OPENAPI []byte
- )
+var (
+	//go:embed openapi.yaml
+	OPENAPI []byte
+)

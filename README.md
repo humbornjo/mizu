@@ -2,16 +2,13 @@
 
 # 🌊 Mizu - HTTP Framework for Go
 
-[![Go Version](https://img.shields.io/badge/go-1.26+-blue.svg)](https://golang.org)
+[![Go Version](https://img.shields.io/badge/go-1.27+-blue.svg)](https://golang.org)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![CI Status](https://github.com/humbornjo/mizu/workflows/CI/badge.svg)](https://github.com/humbornjo/mizu/actions)
-![Alpha](https://img.shields.io/badge/status-alpha-orange.svg)
 
 > **Mizu** (水) - Japanese for "water", also the name of main character in the anime [Blue Eye Samurai](https://www.imdb.com/title/tt13309742/) - An HTTP framework built on Go's standard library.
 
 Mizu provides middleware composition, lifecycle hooks, and observability features while staying close to Go's native `net/http`.
-
-> ⚠️ **Alpha Status**: Mizu is currently in alpha development. APIs may change and the framework is not recommended for production use.
 
 ## Features
 
@@ -102,20 +99,53 @@ curl -X POST http://localhost:8080/users   # User created (with auth header)
 curl http://localhost:8080/healthz         # OK (built-in health check)
 ```
 
+## Middleware Scoping
+
+What a middleware covers depends on whether you keep the return value of `Use`.
+
+Discard it, and the middleware is persistent: it applies to every route registered afterward on that server or group.
+
+```go
+server.Use(MiddlewareLog) // applies to all routes below
+
+server.Get("/", handlerIndex)
+server.Get("/users/{id}", handlerUser)
+```
+
+Keep it, and the return value is a one-shot chain. The next route registered through the chain consumes the middleware; routes registered later get nothing.
+
+```go
+// MiddlewareAuth guards only this one route.
+server.Use(MiddlewareAuth).Post("/users", handlerCreateUser)
+```
+
+To guard a whole group, call `Use` on the group and discard the result:
+
+```go
+group := server.Group("/admin")
+group.Use(MiddlewareAuth) // every route under /admin is guarded
+
+group.Get("/users", handlerListUsers)
+group.Get("/goods", handlerListGoods)
+```
+
+Do not chain it. `group := server.Group("/admin").Use(MiddlewareAuth)` keeps the one-shot chain, so only the first route registered through `group` is guarded; the rest stay open.
+
+`server.Use(mw).Group("/admin")` also guards the group, but the middleware stays on `server` as well, so routes registered on `server` afterward inherit it.
+
 ## Typed Multipart Uploads
 
-`NewFormReader` keeps the uploaded file streaming while strictly decoding declared form fields into a Go struct. Fields may appear before or after the file; call `purge` after consuming the file to decode trailing fields and finish required-field validation.
+`formx.NewFormReader` (in [`x/formx`](./x/formx/)) keeps the uploaded file streaming while decoding declared form fields into a Go struct. Fields may appear before or after the file; call `purge` after consuming the file to decode trailing fields.
 
 ```go
 type UploadForm struct {
-	Name     string   `form:"name" required:"true"`
-	Labels   []string `form:"label"`
-	Scenario *int     `form:"scenario"`
+	Name     string `form:"name"`
+	Scenario *int   `form:"scenario"`
 }
 
 func upload(w http.ResponseWriter, r *http.Request) {
 	var fields UploadForm
-	form, err := mizu.NewFormReader("package", r, &fields)
+	form, err := formx.NewFormReader("package", r, &fields)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
@@ -127,7 +157,7 @@ func upload(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	file := mizu.NewFileReader(part, mizu.WithFileLimitBytes(64<<20))
+	file := formx.NewFileReader(part, formx.WithFileLimitBytes(64<<20))
 	defer file.Close()
 
 	if _, err := io.Copy(io.Discard, file); err != nil {
@@ -139,19 +169,18 @@ func upload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	log.Printf("name=%s labels=%v sha256=%s", fields.Name, fields.Labels, file.Checksum())
+	log.Printf("name=%s sha256=%s", fields.Name, file.Checksum())
 	w.WriteHeader(http.StatusCreated)
 }
 ```
 
-Field names resolve from `form` tags, then `json` tags, then Go field names. Singleton fields reject duplicates, slices append repeated values, and `required:"true"` is checked when the multipart stream reaches EOF. Unknown parts remain available through `NextPart` for handlers that need to manage extra or multiple parts themselves.
+Field names resolve from `form` tags, then `json` tags, then Go field names. Mapping is best-effort: an unconvertible part leaves its field untouched, and bytes beyond the field limit are discarded. Unknown parts remain available through `NextPart` — pass a nil message to handle every part manually.
 
 ## Roadmap to Beta
 
 - [x] Complete documentation for each sub-module
 - [x] Add commonly used HTTP middleware implementations
 - [x] Compare mizuoai with popular OpenAPI Go frameworks like Fuego on performance
-- [ ] ~~Fix Connect-RPC download issue in `mizuconnect/restful/filekit`~~
 
 ## Configuration Options
 
@@ -188,7 +217,7 @@ Mizu is now organized as a collection of independent modules, each with their ow
 - **[mizumw](./mizumw/)** - Common HTTP middleware implementations
 - **[mizuoai](./mizuoai/)** - OpenAPI specification integration
 - **[mizucue](./mizucue/)** - CUE compilation, model validation, and OpenAPI generation
-- **[mizulog](./mizulog/)** - Structured logging with context-aware attributes
+- **[logx](./x/logx/)** - Structured logging with context-aware attributes
 - **[mizuotel](./mizuotel/)** - OpenTelemetry integration for distributed tracing and metrics
 - **[mizuconnect](./mizuconnect/)** - Connect-RPC integration for type-safe RPC services
 
@@ -198,12 +227,7 @@ Each module is self-contained with its own `go.mod` file and can be used indepen
 
 ### Prerequisites
 
-Go 1.26+
-
-```bash
-# package `mizuoai` requires `encoding/json/v2` support
-go env -w GOEXPERIMENT=jsonv2
-```
+Go 1.27+
 
 ## References
 

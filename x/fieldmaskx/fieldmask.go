@@ -1,4 +1,4 @@
-package mizu
+package fieldmaskx
 
 import (
 	"cmp"
@@ -23,15 +23,20 @@ var (
 type FieldMask[T any] struct {
 	typ   reflect.Type
 	paths []string
-	root  *fieldMaskNode
+	root  *node
 }
 
-type fieldMaskNode struct {
+// node is one level of the path trie: selected marks a path that ends
+// here, children holds the paths that continue below.
+type node struct {
 	selected bool
-	children map[string]*fieldMaskNode
+	children map[string]*node
 }
 
-type fieldMaskField struct {
+// field is a JSON-visible struct field: name is its JSON object key,
+// index is its (possibly promoted) field path, and tagged records
+// whether the name came from an explicit json tag, which wins ties.
+type field struct {
 	name   string
 	tagged bool
 	index  []int
@@ -43,25 +48,25 @@ type fieldMaskField struct {
 // disallowed paths are omitted.
 func Intersect[T any](allowed, requested []string) *FieldMask[T] {
 	typ := reflect.TypeFor[T]()
-	mask := &FieldMask[T]{typ: typ, root: newFieldMaskNode()}
-	if !isFieldMaskStruct(typ) {
+	mask := &FieldMask[T]{typ: typ, root: &node{children: make(map[string]*node)}}
+	if !isStruct(typ) {
 		return mask
 	}
 
-	allowed = validFieldMaskPaths(typ, allowed)
-	requested = validFieldMaskPaths(typ, requested)
+	allowed = validPaths(typ, allowed)
+	requested = validPaths(typ, requested)
 	paths := make([]string, 0)
-	for _, left := range allowed {
-		for _, right := range requested {
+	for _, allow := range allowed {
+		for _, want := range requested {
 			switch {
-			case hasFieldMaskPrefix(left, right):
-				paths = append(paths, left)
-			case hasFieldMaskPrefix(right, left):
-				paths = append(paths, right)
+			case hasPathPrefix(allow, want):
+				paths = append(paths, allow)
+			case hasPathPrefix(want, allow):
+				paths = append(paths, want)
 			}
 		}
 	}
-	mask.paths = normalizeFieldMaskPaths(paths)
+	mask.paths = normalizePaths(paths)
 	for _, path := range mask.paths {
 		mask.root.add(strings.Split(path, "."))
 	}
@@ -83,7 +88,7 @@ func (m *FieldMask[T]) Filter(value *T) error {
 	if err != nil {
 		return err
 	}
-	filterFieldMaskValue(target, m.root)
+	filterValue(target, m.root)
 	return nil
 }
 
@@ -94,7 +99,7 @@ func (m *FieldMask[T]) Prune(value *T) error {
 	if err != nil {
 		return err
 	}
-	pruneFieldMaskValue(target, m.root)
+	pruneValue(target, m.root)
 	return nil
 }
 
@@ -111,7 +116,7 @@ func (m *FieldMask[T]) Overwrite(src, dest *T) error {
 	if err != nil {
 		return err
 	}
-	overwriteFieldMaskValue(source, target, m.root)
+	overwriteValue(source, target, m.root)
 	return nil
 }
 
@@ -119,7 +124,7 @@ func (m *FieldMask[T]) target(value *T, operation string) (reflect.Value, error)
 	if m == nil {
 		return reflect.Value{}, fmt.Errorf("%s: field mask is nil", operation)
 	}
-	if !isFieldMaskStruct(m.typ) {
+	if !isStruct(m.typ) {
 		return reflect.Value{}, fmt.Errorf("%s: field mask type must be a JSON struct, got %v", operation, m.typ)
 	}
 	if value == nil {
@@ -128,38 +133,37 @@ func (m *FieldMask[T]) target(value *T, operation string) (reflect.Value, error)
 	return reflect.ValueOf(value).Elem(), nil
 }
 
-func newFieldMaskNode() *fieldMaskNode {
-	return &fieldMaskNode{children: make(map[string]*fieldMaskNode)}
-}
-
-func (n *fieldMaskNode) add(parts []string) {
-	current := n
+// add inserts a normalized path below n; no inserted path prefixes
+// another, so a selected node is never crossed on the way down.
+func (n *node) add(parts []string) {
 	for _, part := range parts {
-		if current.selected {
-			return
-		}
-		child := current.children[part]
+		child := n.children[part]
 		if child == nil {
-			child = newFieldMaskNode()
-			current.children[part] = child
+			child = &node{children: make(map[string]*node)}
+			n.children[part] = child
 		}
-		current = child
+		n = child
 	}
-	current.selected = true
-	current.children = nil
+	n.selected = true
+	n.children = nil
 }
 
-func validFieldMaskPaths(typ reflect.Type, paths []string) []string {
+func validPaths(typ reflect.Type, paths []string) []string {
 	valid := make([]string, 0, len(paths))
 	for _, path := range paths {
-		if validFieldMaskPath(typ, path) {
+		if validPath(typ, path) {
 			valid = append(valid, path)
 		}
 	}
-	return normalizeFieldMaskPaths(valid)
+	return normalizePaths(valid)
 }
 
-func validFieldMaskPath(typ reflect.Type, path string) bool {
+// validPath reports whether path walks typ through existing JSON
+// fields. Struct fields and string map keys consume one dot-separated
+// part; slices and arrays consume none, so a mask applies to every
+// element. Types with custom marshaling are leaves and reject any
+// path that tries to descend into them.
+func validPath(typ reflect.Type, path string) bool {
 	if path == "" {
 		return false
 	}
@@ -168,22 +172,23 @@ func validFieldMaskPath(typ reflect.Type, path string) bool {
 		return false
 	}
 
-	for index := 0; index < len(parts); {
+	part := 0
+	for part < len(parts) {
 		for typ.Kind() == reflect.Pointer {
 			typ = typ.Elem()
 		}
-		if isFieldMaskTerminal(typ) {
+		if isTerminal(typ) {
 			return false
 		}
-
 		switch typ.Kind() {
 		case reflect.Struct:
-			field, ok := fieldMaskFieldsByName(typ)[parts[index]]
-			if !ok {
+			fields := typeFields(typ)
+			i := slices.IndexFunc(fields, func(f field) bool { return f.name == parts[part] })
+			if i < 0 {
 				return false
 			}
-			typ = field.typ
-			index++
+			typ = fields[i].typ
+			part++
 		case reflect.Array, reflect.Slice:
 			typ = typ.Elem()
 		case reflect.Map:
@@ -191,7 +196,7 @@ func validFieldMaskPath(typ reflect.Type, path string) bool {
 				return false
 			}
 			typ = typ.Elem()
-			index++
+			part++
 		default:
 			return false
 		}
@@ -199,29 +204,33 @@ func validFieldMaskPath(typ reflect.Type, path string) bool {
 	return true
 }
 
-func normalizeFieldMaskPaths(paths []string) []string {
+// normalizePaths sorts paths and drops duplicates and any path that
+// extends an earlier one, leaving a set with no prefix pairs.
+func normalizePaths(paths []string) []string {
 	paths = slices.Clone(paths)
 	slices.Sort(paths)
-	result := paths[:0]
+	kept := paths[:0]
 	for _, path := range paths {
-		if len(result) > 0 && hasFieldMaskPrefix(path, result[len(result)-1]) {
+		if len(kept) > 0 && hasPathPrefix(path, kept[len(kept)-1]) {
 			continue
 		}
-		result = append(result, path)
+		kept = append(kept, path)
 	}
-	return result
+	return kept
 }
 
-func hasFieldMaskPrefix(path, prefix string) bool {
+func hasPathPrefix(path, prefix string) bool {
 	return strings.HasPrefix(path, prefix) &&
 		(len(path) == len(prefix) || path[len(prefix)] == '.')
 }
 
-func isFieldMaskStruct(typ reflect.Type) bool {
-	return typ != nil && typ.Kind() == reflect.Struct && !isFieldMaskTerminal(typ)
+func isStruct(typ reflect.Type) bool {
+	return typ != nil && typ.Kind() == reflect.Struct && !isTerminal(typ)
 }
 
-func isFieldMaskTerminal(typ reflect.Type) bool {
+// isTerminal reports whether typ marshals as a leaf value because it
+// or its pointer implements a JSON or text marshaler interface.
+func isTerminal(typ reflect.Type) bool {
 	if typ == nil {
 		return true
 	}
@@ -240,75 +249,54 @@ func isFieldMaskTerminal(typ reflect.Type) bool {
 	return false
 }
 
-func fieldMaskFieldsByName(typ reflect.Type) map[string]fieldMaskField {
-	fields := fieldMaskFields(typ)
-	result := make(map[string]fieldMaskField, len(fields))
-	for _, field := range fields {
-		result[field.name] = field
-	}
-	return result
-}
-
-func fieldMaskFields(typ reflect.Type) []fieldMaskField {
-	current := []fieldMaskField{}
-	next := []fieldMaskField{{typ: typ}}
-	var count, nextCount map[reflect.Type]int
-	visited := make(map[reflect.Type]bool)
-	fields := make([]fieldMaskField, 0)
-
-	for len(next) > 0 {
-		current, next = next, current[:0]
-		count, nextCount = nextCount, make(map[reflect.Type]int)
-		for _, parent := range current {
-			if visited[parent.typ] {
+// typeFields returns the JSON-visible fields of typ, resolved the way
+// encoding/json resolves them: anonymous struct fields are promoted,
+// and among candidates sharing a name the shallowest wins, an
+// explicitly tagged one wins a depth tie, and an even tie annihilates
+// the name entirely.
+func typeFields(typ reflect.Type) []field {
+	var fields []field
+	ancestors := make(map[reflect.Type]bool)
+	var walk func(typ reflect.Type, index []int)
+	walk = func(typ reflect.Type, index []int) {
+		for i := range typ.NumField() {
+			f := typ.Field(i)
+			if !f.IsExported() {
 				continue
 			}
-			visited[parent.typ] = true
-			for i := range parent.typ.NumField() {
-				field := parent.typ.Field(i)
-				if !field.IsExported() {
-					continue
-				}
-				tag := field.Tag.Get("json")
-				if tag == "-" {
-					continue
-				}
-				name, _, _ := strings.Cut(tag, ",")
-				if !validFieldMaskTag(name) {
-					name = ""
-				}
-				index := slices.Clone(parent.index)
-				index = append(index, i)
-
-				fieldType := field.Type
-				if fieldType.Name() == "" && fieldType.Kind() == reflect.Pointer {
-					fieldType = fieldType.Elem()
-				}
-				if name != "" || !field.Anonymous || fieldType.Kind() != reflect.Struct {
-					tagged := name != ""
-					if name == "" {
-						name = field.Name
-					}
-					candidate := fieldMaskField{
-						name: name, tagged: tagged, index: index,
-						typ: fieldMaskTypeByIndex(typ, index),
-					}
-					fields = append(fields, candidate)
-					if count[parent.typ] > 1 {
-						fields = append(fields, candidate)
-					}
-					continue
-				}
-
-				nextCount[fieldType]++
-				if nextCount[fieldType] == 1 {
-					next = append(next, fieldMaskField{index: index, typ: fieldType})
-				}
+			tag := f.Tag.Get("json")
+			if tag == "-" {
+				continue
 			}
+			name, _, _ := strings.Cut(tag, ",")
+			if !validTag(name) {
+				name = ""
+			}
+			index := append(slices.Clone(index), i)
+
+			ft := f.Type
+			if ft.Name() == "" && ft.Kind() == reflect.Pointer {
+				ft = ft.Elem()
+			}
+			if name == "" && f.Anonymous && ft.Kind() == reflect.Struct {
+				if !ancestors[ft] {
+					ancestors[ft] = true
+					walk(ft, index)
+					delete(ancestors, ft)
+				}
+				continue
+			}
+
+			tagged := name != ""
+			if name == "" {
+				name = f.Name
+			}
+			fields = append(fields, field{name: name, tagged: tagged, index: index, typ: f.Type})
 		}
 	}
+	walk(typ, nil)
 
-	slices.SortFunc(fields, func(left, right fieldMaskField) int {
+	slices.SortFunc(fields, func(left, right field) int {
 		if order := strings.Compare(left.name, right.name); order != 0 {
 			return order
 		}
@@ -326,23 +314,26 @@ func fieldMaskFields(typ reflect.Type) []fieldMaskField {
 
 	visible := fields[:0]
 	for i := 0; i < len(fields); {
-		end := i + 1
-		for end < len(fields) && fields[end].name == fields[i].name {
-			end++
+		j := i + 1
+		for j < len(fields) && fields[j].name == fields[i].name {
+			j++
 		}
-		group := fields[i:end]
-		if len(group) == 1 || len(group[0].index) != len(group[1].index) || group[0].tagged != group[1].tagged {
-			visible = append(visible, group[0])
+		if j == i+1 ||
+			len(fields[i].index) != len(fields[i+1].index) ||
+			fields[i].tagged != fields[i+1].tagged {
+			visible = append(visible, fields[i])
 		}
-		i = end
+		i = j
 	}
-	slices.SortFunc(visible, func(left, right fieldMaskField) int {
+	slices.SortFunc(visible, func(left, right field) int {
 		return slices.Compare(left.index, right.index)
 	})
 	return visible
 }
 
-func validFieldMaskTag(name string) bool {
+// validTag reports whether name is usable as a JSON object key, the
+// same rule encoding/json applies to tag names.
+func validTag(name string) bool {
 	if name == "" {
 		return false
 	}
@@ -356,17 +347,10 @@ func validFieldMaskTag(name string) bool {
 	return true
 }
 
-func fieldMaskTypeByIndex(typ reflect.Type, index []int) reflect.Type {
-	for _, i := range index {
-		for typ.Kind() == reflect.Pointer {
-			typ = typ.Elem()
-		}
-		typ = typ.Field(i).Type
-	}
-	return typ
-}
-
-func fieldMaskValueByIndex(value reflect.Value, index []int, allocate bool) (reflect.Value, bool) {
+// valueByIndex walks a promoted field path, dereferencing pointers
+// along the way. With allocate set, nil pointers on the path are
+// initialized; otherwise a nil pointer abandons the walk.
+func valueByIndex(value reflect.Value, index []int, allocate bool) (reflect.Value, bool) {
 	for _, i := range index {
 		for value.Kind() == reflect.Pointer {
 			if value.IsNil() {
@@ -382,7 +366,7 @@ func fieldMaskValueByIndex(value reflect.Value, index []int, allocate bool) (ref
 	return value, true
 }
 
-func filterFieldMaskValue(value reflect.Value, node *fieldMaskNode) {
+func filterValue(value reflect.Value, n *node) {
 	for value.Kind() == reflect.Pointer {
 		if value.IsNil() {
 			return
@@ -392,27 +376,27 @@ func filterFieldMaskValue(value reflect.Value, node *fieldMaskNode) {
 
 	switch value.Kind() {
 	case reflect.Struct:
-		for _, field := range fieldMaskFields(value.Type()) {
-			child := node.children[field.name]
-			fieldValue, ok := fieldMaskValueByIndex(value, field.index, false)
+		for _, f := range typeFields(value.Type()) {
+			child := n.children[f.name]
+			fv, ok := valueByIndex(value, f.index, false)
 			if !ok {
 				continue
 			}
 			switch {
 			case child == nil:
-				fieldValue.Set(reflect.Zero(fieldValue.Type()))
+				fv.Set(reflect.Zero(fv.Type()))
 			case child.selected:
 			default:
-				filterFieldMaskValue(fieldValue, child)
+				filterValue(fv, child)
 			}
 		}
 	case reflect.Array, reflect.Slice:
 		for i := range value.Len() {
-			filterFieldMaskValue(value.Index(i), node)
+			filterValue(value.Index(i), n)
 		}
 	case reflect.Map:
 		for _, key := range value.MapKeys() {
-			child := node.children[key.String()]
+			child := n.children[key.String()]
 			if child == nil {
 				value.SetMapIndex(key, reflect.Value{})
 				continue
@@ -422,13 +406,13 @@ func filterFieldMaskValue(value reflect.Value, node *fieldMaskNode) {
 			}
 			item := reflect.New(value.Type().Elem()).Elem()
 			item.Set(value.MapIndex(key))
-			filterFieldMaskValue(item, child)
+			filterValue(item, child)
 			value.SetMapIndex(key, item)
 		}
 	}
 }
 
-func pruneFieldMaskValue(value reflect.Value, node *fieldMaskNode) {
+func pruneValue(value reflect.Value, n *node) {
 	for value.Kind() == reflect.Pointer {
 		if value.IsNil() {
 			return
@@ -438,27 +422,27 @@ func pruneFieldMaskValue(value reflect.Value, node *fieldMaskNode) {
 
 	switch value.Kind() {
 	case reflect.Struct:
-		for _, field := range fieldMaskFields(value.Type()) {
-			child := node.children[field.name]
+		for _, f := range typeFields(value.Type()) {
+			child := n.children[f.name]
 			if child == nil {
 				continue
 			}
-			fieldValue, ok := fieldMaskValueByIndex(value, field.index, false)
+			fv, ok := valueByIndex(value, f.index, false)
 			if !ok {
 				continue
 			}
 			if child.selected {
-				fieldValue.Set(reflect.Zero(fieldValue.Type()))
+				fv.Set(reflect.Zero(fv.Type()))
 				continue
 			}
-			pruneFieldMaskValue(fieldValue, child)
+			pruneValue(fv, child)
 		}
 	case reflect.Array, reflect.Slice:
 		for i := range value.Len() {
-			pruneFieldMaskValue(value.Index(i), node)
+			pruneValue(value.Index(i), n)
 		}
 	case reflect.Map:
-		for name, child := range node.children {
+		for name, child := range n.children {
 			key := reflect.New(value.Type().Key()).Elem()
 			key.SetString(name)
 			item := value.MapIndex(key)
@@ -469,61 +453,61 @@ func pruneFieldMaskValue(value reflect.Value, node *fieldMaskNode) {
 				value.SetMapIndex(key, reflect.Value{})
 				continue
 			}
-			copy := reflect.New(item.Type()).Elem()
-			copy.Set(item)
-			pruneFieldMaskValue(copy, child)
-			value.SetMapIndex(key, copy)
+			pruned := reflect.New(item.Type()).Elem()
+			pruned.Set(item)
+			pruneValue(pruned, child)
+			value.SetMapIndex(key, pruned)
 		}
 	}
 }
 
-func overwriteFieldMaskValue(source, target reflect.Value, node *fieldMaskNode) {
+func overwriteValue(source, target reflect.Value, n *node) {
 	if source.Kind() == reflect.Pointer {
 		if source.IsNil() {
 			if target.IsNil() {
 				return
 			}
-			overwriteFieldMaskValue(reflect.Zero(source.Type().Elem()), target.Elem(), node)
+			overwriteValue(reflect.Zero(source.Type().Elem()), target.Elem(), n)
 			return
 		}
 		if target.IsNil() {
 			target.Set(reflect.New(target.Type().Elem()))
 		}
-		overwriteFieldMaskValue(source.Elem(), target.Elem(), node)
+		overwriteValue(source.Elem(), target.Elem(), n)
 		return
 	}
 
 	switch source.Kind() {
 	case reflect.Struct:
-		for _, field := range fieldMaskFields(source.Type()) {
-			child := node.children[field.name]
+		for _, f := range typeFields(source.Type()) {
+			child := n.children[f.name]
 			if child == nil {
 				continue
 			}
-			sourceField, sourceExists := fieldMaskValueByIndex(source, field.index, false)
-			targetField, targetExists := fieldMaskValueByIndex(target, field.index, sourceExists)
+			sv, sok := valueByIndex(source, f.index, false)
+			tv, tok := valueByIndex(target, f.index, sok)
 			if child.selected {
-				if !targetExists {
+				if !tok {
 					continue
 				}
-				if sourceExists {
-					targetField.Set(sourceField)
+				if sok {
+					tv.Set(sv)
 				} else {
-					targetField.Set(reflect.Zero(targetField.Type()))
+					tv.Set(reflect.Zero(tv.Type()))
 				}
 				continue
 			}
-			if !sourceExists {
-				if targetExists {
-					overwriteFieldMaskValue(reflect.Zero(targetField.Type()), targetField, child)
+			if !sok {
+				if tok {
+					overwriteValue(reflect.Zero(tv.Type()), tv, child)
 				}
 				continue
 			}
-			overwriteFieldMaskValue(sourceField, targetField, child)
+			overwriteValue(sv, tv, child)
 		}
 	case reflect.Array:
 		for i := range source.Len() {
-			overwriteFieldMaskValue(source.Index(i), target.Index(i), node)
+			overwriteValue(source.Index(i), target.Index(i), n)
 		}
 	case reflect.Slice:
 		if source.IsNil() {
@@ -539,40 +523,40 @@ func overwriteFieldMaskValue(source, target reflect.Value, node *fieldMaskNode) 
 			target.SetLen(length)
 		}
 		for i := range length {
-			overwriteFieldMaskValue(source.Index(i), target.Index(i), node)
+			overwriteValue(source.Index(i), target.Index(i), n)
 		}
 	case reflect.Map:
-		for name, child := range node.children {
+		for name, child := range n.children {
 			key := reflect.New(source.Type().Key()).Elem()
 			key.SetString(name)
-			sourceItem := source.MapIndex(key)
-			targetItem := target.MapIndex(key)
+			sval := source.MapIndex(key)
+			tval := target.MapIndex(key)
 			if child.selected {
-				if sourceItem.IsValid() {
+				if sval.IsValid() {
 					if target.IsNil() {
 						target.Set(reflect.MakeMap(target.Type()))
 					}
-					target.SetMapIndex(key, sourceItem)
-				} else if targetItem.IsValid() {
+					target.SetMapIndex(key, sval)
+				} else if tval.IsValid() {
 					target.SetMapIndex(key, reflect.Value{})
 				}
 				continue
 			}
-			if !sourceItem.IsValid() && !targetItem.IsValid() {
-				continue
+			if !sval.IsValid() {
+				if !tval.IsValid() {
+					continue
+				}
+				sval = reflect.Zero(source.Type().Elem())
 			}
-			if !sourceItem.IsValid() {
-				sourceItem = reflect.Zero(source.Type().Elem())
+			merged := reflect.New(target.Type().Elem()).Elem()
+			if tval.IsValid() {
+				merged.Set(tval)
 			}
-			copy := reflect.New(target.Type().Elem()).Elem()
-			if targetItem.IsValid() {
-				copy.Set(targetItem)
-			}
-			overwriteFieldMaskValue(sourceItem, copy, child)
+			overwriteValue(sval, merged, child)
 			if target.IsNil() {
 				target.Set(reflect.MakeMap(target.Type()))
 			}
-			target.SetMapIndex(key, copy)
+			target.SetMapIndex(key, merged)
 		}
 	}
 }

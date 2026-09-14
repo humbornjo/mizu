@@ -167,8 +167,8 @@ const file_fooapp_namaste_v1_namaste_proto_rawDesc = "" +
 	"\x0fNamasteResponse\x12\x18\n" +
 	"\amessage\x18\x01 \x01(\tR\amessage2y\n" +
 	"\x0eNamasteService\x12g\n" +
-	"\aNamaste\x12!.fooapp.namaste.v1.NamasteRequest\x1a\".fooapp.namaste.v1.NamasteResponse\"\x13\x82\xd3\xe4\x93\x02\r:\x01*\"\b/namaste0\x01B\xbe\x01\n" +
-	"\x15com.fooapp.namaste.v1B\fNamasteProtoP\x01Z1mizu.example/protogen/fooapp/namaste/v1;namastev1\xa2\x02\x03FNX\xaa\x02\x11Fooapp.Namaste.V1\xca\x02\x11Fooapp\\Namaste\\V1\xe2\x02\x1dFooapp\\Namaste\\V1\\GPBMetadata\xea\x02\x13Fooapp::Namaste::V1b\x06proto3"
+	"\aNamaste\x12!.fooapp.namaste.v1.NamasteRequest\x1a\".fooapp.namaste.v1.NamasteResponse\"\x13\x82\xd3\xe4\x93\x02\r:\x01*\"\b/namaste0\x01B\xc2\x01\n" +
+	"\x15com.fooapp.namaste.v1B\fNamasteProtoP\x01Z5example.com/mizu/protogen/fooapp/namaste/v1;namastev1\xa2\x02\x03FNX\xaa\x02\x11Fooapp.Namaste.V1\xca\x02\x11Fooapp\\Namaste\\V1\xe2\x02\x1dFooapp\\Namaste\\V1\\GPBMetadata\xea\x02\x13Fooapp::Namaste::V1b\x06proto3"
 
 var (
 	file_fooapp_namaste_v1_namaste_proto_rawDescOnce sync.Once

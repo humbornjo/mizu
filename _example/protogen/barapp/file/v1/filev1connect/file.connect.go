@@ -8,8 +8,8 @@ import (
 	connect "connectrpc.com/connect"
 	context "context"
 	errors "errors"
+	v1 "example.com/mizu/protogen/barapp/file/v1"
 	httpbody "google.golang.org/genproto/googleapis/api/httpbody"
-	v1 "mizu.example/protogen/barapp/file/v1"
 	http "net/http"
 	strings "strings"
 )

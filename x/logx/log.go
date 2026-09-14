@@ -1,4 +1,4 @@
-package mizulog
+package logx
 
 import (
 	"context"
@@ -12,18 +12,18 @@ const _CTXKEY ctxkey = iota
 
 var _DEFAULT_LOG_LEVEL = slog.LevelInfo
 
-// Option configures the mizulog handler.
+// Option configures the logx handler.
 type Option func(*config)
 
 type config func(*handler) *handler
 
-// Initialize sets the default slog logger with a mizulog handler.
-// If h is nil, it uses the current default handler.
+// Initialize sets the default slog logger with a logx handler. If h
+// is nil, it uses the current default handler.
 func Initialize(h slog.Handler, opts ...Option) {
 	slog.SetDefault(slog.New(New(h, opts...)))
 }
 
-// New creates a new mizulog handler that wraps the provided
+// New creates a new logx handler that wraps the provided
 // slog.Handler. If h is nil, it uses the current default handler.
 func New(h slog.Handler, opts ...Option) *handler {
 	if h == nil {
@@ -42,16 +42,16 @@ func New(h slog.Handler, opts ...Option) *handler {
 	return (*config)(&handler{Handler: h})
 }
 
-// InjectContextAttrs adds slog attributes to the context that will be
+// LogContext adds slog attributes to the context that will be
 // automatically included in log records when using context-aware
 // logging functions like slog.InfoContext, slog.ErrorContext,
 // slog.DebugContext, etc.
 //
 // Example:
 //
-//	ctx = mizulog.InjectContextAttrs(ctx, slog.Int("id", 123))
+//	ctx = logx.LogContext(ctx, slog.Int("id", 123))
 //	slog.InfoContext(ctx, "user action") // will include id=123
-func InjectContextAttrs(ctx context.Context, attrs ...slog.Attr) context.Context {
+func LogContext(ctx context.Context, attrs ...slog.Attr) context.Context {
 	if ctx == nil {
 		return ctx
 	}

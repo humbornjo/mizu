@@ -12,7 +12,9 @@ DONE_ICON := ✅
 
 all: gen ## Generate all files (default)
 
-gen: clean ## Generate protocol buffer files
+gen: clean ## Generate protobuf and CUE-derived files
+	@echo "$(GENERATE_ICON) Generating Go types from CUE schemas..."
+	@go tool cue exp gengotypes ./config/ ./service/...
 	@echo "$(GENERATE_ICON) Generating protocol buffer files..."
 	@buf generate
 	@echo 'package '$(PREFIX)'\n\n'    \

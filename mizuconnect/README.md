@@ -128,7 +128,7 @@ message UploadRequest {
 reader, err := filekit.NewFormReader("file", stream, &msg)
 ```
 
-The Connect stream adapter remains in `filekit`, while the transport-independent file reader lives in core Mizu and can be shared with ordinary HTTP handlers:
+The Connect stream adapter remains in `filekit`, while the transport-independent file reader lives in [`x/formx`](../x/formx/) and can be shared with ordinary HTTP handlers:
 
 ```go
 part, purge, err := reader.File()

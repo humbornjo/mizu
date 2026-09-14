@@ -6,7 +6,7 @@ import (
 	"github.com/humbornjo/mizu"
 	"github.com/humbornjo/mizu/mizudi"
 
-	"mizu.example/config"
+	"example.com/mizu/config"
 )
 
 func Initialize(_ *config.Config) {

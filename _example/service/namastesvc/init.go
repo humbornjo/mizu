@@ -6,9 +6,9 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 
-	"mizu.example/config"
-	namastev1 "mizu.example/protogen/fooapp/namaste/v1"
-	"mizu.example/protogen/fooapp/namaste/v1/namastev1connect"
+	"example.com/mizu/config"
+	namastev1 "example.com/mizu/protogen/fooapp/namaste/v1"
+	"example.com/mizu/protogen/fooapp/namaste/v1/namastev1connect"
 )
 
 type Config struct {

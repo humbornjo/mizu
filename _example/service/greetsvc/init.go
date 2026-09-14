@@ -6,13 +6,13 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 
-	"mizu.example/config"
-	greetv1 "mizu.example/protogen/barapp/greet/v1"
-	"mizu.example/protogen/barapp/greet/v1/greetv1connect"
+	"example.com/mizu/config"
+	greetv1 "example.com/mizu/protogen/barapp/greet/v1"
+	"example.com/mizu/protogen/barapp/greet/v1/greetv1connect"
 )
 
 type Config struct {
-	Greet string `yaml:"greet"`
+	Greet string `json:"greet"`
 }
 
 var cfg *Config

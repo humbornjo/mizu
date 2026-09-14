@@ -1,6 +1,6 @@
 module github.com/humbornjo/mizu/mizudi
 
-go 1.26
+go 1.27.0
 
 require (
 	github.com/knadh/koanf/parsers/yaml v1.1.0

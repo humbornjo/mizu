@@ -120,9 +120,9 @@ const file_barapp_greet_v1_greet_proto_rawDesc = "" +
 	"\rGreetResponse\x12\x18\n" +
 	"\amessage\x18\x01 \x01(\tR\amessage2m\n" +
 	"\fGreetService\x12]\n" +
-	"\x05Greet\x12\x1d.barapp.greet.v1.GreetRequest\x1a\x1e.barapp.greet.v1.GreetResponse\"\x15\x82\xd3\xe4\x93\x02\x0f\x12\r/greet/{name}B\xae\x01\n" +
+	"\x05Greet\x12\x1d.barapp.greet.v1.GreetRequest\x1a\x1e.barapp.greet.v1.GreetResponse\"\x15\x82\xd3\xe4\x93\x02\x0f\x12\r/greet/{name}B\xb2\x01\n" +
 	"\x13com.barapp.greet.v1B\n" +
-	"GreetProtoP\x01Z-mizu.example/protogen/barapp/greet/v1;greetv1\xa2\x02\x03BGX\xaa\x02\x0fBarapp.Greet.V1\xca\x02\x0fBarapp\\Greet\\V1\xe2\x02\x1bBarapp\\Greet\\V1\\GPBMetadata\xea\x02\x11Barapp::Greet::V1b\x06proto3"
+	"GreetProtoP\x01Z1example.com/mizu/protogen/barapp/greet/v1;greetv1\xa2\x02\x03BGX\xaa\x02\x0fBarapp.Greet.V1\xca\x02\x0fBarapp\\Greet\\V1\xe2\x02\x1bBarapp\\Greet\\V1\\GPBMetadata\xea\x02\x11Barapp::Greet::V1b\x06proto3"
 
 var (
 	file_barapp_greet_v1_greet_proto_rawDescOnce sync.Once
