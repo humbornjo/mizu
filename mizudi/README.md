@@ -95,6 +95,10 @@ func Initialize(_ *config.Config) {
 > All the configuration loading depends on the relative_path passed to `mizudi.Initialize`. After config has been
 > enchanted, you can directly use it or perform dependency injection to access it universally.
 
+Struct fields decode through their `yaml` tags by default. The tag is customizable via direct access — set
+`mizudi.DEFAULT_UNMARSHAL_TAG = "json"` before `mizudi.Initialize` to decode through `json` tags instead (useful when
+the structs are generated, e.g. by `cue exp gengotypes`).
+
 Each service knows only about its own configuration:
 
 ```

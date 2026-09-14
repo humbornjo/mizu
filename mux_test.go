@@ -587,6 +587,89 @@ func TestMux_Group_Middleware(t *testing.T) {
 			})
 		}
 	})
+	t.Run("chained Use on group is consumed by the first route", func(t *testing.T) {
+		srv := mizu.NewServer("-")
+
+		middleware := func(next http.Handler) http.Handler {
+			return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("X-Middleware", "applied")
+				next.ServeHTTP(w, r)
+			})
+		}
+
+		handler := func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusOK)
+			_, _ = fmt.Fprint(w, "OK")
+		}
+
+		// The captured Use return is a one-shot chain: the first route
+		// registered through it drains the middleware, and every route
+		// after it on the same group gets nothing. Split the statements
+		// (Group, then a discarded Use) to cover the whole group instead.
+		group := srv.Group("/g").Use(middleware)
+		group.Get("/first", handler)
+		group.Get("/second", handler)
+
+		testCases := []struct {
+			name             string
+			path             string
+			expectMiddleware bool
+		}{
+			{
+				name:             "/g/first consumes the chained middleware",
+				path:             "/g/first",
+				expectMiddleware: true,
+			},
+			{
+				name:             "/g/second gets no middleware",
+				path:             "/g/second",
+				expectMiddleware: false,
+			},
+		}
+
+		for _, tc := range testCases {
+			t.Run(tc.name, func(t *testing.T) {
+				req := httptest.NewRequest(http.MethodGet, tc.path, nil)
+				rr := httptest.NewRecorder()
+
+				srv.Handler().ServeHTTP(rr, req)
+				assert.Equal(t, http.StatusOK, rr.Code)
+				assert.Equal(t, tc.expectMiddleware, rr.Header().Get("X-Middleware") == "applied")
+			})
+		}
+	})
+
+	t.Run("discarded Use on group covers every route", func(t *testing.T) {
+		srv := mizu.NewServer("-")
+
+		middleware := func(next http.Handler) http.Handler {
+			return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("X-Middleware", "applied")
+				next.ServeHTTP(w, r)
+			})
+		}
+
+		handler := func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusOK)
+			_, _ = fmt.Fprint(w, "OK")
+		}
+
+		group := srv.Group("/g")
+		group.Use(middleware)
+		group.Get("/first", handler)
+		group.Get("/second", handler)
+
+		for _, path := range []string{"/g/first", "/g/second"} {
+			t.Run(path+" has the middleware", func(t *testing.T) {
+				req := httptest.NewRequest(http.MethodGet, path, nil)
+				rr := httptest.NewRecorder()
+
+				srv.Handler().ServeHTTP(rr, req)
+				assert.Equal(t, http.StatusOK, rr.Code)
+				assert.Equal(t, "applied", rr.Header().Get("X-Middleware"))
+			})
+		}
+	})
 }
 
 func noopMiddleware(next http.Handler) http.Handler {

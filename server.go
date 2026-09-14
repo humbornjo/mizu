@@ -85,15 +85,14 @@ func WithHookHandler(hook func(*Server)) hookOption {
 	}
 }
 
-// Hook registers a hook function for the given key. If key is already
-// bounded with a none nil value, it is used. Otherwise, if the value
-// is nil, a new value will be initiated, bounding to the key. The
-// bounded value will be returned.
+// Hook binds a value to the given key and returns the bound value.
+// If the key is already bound, the existing value is returned and
+// val is ignored. Otherwise val is bound and returned; a nil val
+// binds nothing and returns nil. Use Immediate for a read-only
+// lookup.
 //
 // HookOption offer customization options for performing additional
-// actions on different phases in server lifecycle. Returned value is
-// the registered value for the key if value is not nil, otherwise nil
-// pointer is returned.
+// actions on different phases in server lifecycle.
 //
 // WARN: This is advanced function which should be used with caution.
 func Hook[K any, V any](s *Server, key K, val *V, opts ...hookOption) *V {
@@ -103,10 +102,7 @@ func Hook[K any, V any](s *Server, key K, val *V, opts ...hookOption) *V {
 	var ret *V
 	if v := s.ctx.Value(key); v != nil {
 		ret = v.(*V)
-	} else {
-		if val == nil {
-			val = new(V)
-		}
+	} else if val != nil {
 		ret = val
 		s.ctx = context.WithValue(s.ctx, key, val)
 	}
@@ -449,16 +445,21 @@ func (s *Server) Connect(pattern string, handler http.HandlerFunc) {
 	})
 }
 
-// Group add a prefix to the following serving patterns. Apply chained
-// Use before Group to apply the middleware group-wise.
+// Group returns a server that adds prefix to every pattern registered
+// through it. Middlewares already added to the receiver are inherited.
 //
-// Example:
+// To scope a middleware to the group alone, call Use on the group and
+// discard the return value:
 //
-//	    // middleware mw will be applied to all routes in the group
-//			group := mizui.Use(mw).Group("/api")
+//	group := srv.Group("/api")
+//	group.Use(mw) // discarded: mw covers every route in the group
 //
-//		  group.Get("/user", handlerUser)
-//		  group.Get("/goods", handlerGoods)
+//	group.Get("/user", handlerUser)
+//	group.Get("/goods", handlerGoods)
+//
+// Chaining instead (srv.Group("/api").Use(mw)) captures a one-shot
+// chain: only the next route registered through it gets the
+// middleware. See Use.
 func (s *Server) Group(prefix string) *Server {
 	s.mmu.Lock()
 	defer s.mmu.Unlock()
@@ -477,9 +478,24 @@ func (s *Server) Pattern(pattern string) string {
 	return path.Join(append(s.prefix, pattern)...)
 }
 
-// Use adds a middleware to the server. You can either consume the
-// middleware in chained manner or leave it and make it apply to all
-// the routes added after it.
+// Use adds a middleware to the server. What the middleware covers
+// depends on whether the return value is kept.
+//
+// Discard the return and the middleware is persistent: it applies to
+// every route registered afterward on the receiver, including the
+// routes of groups derived from it.
+//
+// Keep the return and it is a one-shot chain: the next route
+// registered through the chain consumes the middleware, and routes
+// registered later get nothing. Chained Uses accumulate until the
+// first route registration:
+//
+//	srv.Use(mw)              // persistent: every later route gets mw
+//	srv.Use(mw).Get("/a", h) // one-shot: only /a gets mw
+//
+// Beware srv.Group("/api").Use(mw): the chain is kept, so only the
+// group's first route gets the middleware. Use the two-statement form
+// shown in Group to cover a whole group.
 func (s *Server) Use(middleware func(http.Handler) http.Handler) *Server {
 	s.mmu.Lock()
 	defer s.mmu.Unlock()
