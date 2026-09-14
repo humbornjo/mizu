@@ -7,7 +7,7 @@ It is independent from `mizuoai`: `mizucue` owns CUE compilation, model validati
 ## Installation
 
 ```bash
-go get github.com/humbornjo/mizu/mizucue
+go get github.com/humbornjo/mizu/mizucue@v0.3.0
 ```
 
 ## Load an inline schema

@@ -15,7 +15,7 @@ as patches.
 ## Installation
 
 ```bash
-go get github.com/humbornjo/mizu/mizuoai
+go get github.com/humbornjo/mizu/mizuoai@v0.3.0
 ```
 
 Requires Go 1.27+ (`encoding/json/v2`).

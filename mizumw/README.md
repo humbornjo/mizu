@@ -12,7 +12,7 @@ Common HTTP middleware implementations for Mizu, providing essential web server 
 ## Installation
 
 ```bash
-go get github.com/humbornjo/mizu/mizumw
+go get github.com/humbornjo/mizu/mizumw@v0.3.0
 ```
 
 ## Quick Start

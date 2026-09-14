@@ -1,4 +1,4 @@
-package cacheint
+package cacheintp
 
 import (
 	"context"

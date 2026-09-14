@@ -12,7 +12,7 @@ Streamlined integration with Connect protocol for type-safe RPC services built o
 ## Installation
 
 ```bash
-go get github.com/humbornjo/mizu/mizuconnect
+go get github.com/humbornjo/mizu/mizuconnect@v0.3.0
 ```
 
 ## Quick Start
