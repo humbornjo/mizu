@@ -6,13 +6,12 @@ import (
 	"log/slog"
 
 	"connectrpc.com/connect"
-	"github.com/humbornjo/mizu"
 	"github.com/humbornjo/mizu/mizuconnect/restful/filekit"
 	"google.golang.org/genproto/googleapis/api/httpbody"
 
-	"mizu.example/package/storage"
-	filev1 "mizu.example/protogen/barapp/file/v1"
-	"mizu.example/protogen/barapp/file/v1/filev1connect"
+	"example.com/mizu/package/storage"
+	filev1 "example.com/mizu/protogen/barapp/file/v1"
+	"example.com/mizu/protogen/barapp/file/v1/filev1connect"
 )
 
 type Service struct {
@@ -58,7 +57,7 @@ func (s *Service) UploadFile(ctx context.Context, stream *connect.ClientStream[f
 		return nil, connect.NewError(connect.CodeInternal, err)
 	}
 
-	rxFile := mizu.NewFileReader(fpart, mizu.WithFileLimitBytes(64*1024*1024))
+	rxFile := filekit.NewFileReader(fpart, filekit.WithFileLimitBytes(64*1024*1024))
 	id, err := s.storage.Store(ctx, rxFile)
 	if err != nil {
 		slog.ErrorContext(ctx, "failed store file", "err", err)

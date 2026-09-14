@@ -12,26 +12,26 @@ import (
 	"github.com/humbornjo/mizu"
 	"github.com/humbornjo/mizu/mizuconnect"
 	"github.com/humbornjo/mizu/mizuconnect/restful/filekit"
+	"github.com/humbornjo/mizu/mizucue"
 	"github.com/humbornjo/mizu/mizudi"
-	"github.com/humbornjo/mizu/mizulog"
+	"github.com/humbornjo/mizu/x/logx"
 	"github.com/humbornjo/mizu/mizuoai"
 	"github.com/humbornjo/mizu/mizuotel"
 	"google.golang.org/protobuf/encoding/protojson"
 
-	"mizu.example/package/debug"
-	"mizu.example/protogen"
+	"example.com/mizu/package/debug"
+	"example.com/mizu/protogen"
 )
 
 const ServiceName = "example-app"
 
-type Config struct {
-	Env   string `yaml:"env"`
-	Port  string `yaml:"port"`
-	Level string `yaml:"level"`
-}
-
+// The Config type is generated from config.cue — see
+// cue_types_gen.go. local.yaml decodes into it through koanf's json
+// tags, and mizucue validates the decoded value below.
 func Initialize(paths ...string) {
 	// Dependency Injection --------------------------------------------
+	// koanf decodes into CUE-generated structs, whose tags are json.
+	mizudi.DEFAULT_UNMARSHAL_TAG = "json"
 	if err := mizudi.Initialize("config", paths...); err != nil {
 		panic(err)
 	}
@@ -42,7 +42,13 @@ func Initialize(paths ...string) {
 		}
 	}
 
+	// The same #Config that generated the struct now guards the
+	// loaded values.
+	module := mizudi.MustRetrieve[mizucue.Module]()
 	c := mizudi.Enchant[Config](nil)
+	if err := module.MustExtract("config").Validate(c); err != nil {
+		panic(err)
+	}
 	mizudi.Register(func() (*Config, error) { return c, nil })
 
 	// Server ----------------------------------------------------------
@@ -93,9 +99,17 @@ func Initialize(paths ...string) {
 	mizudi.Register(func() (*mizuconnect.Scope, error) { return scope, nil })
 
 	// OPENAPI ---------------------------------------------------------
-	if err := mizuoai.Initialize(server, "mizu_example",
-		mizuoai.WithOaiDocumentation(),
-		mizuoai.WithOaiPreLoad(protogen.OPENAPI)); err != nil {
+	// The connect-openapi document preloads the base; every CUE
+	// package in the module contributes its component schemas on
+	// top, keyed by the same canonical names reflection produces.
+	options := []mizuoai.DocumentOption{
+		mizuoai.WithDocumentRenderHTML(),
+		mizuoai.WithDocumentBase(protogen.OPENAPI),
+	}
+	for importPath, doc := range module.MustOpenAPIs(nil) {
+		options = append(options, mizuoai.WithDocumentPatch(importPath, doc))
+	}
+	if err := mizuoai.Initialize(server, "mizu_example", options...); err != nil {
 		panic(err)
 	}
 
@@ -105,7 +119,7 @@ func Initialize(paths ...string) {
 	}
 
 	// Logging ---------------------------------------------------------
-	mizulog.Initialize(nil, mizulog.WithLogLevel(c.Level))
+	logx.Initialize(nil, logx.WithLogLevel(c.Level))
 
 	// Other Registrations ---------------------------------------------
 	// e.g. Register Default Database using mizudi.Register and use

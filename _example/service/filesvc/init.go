@@ -6,14 +6,14 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 
-	"mizu.example/config"
-	"mizu.example/package/storage"
-	filev1 "mizu.example/protogen/barapp/file/v1"
-	"mizu.example/protogen/barapp/file/v1/filev1connect"
+	"example.com/mizu/config"
+	"example.com/mizu/package/storage"
+	filev1 "example.com/mizu/protogen/barapp/file/v1"
+	"example.com/mizu/protogen/barapp/file/v1/filev1connect"
 )
 
 type Config struct {
-	ServePrefix string `yaml:"serve_prefix"`
+	ServePrefix string `json:"serve_prefix"`
 }
 
 func Initialize(global *config.Config) {

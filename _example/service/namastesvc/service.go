@@ -6,8 +6,8 @@ import (
 
 	"connectrpc.com/connect"
 
-	namastev1 "mizu.example/protogen/fooapp/namaste/v1"
-	"mizu.example/protogen/fooapp/namaste/v1/namastev1connect"
+	namastev1 "example.com/mizu/protogen/fooapp/namaste/v1"
+	"example.com/mizu/protogen/fooapp/namaste/v1/namastev1connect"
 )
 
 type Service struct{}
