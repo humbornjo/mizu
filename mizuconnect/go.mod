@@ -1,6 +1,6 @@
 module github.com/humbornjo/mizu/mizuconnect
 
-go 1.26
+go 1.27.0
 
 replace github.com/humbornjo/mizu => ../
 

@@ -1,6 +1,6 @@
 module github.com/humbornjo/mizu/mizuotel
 
-go 1.26
+go 1.27.0
 
 require (
 	go.opentelemetry.io/otel v1.43.0
