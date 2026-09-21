@@ -26,3 +26,12 @@ func (w *ResponseWriter) Write(p []byte) (int, error) {
 	w.takeover = true
 	return w.ResponseWriter.Write(p)
 }
+
+// Flush forwards to the underlying writer when it is an http.Flusher,
+// so handlers streaming through the wrapper (SSE and the like) keep
+// their flush path.
+func (w *ResponseWriter) Flush() {
+	if flusher, ok := w.ResponseWriter.(http.Flusher); ok {
+		flusher.Flush()
+	}
+}
