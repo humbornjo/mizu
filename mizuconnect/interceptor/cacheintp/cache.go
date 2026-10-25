@@ -5,12 +5,13 @@ import (
 	"fmt"
 	"math/rand/v2"
 	"reflect"
-	"sync"
 	"time"
 	"unsafe"
 
 	"connectrpc.com/connect"
 	"golang.org/x/sync/singleflight"
+
+	"github.com/humbornjo/mizu/x/cachex"
 )
 
 // INFO: init check the type structure of connect.Response[T] to make sure
@@ -31,12 +32,13 @@ func init() {
 }
 
 type interceptor struct {
-	cache
+	cache *cachex.TTL[any, connect.AnyResponse]
 	singleflight.Group
 
 	enableSingleFlight bool
 	keyFunc            func(context.Context, connect.AnyRequest) (any, time.Duration)
 	cleanupArbiter     func(context.Context, connect.AnyResponse) bool
+	jitterFunc         func(expiry time.Duration) time.Duration
 }
 
 type option func(*config)
@@ -125,9 +127,11 @@ func New(opts ...option) connect.Interceptor {
 		opt(&config)
 	}
 	interceptor := &interceptor{
-		cache:              cache{mp: &sync.Map{}, jitterFunc: config.jitterFunc},
+		cache:              cachex.NewTTL[any, connect.AnyResponse](0),
 		enableSingleFlight: config.enableSingleFlight,
 		keyFunc:            config.keyFunc,
+		cleanupArbiter:     config.cleanupArbiter,
+		jitterFunc:         config.jitterFunc,
 	}
 
 	return connect.UnaryInterceptorFunc(interceptor.WrapUnary)
@@ -140,7 +144,7 @@ func (i *interceptor) WrapUnary(next connect.UnaryFunc) connect.UnaryFunc {
 			return next(ctx, ar)
 		}
 
-		if resp, ok := i.Get(key); ok {
+		if resp, ok := i.cache.Get(key); ok {
 			return clone(resp), nil
 		}
 
@@ -149,11 +153,7 @@ func (i *interceptor) WrapUnary(next connect.UnaryFunc) connect.UnaryFunc {
 
 		defer func() {
 			if i.cleanupArbiter(ctx, resp) {
-				for key, val := range i.mp.Range {
-					if e := val.(*entry); e.expiration.Before(time.Now()) {
-						i.mp.Delete(key)
-					}
-				}
+				i.cache.Sweep()
 			}
 		}()
 
@@ -162,7 +162,7 @@ func (i *interceptor) WrapUnary(next connect.UnaryFunc) connect.UnaryFunc {
 			if err != nil {
 				return resp, err
 			}
-			i.Set(key, resp, expiry)
+			i.set(key, resp, expiry)
 			return resp, nil
 		}
 
@@ -171,7 +171,7 @@ func (i *interceptor) WrapUnary(next connect.UnaryFunc) connect.UnaryFunc {
 			if err != nil {
 				return resp, err
 			}
-			i.Set(key, resp, expiry)
+			i.set(key, resp, expiry)
 			return resp, nil
 		})
 		if err != nil {
@@ -179,6 +179,11 @@ func (i *interceptor) WrapUnary(next connect.UnaryFunc) connect.UnaryFunc {
 		}
 		return clone(resp), nil
 	}
+}
+
+// set stores resp under key against a jittered deadline.
+func (i *interceptor) set(key any, resp connect.AnyResponse, expiry time.Duration) {
+	i.cache.Set(key, resp, time.Now().Add(i.jitterFunc(expiry)))
 }
 
 func clone(response connect.AnyResponse) connect.AnyResponse {
@@ -205,35 +210,4 @@ func clone(response connect.AnyResponse) connect.AnyResponse {
 	settableTrailer.Set(reflect.ValueOf(response.Trailer().Clone()))
 
 	return newResp.Interface().(connect.AnyResponse)
-}
-
-type entry struct {
-	expiration time.Time
-	value      connect.AnyResponse
-}
-
-type cache struct {
-	mp         *sync.Map
-	jitterFunc func(expiry time.Duration) time.Duration
-}
-
-func (c cache) Get(key any) (connect.AnyResponse, bool) {
-	v, ok := c.mp.Load(key)
-	if !ok {
-		return nil, false
-	}
-
-	e := v.(*entry)
-	if e.expiration.Before(time.Now()) {
-		c.mp.Delete(key)
-		return nil, false
-	}
-	return e.value, true
-}
-
-func (c cache) Set(key any, value connect.AnyResponse, expiry time.Duration) {
-	c.mp.Store(key, &entry{
-		value:      value,
-		expiration: time.Now().Add(c.jitterFunc(expiry)),
-	})
 }
