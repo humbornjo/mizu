@@ -11,10 +11,9 @@ import (
 	"github.com/humbornjo/mizu/mizucue"
 )
 
-// The Test* model types mirror the definitions of the fixture module
-// under internal/testdata: TestModel, TestAddress, ExtraModel,
-// IncompleteModel, and WrongTypeModel live in package app, TestNamed
-// mirrors lib.#Named.
+// The Test* model types mirror the definitions of the fixture module under
+// internal/testdata: TestModel, TestAddress, ExtraModel, IncompleteModel,
+// and WrongTypeModel live in package app, TestNamed mirrors lib.#Named.
 type TestNamed struct {
 	Name string `json:"name"`
 }
@@ -53,9 +52,9 @@ type MissingModel struct{}
 
 type IncompleteModel struct{}
 
-// TestPublishOperation and IncompleteOperation feed
-// TestSchema_Operation: the fragment is looked up as the CUE
-// definition named after the concrete type.
+// TestPublishOperation and IncompleteOperation feed TestSchema_Operation:
+// the fragment is looked up as the CUE definition named after the concrete
+// type.
 type TestPublishOperation struct{}
 
 type IncompleteOperation struct{}

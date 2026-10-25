@@ -12,8 +12,9 @@ import (
 // HttpForm messages. It embeds the standard Connect stream interface
 // methods.
 //
-// INFO: This interface is equivalent to *connect.ServerStream[httpbody.HttpBody].
-// It is provided for test purposes.
+// INFO: This interface is equivalent to
+// *connect.ServerStream[httpbody.HttpBody]. It is provided for test
+// purposes.
 type StreamResponse interface {
 	Send(msg *httpbody.HttpBody) error
 	Conn() connect.StreamingHandlerConn
@@ -27,11 +28,11 @@ type Writer struct {
 }
 
 // NewBodyWriter returns a new io.Writer that writes to the provided
-// connect.ServerStream. Response heaser must be set before writing to
-// the returned io.WriteCloser.
+// connect.ServerStream. Response heaser must be set before writing to the
+// returned io.WriteCloser.
 //
-// Deprecated: NewBodyWriter is still under experimental development,
-// it does not guarantee expected behaviour on all clients.
+// Deprecated: NewBodyWriter is still under experimental development, it
+// does not guarantee expected behaviour on all clients.
 func NewBodyWriter(stream StreamResponse, prologue *httpbody.HttpBody,
 ) (*Writer, error) {
 	stream.ResponseHeader().Set("Transfer-Encoding", "chunked")

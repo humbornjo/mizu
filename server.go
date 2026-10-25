@@ -36,8 +36,8 @@ type serverConfig struct {
 	WizardHandleReadiness func(isShuttingDown *atomic.Bool) http.HandlerFunc
 }
 
-// Server is the main HTTP server that implements the Mux interface.
-// It provides HTTP routing, middleware support, and graceful shutdown
+// Server is the main HTTP server that implements the Mux interface. It
+// provides HTTP routing, middleware support, and graceful shutdown
 // capabilities.
 type Server struct {
 	inner Mux
@@ -85,14 +85,13 @@ func WithHookHandler(hook func(*Server)) hookOption {
 	}
 }
 
-// Hook binds a value to the given key and returns the bound value.
-// If the key is already bound, the existing value is returned and
-// val is ignored. Otherwise val is bound and returned; a nil val
-// binds nothing and returns nil. Use Immediate for a read-only
-// lookup.
+// Hook binds a value to the given key and returns the bound value. If the
+// key is already bound, the existing value is returned and val is ignored.
+// Otherwise val is bound and returned; a nil val binds nothing and returns
+// nil. Use Immediate for a read-only lookup.
 //
-// HookOption offer customization options for performing additional
-// actions on different phases in server lifecycle.
+// HookOption offer customization options for performing additional actions
+// on different phases in server lifecycle.
 //
 // WARN: This is advanced function which should be used with caution.
 func Hook[K any, V any](s *Server, key K, val *V, opts ...hookOption) *V {
@@ -121,8 +120,8 @@ func Hook[K any, V any](s *Server, key K, val *V, opts ...hookOption) *V {
 	return ret
 }
 
-// Immediate offer the typed value for the given key for user to
-// access in closure, this access is concurrently safe.
+// Immediate offer the typed value for the given key for user to access in
+// closure, this access is concurrently safe.
 //
 // WARN: This is advanced function which should be used with caution.
 func Immediate[K any, V any](s *Server, key K, closure func(*V)) {
@@ -136,9 +135,9 @@ func Immediate[K any, V any](s *Server, key K, closure func(*V)) {
 	closure(nil)
 }
 
-// Handler returns the base HTTP handler (mux) without middlewares.
-// This method will be called before starting the server. It can also
-// be used to extract handlers for other purposes.
+// Handler returns the base HTTP handler (mux) without middlewares. This
+// method will be called before starting the server. It can also be used to
+// extract handlers for other purposes.
 func (s *Server) Handler() http.Handler {
 	if s.initialized.CompareAndSwap(false, true) {
 		s.Get(s.config.ReadinessPath, s.config.WizardHandleReadiness(s.isShuttingDown))
@@ -152,8 +151,8 @@ func (s *Server) Handler() http.Handler {
 }
 
 // ServeContext starts the HTTP server on the given address and blocks
-// until the context is cancelled. It handles graceful shutdown when
-// the context is cancelled, draining connections before stopping.
+// until the context is cancelled. It handles graceful shutdown when the
+// context is cancelled, draining connections before stopping.
 func (s *Server) ServeContext(ctx context.Context, addr string) error {
 	ctx, stop := signal.NotifyContext(ctx, os.Interrupt)
 	defer stop()
@@ -457,9 +456,8 @@ func (s *Server) Connect(pattern string, handler http.HandlerFunc) {
 //	group.Get("/user", handlerUser)
 //	group.Get("/goods", handlerGoods)
 //
-// Chaining instead (srv.Group("/api").Use(mw)) captures a one-shot
-// chain: only the next route registered through it gets the
-// middleware. See Use.
+// Chaining instead (srv.Group("/api").Use(mw)) captures a one-shot chain:
+// only the next route registered through it gets the middleware. See Use.
 func (s *Server) Group(prefix string) *Server {
 	s.mmu.Lock()
 	defer s.mmu.Unlock()
@@ -478,24 +476,23 @@ func (s *Server) Pattern(pattern string) string {
 	return path.Join(append(s.prefix, pattern)...)
 }
 
-// Use adds a middleware to the server. What the middleware covers
-// depends on whether the return value is kept.
+// Use adds a middleware to the server. What the middleware covers depends
+// on whether the return value is kept.
 //
-// Discard the return and the middleware is persistent: it applies to
-// every route registered afterward on the receiver, including the
-// routes of groups derived from it.
+// Discard the return and the middleware is persistent: it applies to every
+// route registered afterward on the receiver, including the routes of
+// groups derived from it.
 //
-// Keep the return and it is a one-shot chain: the next route
-// registered through the chain consumes the middleware, and routes
-// registered later get nothing. Chained Uses accumulate until the
-// first route registration:
+// Keep the return and it is a one-shot chain: the next route registered
+// through the chain consumes the middleware, and routes registered later
+// get nothing. Chained Uses accumulate until the first route registration:
 //
 //	srv.Use(mw)              // persistent: every later route gets mw
 //	srv.Use(mw).Get("/a", h) // one-shot: only /a gets mw
 //
-// Beware srv.Group("/api").Use(mw): the chain is kept, so only the
-// group's first route gets the middleware. Use the two-statement form
-// shown in Group to cover a whole group.
+// Beware srv.Group("/api").Use(mw): the chain is kept, so only the group's
+// first route gets the middleware. Use the two-statement form shown in
+// Group to cover a whole group.
 func (s *Server) Use(middleware func(http.Handler) http.Handler) *Server {
 	s.mmu.Lock()
 	defer s.mmu.Unlock()
@@ -525,8 +522,8 @@ func (s *Server) Uses(middleware func(http.Handler) http.Handler, more ...func(h
 	return ss
 }
 
-// drain applies all accumulated middlewares in the bucket to the
-// given handler and clears the bucket.
+// drain applies all accumulated middlewares in the bucket to the given
+// handler and clears the bucket.
 func (s *Server) drain() iter.Seq[func(http.Handler) http.Handler] {
 	return func(yield func(func(http.Handler) http.Handler) bool) {
 		if s.volatile != nil {

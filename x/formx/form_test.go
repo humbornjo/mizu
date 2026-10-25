@@ -182,8 +182,8 @@ func TestFormx_FormReaderNextPart(t *testing.T) {
 	assert.ErrorIs(t, err, io.EOF)
 }
 
-// A nil message puts the reader in manual mode: every part is
-// returned to the caller untouched.
+// A nil message puts the reader in manual mode: every part is returned to
+// the caller untouched.
 func TestFormx_FormReaderManual(t *testing.T) {
 	type fields struct {
 		Name string `form:"name"`
@@ -290,8 +290,8 @@ func TestFormx_NewFormReaderValidation(t *testing.T) {
 	}
 }
 
-// Field mapping is best-effort: unconvertible and oversized parts
-// leave the field untouched instead of failing the upload.
+// Field mapping is best-effort: unconvertible and oversized parts leave
+// the field untouched instead of failing the upload.
 func TestFormx_FormReaderLenient(t *testing.T) {
 	t.Run("bad conversion", func(t *testing.T) {
 		type fields struct {
@@ -363,9 +363,9 @@ func TestFormx_FormReaderLenient(t *testing.T) {
 	})
 }
 
-// A file part sized to an exact multiple of the buffer ends without
-// a short read: the final read returns full bytes without io.EOF.
-// Purge must drain whatever the caller left unread — from nothing to
+// A file part sized to an exact multiple of the buffer ends without a
+// short read: the final read returns full bytes without io.EOF. Purge must
+// drain whatever the caller left unread — from nothing to
 // everything-but-EOF — before the trailing fields become visible.
 func TestFormx_FormReaderPurgeDrain(t *testing.T) {
 	type fields struct {

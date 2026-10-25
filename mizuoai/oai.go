@@ -32,10 +32,10 @@ const (
 	_CTXKEY_OAI ctxkey = iota
 )
 
-// Initialize inject OpenAPI config into mizu.Server with the given
-// path and options. openapi.json will be served at /{path}/openapi.json.
-// HTML will be served at /{path}/openapi if enabled. {path} can be
-// set using WithDocumentServePath
+// Initialize inject OpenAPI config into mizu.Server with the given path
+// and options. openapi.json will be served at /{path}/openapi.json. HTML
+// will be served at /{path}/openapi if enabled. {path} can be set using
+// WithDocumentServePath
 func Initialize(srv *mizu.Server, title string, opts ...DocumentOption) error {
 	if title == "" {
 		return errors.New("openapi spec title is required")
@@ -115,8 +115,7 @@ type Rx[T any] = serde.Rx[T]
 
 type Handler[I, O any] func(http.ResponseWriter, Rx[I]) (O, error)
 
-// NewHandler wraps the user-provided handler with request parsing
-// logic.
+// NewHandler wraps the user-provided handler with request parsing logic.
 func NewHandler[I, O any](handler Handler[I, O]) http.HandlerFunc {
 	codec, err := serde.NewCodec[I, O]()
 	if err != nil {
@@ -191,65 +190,65 @@ func handleRaw(method string, srv *mizu.Server, pattern string, rawHandler http.
 	return config.override
 }
 
-// Get registers a generic handler for GET requests. It uses
-// reflection to parse request data into the input type `I` and
-// generate OpenAPI documentation.
+// Get registers a generic handler for GET requests. It uses reflection to
+// parse request data into the input type `I` and generate OpenAPI
+// documentation.
 func Get[I any, O any](srv *mizu.Server, pattern string, handler Handler[I, O], opts ...OperationOption,
 ) *v3.Operation {
 	return handle(http.MethodGet, srv, pattern, handler, opts...)
 }
 
-// POST registers a generic handler for POST requests. It uses
-// reflection to parse request data into the input type `I` and
-// generate OpenAPI documentation.
+// POST registers a generic handler for POST requests. It uses reflection
+// to parse request data into the input type `I` and generate OpenAPI
+// documentation.
 func Post[I any, O any](srv *mizu.Server, pattern string, handler Handler[I, O], opts ...OperationOption,
 ) *v3.Operation {
 	return handle(http.MethodPost, srv, pattern, handler, opts...)
 }
 
-// Put registers a generic handler for PUT requests. It uses
-// reflection to parse request data into the input type `I` and
-// generate OpenAPI documentation.
+// Put registers a generic handler for PUT requests. It uses reflection to
+// parse request data into the input type `I` and generate OpenAPI
+// documentation.
 func Put[I any, O any](srv *mizu.Server, pattern string, handler Handler[I, O], opts ...OperationOption,
 ) *v3.Operation {
 	return handle(http.MethodPut, srv, pattern, handler, opts...)
 }
 
-// Delete registers a generic handler for DELETE requests. It
-// uses reflection to parse request data into the input type `I`
-// and generate OpenAPI documentation.
+// Delete registers a generic handler for DELETE requests. It uses
+// reflection to parse request data into the input type `I` and generate
+// OpenAPI documentation.
 func Delete[I any, O any](srv *mizu.Server, pattern string, handler Handler[I, O], opts ...OperationOption,
 ) *v3.Operation {
 	return handle(http.MethodDelete, srv, pattern, handler, opts...)
 }
 
-// Patch registers a generic handler for PATCH requests. It uses
-// reflection to parse request data into the input type `I` and
-// generate OpenAPI documentation.
+// Patch registers a generic handler for PATCH requests. It uses reflection
+// to parse request data into the input type `I` and generate OpenAPI
+// documentation.
 func Patch[I any, O any](srv *mizu.Server, pattern string, handler Handler[I, O], opts ...OperationOption,
 ) *v3.Operation {
 	return handle(http.MethodPatch, srv, pattern, handler, opts...)
 }
 
-// Head registers a generic handler for HEAD requests. It uses
-// reflection to parse request data into the input type `I` and
-// generate OpenAPI documentation.
+// Head registers a generic handler for HEAD requests. It uses reflection
+// to parse request data into the input type `I` and generate OpenAPI
+// documentation.
 func Head[I any, O any](srv *mizu.Server, pattern string, handler Handler[I, O], opts ...OperationOption,
 ) *v3.Operation {
 	return handle(http.MethodHead, srv, pattern, handler, opts...)
 }
 
-// Options registers a generic handler for OPTIONS requests. It
-// uses reflection to parse request data into the input type `I`
-// and generate OpenAPI documentation.
+// Options registers a generic handler for OPTIONS requests. It uses
+// reflection to parse request data into the input type `I` and generate
+// OpenAPI documentation.
 func Options[I any, O any](srv *mizu.Server, pattern string, handler Handler[I, O], opts ...OperationOption,
 ) *v3.Operation {
 	return handle(http.MethodOptions, srv, pattern, handler, opts...)
 }
 
-// Trace registers a generic handler for TRACE requests. It uses
-// reflection to parse request data into the input type `I` and
-// generate OpenAPI documentation.
+// Trace registers a generic handler for TRACE requests. It uses reflection
+// to parse request data into the input type `I` and generate OpenAPI
+// documentation.
 func Trace[I any, O any](srv *mizu.Server, pattern string, handler Handler[I, O], opts ...OperationOption,
 ) *v3.Operation {
 	return handle(http.MethodTrace, srv, pattern, handler, opts...)
@@ -270,12 +269,14 @@ func PutRaw(srv *mizu.Server, pattern string, rawHandler http.HandlerFunc, opts 
 	return handleRaw(http.MethodPut, srv, pattern, rawHandler, opts...)
 }
 
-// DeleteRaw registers a raw DELETE handler with an explicit OpenAPI operation.
+// DeleteRaw registers a raw DELETE handler with an explicit OpenAPI
+// operation.
 func DeleteRaw(srv *mizu.Server, pattern string, rawHandler http.HandlerFunc, opts ...OperationOption) *v3.Operation {
 	return handleRaw(http.MethodDelete, srv, pattern, rawHandler, opts...)
 }
 
-// PatchRaw registers a raw PATCH handler with an explicit OpenAPI operation.
+// PatchRaw registers a raw PATCH handler with an explicit OpenAPI
+// operation.
 func PatchRaw(srv *mizu.Server, pattern string, rawHandler http.HandlerFunc, opts ...OperationOption) *v3.Operation {
 	return handleRaw(http.MethodPatch, srv, pattern, rawHandler, opts...)
 }
@@ -285,17 +286,20 @@ func HeadRaw(srv *mizu.Server, pattern string, rawHandler http.HandlerFunc, opts
 	return handleRaw(http.MethodHead, srv, pattern, rawHandler, opts...)
 }
 
-// OptionsRaw registers a raw OPTIONS handler with an explicit OpenAPI operation.
+// OptionsRaw registers a raw OPTIONS handler with an explicit OpenAPI
+// operation.
 func OptionsRaw(srv *mizu.Server, pattern string, rawHandler http.HandlerFunc, opts ...OperationOption) *v3.Operation {
 	return handleRaw(http.MethodOptions, srv, pattern, rawHandler, opts...)
 }
 
-// TraceRaw registers a raw TRACE handler with an explicit OpenAPI operation.
+// TraceRaw registers a raw TRACE handler with an explicit OpenAPI
+// operation.
 func TraceRaw(srv *mizu.Server, pattern string, rawHandler http.HandlerFunc, opts ...OperationOption) *v3.Operation {
 	return handleRaw(http.MethodTrace, srv, pattern, rawHandler, opts...)
 }
 
-// ConnectRaw registers a raw CONNECT handler using OpenAPI 3.2 additionalOperations.
+// ConnectRaw registers a raw CONNECT handler using OpenAPI 3.2
+// additionalOperations.
 func ConnectRaw(srv *mizu.Server, pattern string, rawHandler http.HandlerFunc, opts ...OperationOption) *v3.Operation {
 	return handleRaw(http.MethodConnect, srv, pattern, rawHandler, opts...)
 }

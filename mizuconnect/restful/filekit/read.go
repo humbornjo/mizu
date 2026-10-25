@@ -25,8 +25,8 @@ import (
 	"google.golang.org/protobuf/types/known/wrapperspb"
 )
 
-// HttpForm represents a protobuf message that contains HTTP form data.
-// It must implement proto.Message and provide access to HttpBody content.
+// HttpForm represents a protobuf message that contains HTTP form data. It
+// must implement proto.Message and provide access to HttpBody content.
 type HttpForm interface {
 	proto.Message
 	GetForm() *httpbody.HttpBody
@@ -34,8 +34,8 @@ type HttpForm interface {
 
 // StreamForm represents a Connect RPC client stream that can receive
 // HttpForm messages. It embeds the standard Connect stream interface
-// methods while ensuring the message type satisfies the HttpForm
-// interface for HTTP body content handling.
+// methods while ensuring the message type satisfies the HttpForm interface
+// for HTTP body content handling.
 type StreamForm[T HttpForm] interface {
 	Msg() T
 	Err() error
@@ -63,15 +63,15 @@ const (
 	MODE_PROTO_TEXT enumProtoDetectMode = iota
 	// MODE_PROTO_JSON uses JSON name for proto field detection.
 	MODE_PROTO_JSON
-	// MODE_PROTO_HYBRID uses Text name if available, if got nil, will
-	// return result by JSON name.
+	// MODE_PROTO_HYBRID uses Text name if available, if got nil, will return
+	// result by JSON name.
 	MODE_PROTO_HYBRID
 )
 
 type FormReaderOption[T HttpForm] func(*formReader[T])
 
-// WithFormProtoMode sets the mode for proto field detection. Default
-// is MODE_PROTO_TEXT.
+// WithFormProtoMode sets the mode for proto field detection. Default is
+// MODE_PROTO_TEXT.
 func WithFormProtoMode[T HttpForm](mode enumProtoDetectMode) FormReaderOption[T] {
 	return func(rx *formReader[T]) {
 		switch mode {
@@ -95,21 +95,21 @@ func WithFormProtoMode[T HttpForm](mode enumProtoDetectMode) FormReaderOption[T]
 	}
 }
 
-// WithFormFieldLimitBytes sets the maximum number of bytes that can
-// be allocated for read the field other than file field. The
-// exceeding bytes will be discarded.
+// WithFormFieldLimitBytes sets the maximum number of bytes that can be
+// allocated for read the field other than file field. The exceeding bytes
+// will be discarded.
 func WithFormFieldLimitBytes[T HttpForm](limit int64) FormReaderOption[T] {
 	return func(rx *formReader[T]) {
 		rx.bufferSize = limit
 	}
 }
 
-// NewFormReader creates a new FormReader for processing multipart
-// form data from a Connect RPC stream. It validates the stream and
-// message types, extracts the content type and boundary from the
-// first HttpForm message, and sets up a multipart reader. The
-// fileField parameter specifies which form field contains the file
-// data, while other fields can be mapped to the provided proto.Message.
+// NewFormReader creates a new FormReader for processing multipart form
+// data from a Connect RPC stream. It validates the stream and message
+// types, extracts the content type and boundary from the first HttpForm
+// message, and sets up a multipart reader. The fileField parameter
+// specifies which form field contains the file data, while other fields
+// can be mapped to the provided proto.Message.
 func NewFormReader[T HttpForm](fileField string, stream StreamForm[T], msg proto.Message, opts ...FormReaderOption[T],
 ) (FormReader, error) {
 	if ok := stream.Receive(); !ok {
@@ -170,14 +170,14 @@ func NewFormReader[T HttpForm](fileField string, stream StreamForm[T], msg proto
 	return rx, nil
 }
 
-// NextPart returns the next multipart form part. It automatically
-// handles non-file fields by attempting to map them to the provided
-// proto.Message. File field data is returned as-is for processing.
+// NextPart returns the next multipart form part. It automatically handles
+// non-file fields by attempting to map them to the provided proto.Message.
+// File field data is returned as-is for processing.
 //
-// WARN: If msg in NewFormReader is not nil, all the part except file
-// will be automatically consumed and mapped to msg. Comsume the part
-// will trigger error on setting msg. If you want to manually handle
-// the part, pass a nil value to msg when creating FormReader.
+// WARN: If msg in NewFormReader is not nil, all the part except file will
+// be automatically consumed and mapped to msg. Comsume the part will
+// trigger error on setting msg. If you want to manually handle the part,
+// pass a nil value to msg when creating FormReader.
 func (r *formReader[T]) NextPart() (*multipart.Part, error) {
 	part, err := r.inner.NextPart()
 	if err != nil {
@@ -191,9 +191,9 @@ func (r *formReader[T]) NextPart() (*multipart.Part, error) {
 	return part, nil
 }
 
-// File returns the file part in the form. Fields after file part can
-// be accessed with NextPart. This function internally calls NextPart
-// until the file part is found.
+// File returns the file part in the form. Fields after file part can be
+// accessed with NextPart. This function internally calls NextPart until
+// the file part is found.
 func (r *formReader[T]) File() (*multipart.Part, func() error, error) {
 	var fpart *multipart.Part
 	var err error

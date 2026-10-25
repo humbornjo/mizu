@@ -28,32 +28,25 @@ func MustLoadSchema(raw string) Schema {
 	return schema
 }
 
-// Schema is a compiled CUE schema: it validates generated Go models
-// and, as sugar, renders its own raw OpenAPI document. Assembling
-// documents across packages is the consumer's job.
+// Schema is a compiled CUE schema: it validates generated Go models and,
+// as sugar, renders its own raw OpenAPI document. Assembling documents
+// across packages is the consumer's job.
 type Schema interface {
-	// Validate checks a Go model against the CUE definition named
-	// after the model's concrete type. Nil values, missing
+	// Validate checks a Go model against the CUE definition named after the model's concrete type. Nil values, missing
 	// definitions, and non-concrete results are rejected.
 	Validate(value any) error
 
-	// OpenAPI generates the schema's raw CUE OpenAPI document as
-	// JSON bytes. It is sugar over openapi.Generate: config passes
-	// through untouched, the output is verbatim, and every call
-	// regenerates — nothing is cached.
+	// OpenAPI generates the schema's raw CUE OpenAPI document as JSON bytes. It is sugar over openapi.Generate: config
+	// passes through untouched, the output is verbatim, and every call regenerates — nothing is cached.
 	OpenAPI(config *openapi.Config) ([]byte, error)
 
-	// MustOpenAPI generates the schema's OpenAPI document or panics
-	// on failure.
+	// MustOpenAPI generates the schema's OpenAPI document or panics on failure.
 	MustOpenAPI(config *openapi.Config) []byte
 
-	// Operation renders the schema's operation fragment named after
-	// t's concrete type as JSON bytes: type PublishSkillOperation is
-	// served by the member "#PublishSkillOperation", mirroring
-	// Validate's naming. The fragment carries what reflection cannot
-	// infer per operation — request body media types, response
-	// tables — and merges over the reflected operation in mizuoai
-	// (WithOperationPatch). The member must be concrete. Given:
+	// Operation renders the schema's operation fragment named after t's concrete type as JSON bytes: type
+	// PublishSkillOperation is served by the member "#PublishSkillOperation", mirroring Validate's naming. The fragment
+	// carries what reflection cannot infer per operation — request body media types, response tables — and merges over
+	// the reflected operation in mizuoai (WithOperationPatch). The member must be concrete. Given:
 	//
 	//	#PublishSkillOperation: {
 	//		operationId: "publishSkill"
@@ -74,8 +67,7 @@ type Schema interface {
 	//	}
 	Operation(t reflect.Type) ([]byte, error)
 
-	// MustOperation renders the type's operation fragment or panics
-	// on failure.
+	// MustOperation renders the type's operation fragment or panics on failure.
 	MustOperation(t reflect.Type) []byte
 }
 

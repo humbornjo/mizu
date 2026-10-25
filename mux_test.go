@@ -602,10 +602,9 @@ func TestMux_Group_Middleware(t *testing.T) {
 			_, _ = fmt.Fprint(w, "OK")
 		}
 
-		// The captured Use return is a one-shot chain: the first route
-		// registered through it drains the middleware, and every route
-		// after it on the same group gets nothing. Split the statements
-		// (Group, then a discarded Use) to cover the whole group instead.
+		// The captured Use return is a one-shot chain: the first route registered through it drains the middleware, and every
+		// route after it on the same group gets nothing. Split the statements (Group, then a discarded Use) to cover the
+		// whole group instead.
 		group := srv.Group("/g").Use(middleware)
 		group.Get("/first", handler)
 		group.Get("/second", handler)

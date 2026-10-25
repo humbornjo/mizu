@@ -28,9 +28,9 @@ var (
 //     non-comparable argument bypasses the cache entirely;
 //   - a non-nil trailing error result is never cached.
 //
-// Wrap panics if F is not a func. Note the reflect call path and
-// key encoding cost noticeably more than a direct call — wrap
-// functions whose computation is expensive enough to pay for it.
+// Wrap panics if F is not a func. Note the reflect call path and key
+// encoding cost noticeably more than a direct call — wrap functions
+// whose computation is expensive enough to pay for it.
 //
 // Usage:
 //
@@ -45,8 +45,8 @@ func Wrap[F any](fn F) F {
 	v := reflect.ValueOf(fn)
 	id := nextID.Add(1)
 
-	// MakeFunc packs variadic arguments into a final slice, which is
-	// the form CallSlice expects; plain calls unpack instead.
+	// MakeFunc packs variadic arguments into a final slice, which is the form CallSlice expects; plain calls unpack
+	// instead.
 	call := v.Call
 	if t.IsVariadic() {
 		call = v.CallSlice
@@ -102,8 +102,8 @@ func Wrap[F any](fn F) F {
 	return wrapped.Interface().(F)
 }
 
-// thaw rebuilds call results from their frozen any form, restoring
-// typed nils that reflect.ValueOf alone would lose.
+// thaw rebuilds call results from their frozen any form, restoring typed
+// nils that reflect.ValueOf alone would lose.
 func thaw(t reflect.Type, frozen []any) []reflect.Value {
 	outs := make([]reflect.Value, len(frozen))
 	for i, f := range frozen {

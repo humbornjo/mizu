@@ -47,8 +47,7 @@ func (w *wrappedWriter) Flush() {
 		flusher.Flush()
 	}
 
-	// If the underlying writer has a compression flush signature,
-	// call this Flush() method instead
+	// If the underlying writer has a compression flush signature, call this Flush() method instead
 	if f, ok := w.writer().(compressFlusher); ok {
 		_ = f.Flush()
 

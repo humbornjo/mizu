@@ -18,8 +18,8 @@ type TestPatchedModel struct {
 
 type TestEmptyInput struct{}
 
-// canonicalName mirrors internal.CanonicalTypeName for the test
-// package: "github.com.humbornjo.mizu.mizuoai_test.TestPatchedModel".
+// canonicalName mirrors internal.CanonicalTypeName for the test package:
+// "github.com.humbornjo.mizu.mizuoai_test.TestPatchedModel".
 const _PATCHED_MODEL_NAME = "github.com.humbornjo.mizu.mizuoai_test.TestPatchedModel"
 
 const _PATCH_LIB = `
@@ -66,8 +66,8 @@ func fetchDocument(t *testing.T, srv *mizu.Server) string {
 	return recorder.Body.String()
 }
 
-// A patch schema carrying the reflected type's canonical name
-// shadows the reflected schema at render: the CUE constraints win.
+// A patch schema carrying the reflected type's canonical name shadows the
+// reflected schema at render: the CUE constraints win.
 func TestMizuOai_WithDocumentPatchShadowsReflected(t *testing.T) {
 	srv := mizu.NewServer("test")
 	err := mizuoai.Initialize(srv, "test",
@@ -84,8 +84,8 @@ func TestMizuOai_WithDocumentPatchShadowsReflected(t *testing.T) {
 	assert.Contains(t, document, `^[^@]+@[^@]+$`)
 }
 
-// Two patches contributing the same schema with identical content
-// dedupe silently.
+// Two patches contributing the same schema with identical content dedupe
+// silently.
 func TestMizuOai_WithDocumentPatchDedupesIdentical(t *testing.T) {
 	srv := mizu.NewServer("test")
 	err := mizuoai.Initialize(srv, "test",
@@ -96,9 +96,9 @@ func TestMizuOai_WithDocumentPatchDedupesIdentical(t *testing.T) {
 	assert.Contains(t, fetchDocument(t, srv), "example.com.test.Shared")
 }
 
-// A name repeated across patches dedupes by name — canonical
-// naming makes the name the schema's identity; the first patch
-// wins, later ones are dropped silently.
+// A name repeated across patches dedupes by name — canonical naming
+// makes the name the schema's identity; the first patch wins, later ones
+// are dropped silently.
 func TestMizuOai_WithDocumentPatchFirstWins(t *testing.T) {
 	srv := mizu.NewServer("test")
 	err := mizuoai.Initialize(srv, "test",

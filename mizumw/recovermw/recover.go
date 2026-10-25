@@ -53,8 +53,7 @@ func New(opts ...Option) func(http.Handler) http.Handler {
 				}
 
 				rcv := recover()
-				// we don't recover http.ErrAbortHandler so the response to the
-				// client is aborted, this should not be logged
+				// we don't recover http.ErrAbortHandler so the response to the client is aborted, this should not be logged
 				if rcv == http.ErrAbortHandler {
 					panic(rcv)
 				}

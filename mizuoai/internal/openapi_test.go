@@ -63,9 +63,8 @@ func TestInternal_CanonicalTypeName(t *testing.T) {
 			want: "github.com.pb33f.libopenapi.orderedmap.Map_string_interface",
 		},
 		{
-			// reflect reports the defining package: go-yaml v4
-			// defines Node in internal/libyaml and aliases it in
-			// the root package.
+			// reflect reports the defining package: go-yaml v4 defines Node in internal/libyaml and aliases it in the root
+			// package.
 			name: "aliased type",
 			got:  func() string { return CanonicalTypeName(reflect.TypeFor[yaml.Node]()) },
 			want: "go.yaml.in.yaml.v4.internal.libyaml.Node",

@@ -712,8 +712,8 @@ func TestFilekit_Read_FileReader(t *testing.T) {
 				assert.NotEmpty(t, contentType, "Content type should not be empty")
 				assert.Equal(t, http.DetectContentType(tc.testData), contentType, tc.description)
 
-				// Verify that reading more data doesn't change the detected type
-				// (MIME type should be determined from first 512 bytes)
+				// Verify that reading more data doesn't change the detected type (MIME type should be determined from first 512
+				// bytes)
 				if len(tc.testData) > 64 {
 					moreBuf := make([]byte, 64)
 					_, err := reader.Read(moreBuf)

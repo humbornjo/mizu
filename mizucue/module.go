@@ -18,55 +18,43 @@ import (
 	"cuelang.org/go/encoding/openapi"
 )
 
-// Module is every CUE package of one CUE module held as loader
-// instances, from which validation and OpenAPI views are built.
+// Module is every CUE package of one CUE module held as loader instances,
+// from which validation and OpenAPI views are built.
 type Module interface {
-	// Extract builds the schema of the first instance whose package
-	// name is pkgName. Package names are not unique across a module's
-	// directories; selection follows loader order.
+	// Extract builds the schema of the first instance whose package name is pkgName. Package names are not unique across a
+	// module's directories; selection follows loader order.
 	Extract(pkgName string) (Schema, error)
 
-	// MustExtract builds the schema of the named package or panics on
-	// failure.
+	// MustExtract builds the schema of the named package or panics on failure.
 	MustExtract(pkgName string) Schema
 
-	// OpenAPIs generates the raw CUE OpenAPI document of every package
-	// and returns them as an import-path-ordered sequence of JSON
-	// bytes. Component names are qualified k8s-style with the
-	// definition's source package import path — the same shape as
-	// mizuoai's CanonicalTypeName — so same-named definitions from
-	// different packages coexist in one assembled document and
-	// references carry their provenance. A config NameFunc replaces
-	// the default naming; every other config field passes to the
-	// generator untouched.
+	// OpenAPIs generates the raw CUE OpenAPI document of every package and returns them as an import-path-ordered sequence
+	// of JSON bytes. Component names are qualified k8s-style with the definition's source package import path — the same
+	// shape as mizuoai's CanonicalTypeName — so same-named definitions from different packages coexist in one assembled
+	// document and references carry their provenance. A config NameFunc replaces the default naming; every other config
+	// field passes to the generator untouched.
 	//
-	// Each package's import path travels as the sequence key — the
-	// declared module path and package dir without the loader's
-	// canonical major-version suffix — and is the provenance a
-	// consumer passes along with the bytes when assembling the
-	// documents (e.g. mizuoai's PatchOpenAPI option).
+	// Each package's import path travels as the sequence key — the declared module path and package dir without the
+	// loader's canonical major-version suffix — and is the provenance a consumer passes along with the bytes when
+	// assembling the documents (e.g. mizuoai's PatchOpenAPI option).
 	OpenAPIs(config *openapi.Config) (iter.Seq2[string, []byte], error)
 
-	// MustOpenAPIs generates every package's OpenAPI document or
-	// panics on failure.
+	// MustOpenAPIs generates every package's OpenAPI document or panics on failure.
 	MustOpenAPIs(config *openapi.Config) iter.Seq2[string, []byte]
 
-	// Instances returns the module's CUE loader instances in loader
-	// order, exposing the loader's own metadata — import path,
-	// package name, files, dependencies — to consumers that need
-	// more than the schema and OpenAPI views.
+	// Instances returns the module's CUE loader instances in loader order, exposing the loader's own metadata — import
+	// path, package name, files, dependencies — to consumers that need more than the schema and OpenAPI views.
 	Instances() iter.Seq[*build.Instance]
 }
 
-// LoadModule loads every CUE package of the module in fsys with the
-// CUE loader. fsys is the module's filesystem: cue.mod/module.cue at
-// the root and one directory per package, imports resolving through
-// the declared module path.
+// LoadModule loads every CUE package of the module in fsys with the CUE
+// loader. fsys is the module's filesystem: cue.mod/module.cue at the root
+// and one directory per package, imports resolving through the declared
+// module path.
 //
-// The loader's recursive wildcard cannot walk a virtual filesystem,
-// so fsys is mirrored into an overlay on a scratch host directory;
-// package discovery, module metadata, and CUE file selection stay
-// with the loader.
+// The loader's recursive wildcard cannot walk a virtual filesystem, so
+// fsys is mirrored into an overlay on a scratch host directory; package
+// discovery, module metadata, and CUE file selection stay with the loader.
 func LoadModule(fsys fs.FS) (Module, error) {
 	root, err := os.MkdirTemp("", "mizucue-*")
 	if err != nil {
@@ -138,9 +126,8 @@ func (m *module) OpenAPIs(config *openapi.Config) (iter.Seq2[string, []byte], er
 	}
 	documents := make([]document, 0, len(m.instances))
 	for _, instance := range m.instances {
-		// The key is the declared module path plus the package's relative
-		// dir: the loader's canonical "@version" suffix and any
-		// ":qualifier" after it are module-level noise.
+		// The key is the declared module path plus the package's relative dir: the loader's canonical "@version" suffix and
+		// any ":qualifier" after it are module-level noise.
 		key, _, _ := strings.Cut(instance.ImportPath, "@")
 		data, err := func() ([]byte, error) {
 			context := cuecontext.New()
@@ -148,9 +135,8 @@ func (m *module) OpenAPIs(config *openapi.Config) (iter.Seq2[string, []byte], er
 			if err := value.Err(); err != nil {
 				return nil, err
 			}
-			// Copy the caller's config: the default NameFunc closes
-			// over the instance under generation, and the caller's
-			// config must never be mutated.
+			// Copy the caller's config: the default NameFunc closes over the instance under generation, and the caller's config
+			// must never be mutated.
 			instanceConfig := openapi.Config{}
 			if config != nil {
 				instanceConfig = *config
@@ -195,19 +181,18 @@ func (m *module) Instances() iter.Seq[*build.Instance] {
 }
 
 // QualifiedNameFunc returns an openapi NameFunc naming components
-// k8s-style — the definition's source package import path dotted
-// with the definition name, aligned with mizuoai's CanonicalTypeName:
-// "example.com.mizucue.test.app.TestModel". Import path provenance
-// makes same-named definitions from different packages coexist in one
-// document instead of silently overwriting each other.
+// k8s-style — the definition's source package import path dotted with
+// the definition name, aligned with mizuoai's CanonicalTypeName:
+// "example.com.mizucue.test.app.TestModel". Import path provenance makes
+// same-named definitions from different packages coexist in one document
+// instead of silently overwriting each other.
 //
 // The generator calls the func with the instance value holding the
-// definition; for a cross-package reference that is the source
-// package's instance, so the name follows the definition's origin,
-// not the package under generation.
+// definition; for a cross-package reference that is the source package's
+// instance, so the name follows the definition's origin, not the package
+// under generation.
 func (m *module) QualifiedNameFunc(current *build.Instance) func(cue.Value, cue.Path) string {
-	// selectorLabel mirrors the CUE generator's default label
-	// extraction: definition labels lose their "#", string labels
+	// selectorLabel mirrors the CUE generator's default label extraction: definition labels lose their "#", string labels
 	// unquote, pattern constraints render as "*".
 	selectorLabel := func(sel cue.Selector) string {
 		if sel.Type().ConstraintType() == cue.PatternConstraint {
@@ -222,10 +207,8 @@ func (m *module) QualifiedNameFunc(current *build.Instance) func(cue.Value, cue.
 			return sel.String()
 		}
 	}
-	// canonicalName sanitizes a dotted type name into a legal OpenAPI
-	// component key matching ^[a-zA-Z0-9.\-_]+$: "/" joins collapse to
-	// ".", any other disallowed run collapses to "_". Same algorithm as
-	// mizuoai's CanonicalTypeName.
+	// canonicalName sanitizes a dotted type name into a legal OpenAPI component key matching ^[a-zA-Z0-9.\-_]+$: "/" joins
+	// collapse to ".", any other disallowed run collapses to "_". Same algorithm as mizuoai's CanonicalTypeName.
 	canonicalName := func(full string) string {
 		full = strings.ReplaceAll(full, "/", ".")
 		var b strings.Builder

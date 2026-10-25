@@ -33,8 +33,8 @@ func (t TagType) String() string {
 	return string(t)
 }
 
-// JsonField parses the json struct tag into name, options, and the
-// ignored flag ("-").
+// JsonField parses the json struct tag into name, options, and the ignored
+// flag ("-").
 func JsonField(field reflect.StructField) (string, []string) {
 	value, ok := field.Tag.Lookup("json")
 	if !ok {
@@ -47,34 +47,33 @@ func JsonField(field reflect.StructField) (string, []string) {
 	return parts[0], parts[1:]
 }
 
-// Rx represents the request side of an API endpoint. It provides
-// access to the parsed request data and the original request context.
+// Rx represents the request side of an API endpoint. It provides access to
+// the parsed request data and the original request context.
 type Rx[T any] struct {
 	*http.Request
 	decodeFunc func(*http.Request) (T, error)
 }
 
-// Read returns the parsed input from the request. The parsing logic
-// is generated based on the struct tags of the input type.
+// Read returns the parsed input from the request. The parsing logic is
+// generated based on the struct tags of the input type.
 func (rx Rx[T]) Xread() (T, error) {
 	return rx.decodeFunc(rx.Request)
 }
 
-// Tx represents the response side of an API endpoint. It provides
-// methods to write the response.
+// Tx represents the response side of an API endpoint. It provides methods
+// to write the response.
 type Tx[T any] struct {
 	http.ResponseWriter
 	encodeFunc func(*T) error
 }
 
-// MizuWrite writes the JSON-encoded output to the response writer. It
-// also sets the Content-Type header to "application/json".
+// MizuWrite writes the JSON-encoded output to the response writer. It also
+// sets the Content-Type header to "application/json".
 func (tx Tx[T]) Xwrite(data *T) error {
 	return tx.encodeFunc(data)
 }
 
-// MizuError writes an JSON-encoded error response to the response
-// writer.
+// MizuError writes an JSON-encoded error response to the response writer.
 func (tx Tx[T]) Error(statusCode int, err error, details ...*mizu.ErrorDetail) error {
 	return mizu.ResponseError(tx, mizu.NewError(statusCode, err, details...))
 }

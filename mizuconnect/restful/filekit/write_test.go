@@ -13,7 +13,8 @@ import (
 	"google.golang.org/genproto/googleapis/api/httpbody"
 )
 
-// mockServerStream implements a minimal mock of connect.ServerStream for testing
+// mockServerStream implements a minimal mock of connect.ServerStream for
+// testing
 type mockServerStream struct {
 	connect.ServerStream[httpbody.HttpBody]
 
@@ -53,7 +54,8 @@ func (m *mockServerStream) ResponseTrailer() http.Header {
 	return m.tailer
 }
 
-// mockStreamingHandlerConn implements connect.StreamingHandlerConn for testing
+// mockStreamingHandlerConn implements connect.StreamingHandlerConn for
+// testing
 type mockStreamingHandlerConn struct {
 	mock *mockServerStream
 }

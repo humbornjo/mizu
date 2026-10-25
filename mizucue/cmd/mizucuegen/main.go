@@ -1,12 +1,11 @@
-// Command mizucuegen bakes every CUE package's generated OpenAPI
-// document into an openapi.yaml next to the package's CUE files.
+// Command mizucuegen bakes every CUE package's generated OpenAPI document
+// into an openapi.yaml next to the package's CUE files.
 //
 //	mizucuegen [dir]
 //
-// It locates the enclosing CUE module by walking up from dir
-// (default ".") until a cue.mod/module.cue, loads every package of
-// that module with mizucue, and writes one openapi.yaml per package
-// directory.
+// It locates the enclosing CUE module by walking up from dir (default ".")
+// until a cue.mod/module.cue, loads every package of that module with
+// mizucue, and writes one openapi.yaml per package directory.
 package main
 
 import (
@@ -75,8 +74,8 @@ func run(dir string) error {
 			return fmt.Errorf("encode yaml for %s: %w", importPath, err)
 		}
 		out := filepath.Join(root, filepath.FromSlash(rel), "openapi.yaml")
-		// #nosec G703 -- rel is proven local by the filepath.IsLocal
-		// guard above; root is the module the user points the tool at.
+		// #nosec G703 -- rel is proven local by the filepath.IsLocal guard above; root is the module the user points the tool
+		// at.
 		if err := os.WriteFile(out, yamlData, 0o600); err != nil {
 			return fmt.Errorf("write %s: %w", out, err)
 		}
@@ -104,11 +103,9 @@ func findModuleRoot(dir string) (string, error) {
 	}
 }
 
-// readModulePath reads the declared module path from
-// cue.mod/module.cue.
+// readModulePath reads the declared module path from cue.mod/module.cue.
 func readModulePath(root string) (string, error) {
-	// #nosec G304 G703 -- reading the module.cue of the
-	// user-designated module is the tool's purpose.
+	// #nosec G304 G703 -- reading the module.cue of the user-designated module is the tool's purpose.
 	data, err := os.ReadFile(filepath.Join(root, "cue.mod", "module.cue"))
 	if err != nil {
 		return "", fmt.Errorf("read module.cue: %w", err)
@@ -121,8 +118,8 @@ func readModulePath(root string) (string, error) {
 	return modulePath, nil
 }
 
-// packageDir maps a package's import path back to its directory
-// relative to the module root; a package at the root maps to ".".
+// packageDir maps a package's import path back to its directory relative
+// to the module root; a package at the root maps to ".".
 func packageDir(modulePath, importPath string) (string, error) {
 	if importPath == modulePath {
 		return ".", nil

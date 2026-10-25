@@ -89,11 +89,11 @@ func WithGrpcReflect(opts ...connect.HandlerOption) Option {
 	}
 }
 
-// WithGrpcGateway enables gRPC gateway for the registered services.
-// ctx controls the lifespan of the proxy connections (see
+// WithGrpcGateway enables gRPC gateway for the registered services. ctx
+// controls the lifespan of the proxy connections (see
 // `Register[SERVICE]HandlerFromEndpoint` of the gRPC gateway compiling
-// output). port is where the requests will be proxied. It should be
-// the same port used by the ConnectRPC server or gRPC server.
+// output). port is where the requests will be proxied. It should be the
+// same port used by the ConnectRPC server or gRPC server.
 func WithGrpcGateway(ctx context.Context, pattern string, port string, opts ...runtime.ServeMuxOption) Option {
 	return func(m *config) {
 		if ctx == nil {
@@ -109,13 +109,13 @@ func WithGrpcGateway(ctx context.Context, pattern string, port string, opts ...r
 
 // WithCrpcVanguard enables Vanguard transcoding for REST API
 // compatibility. This allows Connect RPC services to be accessed via
-// HTTP/JSON. The pattern parameter specifies the path, should be
-// mounted on "/" in most cases. Service Option can be applied with
+// HTTP/JSON. The pattern parameter specifies the path, should be mounted
+// on "/" in most cases. Service Option can be applied with
 // vanguard.WithDefaultServiceOptions or scope.Uses, therefore only
 // transcoder options are required on initializing scope.
 //
-// WARN: If pattern is non-empty, it will override the default
-// Vanguard pattern without applying scope prefix.
+// WARN: If pattern is non-empty, it will override the default Vanguard
+// pattern without applying scope prefix.
 //
 // Example:
 //
@@ -128,18 +128,18 @@ func WithCrpcVanguard(pattern string, transOpts ...vanguard.TranscoderOption) Op
 	}
 }
 
-// WithCrpcHandlerOptions adds Connect handler options that will be
-// applied to all registered services in this scope.
+// WithCrpcHandlerOptions adds Connect handler options that will be applied
+// to all registered services in this scope.
 func WithCrpcHandlerOptions(opts ...connect.HandlerOption) Option {
 	return func(m *config) {
 		m.connectOpts = append(m.connectOpts, opts...)
 	}
 }
 
-// WithPrefix sets the prefix for the scope. All service registered in
-// the scope will inherit this prefix. Prefix will also apply to
-// Vanguard pattern if Vanguard is enabled and the pattern is not
-// provided (Default of Vanguard pattern is `prefix`).
+// WithPrefix sets the prefix for the scope. All service registered in the
+// scope will inherit this prefix. Prefix will also apply to Vanguard
+// pattern if Vanguard is enabled and the pattern is not provided (Default
+// of Vanguard pattern is `prefix`).
 //
 // WARN: prefix will not be applied to gRPC-reflection and gRPC-health.
 func WithPrefix(prefix string) Option {
@@ -148,8 +148,8 @@ func WithPrefix(prefix string) Option {
 	}
 }
 
-// WithSuffix sets the suffix for the scope. All service registered in
-// the scope will inherit this suffix.
+// WithSuffix sets the suffix for the scope. All service registered in the
+// scope will inherit this suffix.
 func WithSuffix(suffix string) Option {
 	return func(m *config) {
 		m.suffix = suffix
@@ -157,9 +157,9 @@ func WithSuffix(suffix string) Option {
 }
 
 // Scope is a mizu scope for Connect RPC services over mizu.Server.
-// Multiple scopes can be derived from a single mizu.Server as long as
-// the routes are well-managed. Transcoder like Vanguard and gRPC-gateway
-// is considered scope-wise and should be registered with care.
+// Multiple scopes can be derived from a single mizu.Server as long as the
+// routes are well-managed. Transcoder like Vanguard and gRPC-gateway is
+// considered scope-wise and should be registered with care.
 type Scope struct {
 	srv *mizu.Server
 
@@ -167,15 +167,14 @@ type Scope struct {
 	vanguardServices []*vanguard.Service
 }
 
-// NewScope creates a new Connect RPC scope with the given mizu server.
-// The scope manages registration of Connect services with optional
-// features like health checks, reflection, validation, and Vanguard
-// transcoding.
+// NewScope creates a new Connect RPC scope with the given mizu server. The
+// scope manages registration of Connect services with optional features
+// like health checks, reflection, validation, and Vanguard transcoding.
 //
-// One mizu Server can derive multiple scopes, all the scope share the
-// same registered service names slices, which comes with the side
-// effect that one scope with feature enabled (e.g., reflection) will
-// also reveal all the services registered in other scopes.
+// One mizu Server can derive multiple scopes, all the scope share the same
+// registered service names slices, which comes with the side effect that
+// one scope with feature enabled (e.g., reflection) will also reveal all
+// the services registered in other scopes.
 func NewScope(srv *mizu.Server, opts ...Option) *Scope {
 	config := _DEFAULT_CONFIG
 	for _, opt := range opts {
@@ -250,12 +249,12 @@ func NewScope(srv *mizu.Server, opts ...Option) *Scope {
 	return scope
 }
 
-// Register registers a Connect RPC service with the scope. impl is
-// the service implementation, newFunc is the generated Connect
-// constructor (e.g., greetv1connect.NewGreetServiceHandler), and opts
-// are additional handler options. The service is automatically
-// configured with validation, health checks, reflection, and Vanguard
-// transcoding based on the scope's configuration.
+// Register registers a Connect RPC service with the scope. impl is the
+// service implementation, newFunc is the generated Connect constructor
+// (e.g., greetv1connect.NewGreetServiceHandler), and opts are additional
+// handler options. The service is automatically configured with
+// validation, health checks, reflection, and Vanguard transcoding based on
+// the scope's configuration.
 //
 // Example:
 //
@@ -292,8 +291,8 @@ type relayVanguardScope struct {
 }
 
 // UseVanguard creates a new relay scope with the given service option.
-// svcOpts will only be applied to the following registered service.
-// The Scope level service options should be configured with
+// svcOpts will only be applied to the following registered service. The
+// Scope level service options should be configured with
 // WithCrpcVanguard("/", vanguard.WithDefaultServiceOptions(...)) on
 // initialization.
 func (s *Scope) UseVanguard(svcOpts ...vanguard.ServiceOption) *relayVanguardScope {
@@ -303,8 +302,8 @@ func (s *Scope) UseVanguard(svcOpts ...vanguard.ServiceOption) *relayVanguardSco
 	return &relayVanguardScope{inner: s, svcOpts: svcOpts}
 }
 
-// Register registers a Connect RPC service with the relay scope.
-// Which will apply vanguard service options to the registered service.
+// Register registers a Connect RPC service with the relay scope. Which
+// will apply vanguard service options to the registered service.
 func (s relayVanguardScope) Register(impl any, newFunc any, opts ...connect.HandlerOption) {
 	opts = append(opts, s.inner.config.connectOpts...)
 
@@ -332,8 +331,8 @@ type relayGatewayScope struct {
 }
 
 // UseGateway creates a new relay scope with the given gRPC gateway
-// configuration. dialOpts will only be applied to the following
-// registered service.
+// configuration. dialOpts will only be applied to the following registered
+// service.
 func (s *Scope) UseGateway(
 	registerEndpointFunc func(
 		ctx context.Context,
@@ -343,8 +342,8 @@ func (s *Scope) UseGateway(
 	return &relayGatewayScope{inner: s, dialOpts: dialOpts, registerFunc: registerEndpointFunc}
 }
 
-// Register registers a Connect RPC service with the relay scope.
-// Which will apply gRPC gateway configuration to the registered service.
+// Register registers a Connect RPC service with the relay scope. Which
+// will apply gRPC gateway configuration to the registered service.
 func (r *relayGatewayScope) Register(impl any, newFunc any, opts ...connect.HandlerOption) {
 	if r.inner.config.gatewayMux == nil {
 		panic("gRPC-gateway is not enabled")
@@ -359,9 +358,9 @@ func (r *relayGatewayScope) Register(impl any, newFunc any, opts ...connect.Hand
 	r.inner.Register(impl, newFunc, opts...)
 }
 
-// detect extracts the protobuf service descriptor from the Connect
-// service pattern. It looks up the service in the global protobuf
-// registry to enable features like health checks and reflection.
+// detect extracts the protobuf service descriptor from the Connect service
+// pattern. It looks up the service in the global protobuf registry to
+// enable features like health checks and reflection.
 func detect(pattern string) (string, protoreflect.ServiceDescriptor) {
 	nameSvc := strings.Trim(pattern, "/")
 	d, err := protoregistry.GlobalFiles.FindDescriptorByName(protoreflect.FullName(nameSvc))
@@ -376,11 +375,11 @@ func detect(pattern string) (string, protoreflect.ServiceDescriptor) {
 	return nameSvc, sd
 }
 
-// invoke dynamically calls the Connect handler constructor function
-// using reflection. It validates the function signature and arguments,
-// then returns the service pattern and HTTP handler. This allows for
-// type-safe registration of any Connect service without requiring
-// code generation for each service type.
+// invoke dynamically calls the Connect handler constructor function using
+// reflection. It validates the function signature and arguments, then
+// returns the service pattern and HTTP handler. This allows for type-safe
+// registration of any Connect service without requiring code generation
+// for each service type.
 func invoke(impl any, newFunc any, opts ...connect.HandlerOption) (string, http.Handler) {
 	reflectImpl := reflect.ValueOf(impl)
 	reflectFunc := reflect.ValueOf(newFunc)

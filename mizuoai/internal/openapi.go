@@ -22,13 +22,12 @@ func NewComponents() *v3.Components {
 	return &v3.Components{}
 }
 
-// CanonicalTypeName returns the canonical OpenAPI-compatible name of
-// t as "<import path>.<type name>" —
-// "github.com.pb33f.libopenapi.datamodel.high.v3.Document". Pointers
-// are dereferenced; built-in and unnamed types fall back to their
-// reflect name. OpenAPI component keys must match ^[a-zA-Z0-9.\-_]+$:
-// "/" joins the import path with ".", any other disallowed run
-// collapses to "_".
+// CanonicalTypeName returns the canonical OpenAPI-compatible name of t as
+// "<import path>.<type name>" —
+// "github.com.pb33f.libopenapi.datamodel.high.v3.Document". Pointers are
+// dereferenced; built-in and unnamed types fall back to their reflect
+// name. OpenAPI component keys must match ^[a-zA-Z0-9.\-_]+$: "/" joins
+// the import path with ".", any other disallowed run collapses to "_".
 func CanonicalTypeName(t reflect.Type) string {
 	for t.Kind() == reflect.Pointer {
 		t = t.Elem()
@@ -61,10 +60,10 @@ func CanonicalTypeName(t reflect.Type) string {
 	return b.String()
 }
 
-// CanonicalSchema maps t to its inline OpenAPI schema. Pointer chains
-// are dereferenced and union the resolved type with "null"; free-form
-// schemas stay empty rather than narrowing to "null" only. Well-known
-// types short-circuit before the kind switch.
+// CanonicalSchema maps t to its inline OpenAPI schema. Pointer chains are
+// dereferenced and union the resolved type with "null"; free-form schemas
+// stay empty rather than narrowing to "null" only. Well-known types
+// short-circuit before the kind switch.
 func CanonicalSchema(t reflect.Type) highbase.Schema {
 	nullable := false
 	for t.Kind() == reflect.Pointer {
@@ -133,14 +132,10 @@ func CanonicalSchema(t reflect.Type) highbase.Schema {
 	case reflect.Struct:
 		schema := highbase.Schema{Type: []string{"object"}}
 
-		// TODO: cycle guard — recursive types (Next *Node, type M
-		// map[string]M) recurse until a fatal stack overflow. Plan:
-		// thread a seen-stack of named reflect.Type through the
-		// recursion (canonicalSchema(t, seen)), panicking on re-entry
-		// with the type named. The real fix is refs at the caller
-		// (RegisterSchema emits $ref for named structs instead of
-		// inlining); the guard stays afterward for named map/slice
-		// recursion.
+		// TODO: cycle guard — recursive types (Next *Node, type M map[string]M) recurse until a fatal stack overflow. Plan:
+		// thread a seen-stack of named reflect.Type through the recursion (canonicalSchema(t, seen)), panicking on re-entry
+		// with the type named. The real fix is refs at the caller (RegisterSchema emits $ref for named structs instead of
+		// inlining); the guard stays afterward for named map/slice recursion.
 		SchemaStructFields(&schema, t, false)
 		return unionNull(schema)
 	default:
@@ -148,14 +143,13 @@ func CanonicalSchema(t reflect.Type) highbase.Schema {
 	}
 }
 
-// SchemaStructFields walks t's exported fields into schema's
-// Properties and Required list, following encoding/json naming: the
-// json tag name wins, "-" skips, untagged fields keep their Go name.
-// An anonymous struct field without a tag name flattens into the
-// parent, and flattening through a pointer marks every promoted field
-// optional. A field is required unless the required tag says
-// otherwise, or it is omitempty, a pointer, or promoted through a
-// pointer-embedded struct.
+// SchemaStructFields walks t's exported fields into schema's Properties
+// and Required list, following encoding/json naming: the json tag name
+// wins, "-" skips, untagged fields keep their Go name. An anonymous struct
+// field without a tag name flattens into the parent, and flattening
+// through a pointer marks every promoted field optional. A field is
+// required unless the required tag says otherwise, or it is omitempty, a
+// pointer, or promoted through a pointer-embedded struct.
 func SchemaStructFields(schema *highbase.Schema, t reflect.Type, optional bool) {
 	for field := range t.Fields() {
 		if field.PkgPath != "" {
@@ -175,8 +169,7 @@ func SchemaStructFields(schema *highbase.Schema, t reflect.Type, optional bool) 
 			}
 			switch embedded {
 			case reflect.TypeFor[time.Time](), reflect.TypeFor[json.RawMessage]():
-				// Well-known leaf types marshal as a field named
-				// after the type, never flattened.
+				// Well-known leaf types marshal as a field named after the type, never flattened.
 			default:
 				if embedded.Kind() == reflect.Struct {
 					SchemaStructFields(schema, embedded, embeddedOptional)
@@ -208,14 +201,14 @@ func SchemaStructFields(schema *highbase.Schema, t reflect.Type, optional bool) 
 	}
 }
 
-// CanonicalParameters extracts OpenAPI parameters from a handler
-// input type following serde conventions: top-level fields tagged
-// "path", "query", or "header" are parameter groups, and every
-// exported group field with a json name becomes one parameter at that
-// location — untagged fields are skipped, mirroring serde's decoding.
-// body/form/untagged/ignored top-level fields are skipped. Path
-// parameters are always required; other locations follow an explicit
-// required tag, then pointer/omitempty optionality.
+// CanonicalParameters extracts OpenAPI parameters from a handler input
+// type following serde conventions: top-level fields tagged "path",
+// "query", or "header" are parameter groups, and every exported group
+// field with a json name becomes one parameter at that location —
+// untagged fields are skipped, mirroring serde's decoding.
+// body/form/untagged/ignored top-level fields are skipped. Path parameters
+// are always required; other locations follow an explicit required tag,
+// then pointer/omitempty optionality.
 func CanonicalParameters(input reflect.Type) []*v3.Parameter {
 	var parameters []*v3.Parameter
 	for field := range input.Fields() {
@@ -270,8 +263,8 @@ func CanonicalParameters(input reflect.Type) []*v3.Parameter {
 // CanonicalExtensions converts specification extensions into their
 // canonical OpenAPI form: every key carries the "x-" prefix and every
 // value is a YAML node, in surface order. Values that are already
-// *yaml.Node are deep-cloned rather than re-encoded, so shared graphs
-// are never mutated. Returns nil when surface holds no extensions.
+// *yaml.Node are deep-cloned rather than re-encoded, so shared graphs are
+// never mutated. Returns nil when surface holds no extensions.
 //
 //	surface := *orderedmap.ToOrderedMap(map[string]any{
 //		"internal": true,
@@ -291,8 +284,7 @@ func CanonicalExtensions(surface orderedmap.Map[string, any]) *orderedmap.Map[st
 	for key, value := range surface.FromOldest() {
 		var node *yaml.Node
 		if vn, ok := value.(*yaml.Node); ok && vn != nil {
-			// Encode aliases and desolves the input graph in place, clone
-			// instead of mutating a shared node.
+			// Encode aliases and desolves the input graph in place, clone instead of mutating a shared node.
 			node = utils.CloneYAMLNode(vn)
 		} else {
 			node = &yaml.Node{}
@@ -308,13 +300,12 @@ func CanonicalExtensions(surface orderedmap.Map[string, any]) *orderedmap.Map[st
 	return extensions
 }
 
-// MergeOperation overlays the non-zero fields of override on base;
-// either nil means empty. Lists override wholesale — a reflected
-// base never sets them. Parameters merge by (name, in): an override
-// parameter replaces the base one with the same key, new keys
-// append. Responses overlay per status code: override codes add to
-// or replace base codes, untouched codes survive. Extensions merge
-// key-wise.
+// MergeOperation overlays the non-zero fields of override on base; either
+// nil means empty. Lists override wholesale — a reflected base never
+// sets them. Parameters merge by (name, in): an override parameter
+// replaces the base one with the same key, new keys append. Responses
+// overlay per status code: override codes add to or replace base codes,
+// untouched codes survive. Extensions merge key-wise.
 func MergeOperation(base, override *v3.Operation) *v3.Operation {
 	merged := &v3.Operation{}
 	if base != nil {
@@ -400,14 +391,13 @@ func MergeOperation(base, override *v3.Operation) *v3.Operation {
 	return merged
 }
 
-// MergeDocument overlays the non-zero fields of override on base
-// and returns the merged document; either nil means empty. Scalar
-// fields override when set, Info merges field-wise, list fields
-// concatenate base's entries then override's, and map fields merge
-// key-wise with override replacing duplicates. Paths carries over
-// from base untouched — operations accumulate there at
-// registration. The result shares base's Components, whose maps
-// gain override's entries in place.
+// MergeDocument overlays the non-zero fields of override on base and
+// returns the merged document; either nil means empty. Scalar fields
+// override when set, Info merges field-wise, list fields concatenate
+// base's entries then override's, and map fields merge key-wise with
+// override replacing duplicates. Paths carries over from base untouched
+// — operations accumulate there at registration. The result shares
+// base's Components, whose maps gain override's entries in place.
 func MergeDocument(base, override *v3.Document) *v3.Document {
 	document := &v3.Document{}
 	if base != nil {
@@ -473,9 +463,8 @@ func MergeDocument(base, override *v3.Document) *v3.Document {
 	return document
 }
 
-// MergeComponents merges source into target and returns it,
-// allocating target when nil. A component name already present is
-// replaced.
+// MergeComponents merges source into target and returns it, allocating
+// target when nil. A component name already present is replaced.
 func MergeComponents(target, source *v3.Components) *v3.Components {
 	if target == nil {
 		target = NewComponents()
@@ -498,8 +487,8 @@ func MergeComponents(target, source *v3.Components) *v3.Components {
 	return target
 }
 
-// MergeComponentMap sets every source entry on target, allocating
-// the map when nil.
+// MergeComponentMap sets every source entry on target, allocating the map
+// when nil.
 func MergeComponentMap[T any](target, source *orderedmap.Map[string, T]) *orderedmap.Map[string, T] {
 	for name, value := range source.FromOldest() {
 		if target == nil {
@@ -510,9 +499,9 @@ func MergeComponentMap[T any](target, source *orderedmap.Map[string, T]) *ordere
 	return target
 }
 
-// MergeExtensions merges override into target key-wise and returns
-// the merged map; override entries replace target entries with the
-// same key. Returns target unchanged when override is nil.
+// MergeExtensions merges override into target key-wise and returns the
+// merged map; override entries replace target entries with the same key.
+// Returns target unchanged when override is nil.
 func MergeExtensions(target, override *orderedmap.Map[string, *yaml.Node]) *orderedmap.Map[string, *yaml.Node] {
 	if override == nil {
 		return target

@@ -18,8 +18,8 @@ var (
 	_TEXT_UNMARSHALER_TYPE = reflect.TypeFor[encoding.TextUnmarshaler]()
 )
 
-// FieldMask is an immutable set of JSON field paths bound to T.
-// Construct one with Intersect.
+// FieldMask is an immutable set of JSON field paths bound to T. Construct
+// one with Intersect.
 type FieldMask[T any] struct {
 	typ   reflect.Type
 	paths []string
@@ -33,9 +33,9 @@ type node struct {
 	children map[string]*node
 }
 
-// field is a JSON-visible struct field: name is its JSON object key,
-// index is its (possibly promoted) field path, and tagged records
-// whether the name came from an explicit json tag, which wins ties.
+// field is a JSON-visible struct field: name is its JSON object key, index
+// is its (possibly promoted) field path, and tagged records whether the
+// name came from an explicit json tag, which wins ties.
 type field struct {
 	name   string
 	tagged bool
@@ -43,9 +43,9 @@ type field struct {
 	typ    reflect.Type
 }
 
-// Intersect returns a field mask containing the structurally valid
-// overlap between allowed and requested. Malformed, unknown, and
-// disallowed paths are omitted.
+// Intersect returns a field mask containing the structurally valid overlap
+// between allowed and requested. Malformed, unknown, and disallowed paths
+// are omitted.
 func Intersect[T any](allowed, requested []string) *FieldMask[T] {
 	typ := reflect.TypeFor[T]()
 	mask := &FieldMask[T]{typ: typ, root: &node{children: make(map[string]*node)}}
@@ -103,10 +103,10 @@ func (m *FieldMask[T]) Prune(value *T) error {
 	return nil
 }
 
-// Overwrite copies fields selected by the mask from src to dest and
-// leaves all other destination fields untouched. Whole pointer, map,
-// and slice fields use normal Go assignment semantics and may alias
-// src. An empty mask is a no-op.
+// Overwrite copies fields selected by the mask from src to dest and leaves
+// all other destination fields untouched. Whole pointer, map, and slice
+// fields use normal Go assignment semantics and may alias src. An empty
+// mask is a no-op.
 func (m *FieldMask[T]) Overwrite(src, dest *T) error {
 	source, err := m.target(src, "overwrite source")
 	if err != nil {
@@ -158,11 +158,11 @@ func validPaths(typ reflect.Type, paths []string) []string {
 	return normalizePaths(valid)
 }
 
-// validPath reports whether path walks typ through existing JSON
-// fields. Struct fields and string map keys consume one dot-separated
-// part; slices and arrays consume none, so a mask applies to every
-// element. Types with custom marshaling are leaves and reject any
-// path that tries to descend into them.
+// validPath reports whether path walks typ through existing JSON fields.
+// Struct fields and string map keys consume one dot-separated part; slices
+// and arrays consume none, so a mask applies to every element. Types with
+// custom marshaling are leaves and reject any path that tries to descend
+// into them.
 func validPath(typ reflect.Type, path string) bool {
 	if path == "" {
 		return false
@@ -228,8 +228,8 @@ func isStruct(typ reflect.Type) bool {
 	return typ != nil && typ.Kind() == reflect.Struct && !isTerminal(typ)
 }
 
-// isTerminal reports whether typ marshals as a leaf value because it
-// or its pointer implements a JSON or text marshaler interface.
+// isTerminal reports whether typ marshals as a leaf value because it or
+// its pointer implements a JSON or text marshaler interface.
 func isTerminal(typ reflect.Type) bool {
 	if typ == nil {
 		return true
@@ -250,10 +250,10 @@ func isTerminal(typ reflect.Type) bool {
 }
 
 // typeFields returns the JSON-visible fields of typ, resolved the way
-// encoding/json resolves them: anonymous struct fields are promoted,
-// and among candidates sharing a name the shallowest wins, an
-// explicitly tagged one wins a depth tie, and an even tie annihilates
-// the name entirely.
+// encoding/json resolves them: anonymous struct fields are promoted, and
+// among candidates sharing a name the shallowest wins, an explicitly
+// tagged one wins a depth tie, and an even tie annihilates the name
+// entirely.
 func typeFields(typ reflect.Type) []field {
 	var fields []field
 	ancestors := make(map[reflect.Type]bool)
@@ -331,8 +331,8 @@ func typeFields(typ reflect.Type) []field {
 	return visible
 }
 
-// validTag reports whether name is usable as a JSON object key, the
-// same rule encoding/json applies to tag names.
+// validTag reports whether name is usable as a JSON object key, the same
+// rule encoding/json applies to tag names.
 func validTag(name string) bool {
 	if name == "" {
 		return false
@@ -347,9 +347,9 @@ func validTag(name string) bool {
 	return true
 }
 
-// valueByIndex walks a promoted field path, dereferencing pointers
-// along the way. With allocate set, nil pointers on the path are
-// initialized; otherwise a nil pointer abandons the walk.
+// valueByIndex walks a promoted field path, dereferencing pointers along
+// the way. With allocate set, nil pointers on the path are initialized;
+// otherwise a nil pointer abandons the walk.
 func valueByIndex(value reflect.Value, index []int, allocate bool) (reflect.Value, bool) {
 	for _, i := range index {
 		for value.Kind() == reflect.Pointer {

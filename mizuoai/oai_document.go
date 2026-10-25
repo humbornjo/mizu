@@ -32,9 +32,8 @@ const (
 
 type DocumentOption func(*documentConfig)
 
-// documentConfig holds the configuration and registrations used to
-// build an OpenAPI 3.2 document. OpenAPI 3.1 documents can be used as
-// input.
+// documentConfig holds the configuration and registrations used to build
+// an OpenAPI 3.2 document. OpenAPI 3.1 documents can be used as input.
 type documentConfig struct {
 	mu sync.Mutex
 
@@ -42,12 +41,10 @@ type documentConfig struct {
 	renderHTML   bool
 	renderFormat RenderFormat
 
-	// base is the document under construction — registrations
-	// (schemas, operations) accumulate here, starting empty or
+	// base is the document under construction — registrations (schemas, operations) accumulate here, starting empty or
 	// from a preloaded document.
 	base *v3.Document
-	// override carries user-supplied document options, overlaid
-	// on base at render.
+	// override carries user-supplied document options, overlaid on base at render.
 	override *v3.Document
 
 	overridedNames  map[string]string
@@ -56,8 +53,8 @@ type documentConfig struct {
 	operationRoutes map[string]bool
 }
 
-// FromRaw builds the base document from a raw OpenAPI document,
-// panicking when data cannot be parsed.
+// FromRaw builds the base document from a raw OpenAPI document, panicking
+// when data cannot be parsed.
 func (c *documentConfig) FromRaw(data []byte) {
 	document, err := libopenapi.NewDocument(data)
 	if err != nil {
@@ -83,13 +80,12 @@ func (c *documentConfig) FromRaw(data []byte) {
 	}
 }
 
-// ExtractOperation builds the OpenAPI operation for a handler with
-// the given request and response types, following serde tag
-// conventions: input fields carry a json tag marking their location
+// ExtractOperation builds the OpenAPI operation for a handler with the
+// given request and response types, following serde tag conventions: input
+// fields carry a json tag marking their location
 // (path|query|header|body|form) and group fields are structs.
 func (c *documentConfig) ExtractOperation(input reflect.Type, output reflect.Type) *v3.Operation {
-	// (name, in) is the dedup key when merging user-supplied
-	// parameters later.
+	// (name, in) is the dedup key when merging user-supplied parameters later.
 	operation := &v3.Operation{
 		Parameters: internal.CanonicalParameters(input),
 	}
@@ -104,8 +100,7 @@ func (c *documentConfig) ExtractOperation(input reflect.Type, output reflect.Typ
 		case serde.TAG_BODY:
 			mediaType = "application/json"
 		case serde.TAG_FORM:
-			// TODO: multipart/form-data when a []byte file field
-			// carries a contentType tag.
+			// TODO: multipart/form-data when a []byte file field carries a contentType tag.
 			mediaType = "application/x-www-form-urlencoded"
 		default:
 			continue
@@ -122,8 +117,7 @@ func (c *documentConfig) ExtractOperation(input reflect.Type, output reflect.Typ
 		}
 	}
 
-	// Media type mirrors serde.Encode: a string output encodes as
-	// text/plain, anything else as application/json.
+	// Media type mirrors serde.Encode: a string output encodes as text/plain, anything else as application/json.
 	mediaType := "application/json"
 	if output.Kind() == reflect.String {
 		mediaType = "text/plain"
@@ -143,11 +137,11 @@ func (c *documentConfig) ExtractOperation(input reflect.Type, output reflect.Typ
 }
 
 // RegisterSchema returns the schema proxy for t. A named struct type
-// registers once under the base document's Components.Schemas, keyed
-// by CanonicalTypeName with overridedNames applied at registration,
-// and is referenced as "#/components/schemas/<name>". Other types
-// inline their canonical schema. time.Time is named but maps to a
-// string format, not a component.
+// registers once under the base document's Components.Schemas, keyed by
+// CanonicalTypeName with overridedNames applied at registration, and is
+// referenced as "#/components/schemas/<name>". Other types inline their
+// canonical schema. time.Time is named but maps to a string format, not a
+// component.
 func (c *documentConfig) RegisterSchema(t reflect.Type) *base.SchemaProxy {
 	named := t
 	for named.Kind() == reflect.Pointer {
@@ -171,9 +165,9 @@ func (c *documentConfig) RegisterSchema(t reflect.Type) *base.SchemaProxy {
 	return base.CreateSchemaProxyRef("#/components/schemas/" + name)
 }
 
-// RegisterOperation merges config's operation — the user override on
-// the reflected base — into the base document at (method, path).
-// Only the document-level override waits for render.
+// RegisterOperation merges config's operation — the user override on the
+// reflected base — into the base document at (method, path). Only the
+// document-level override waits for render.
 func (c *documentConfig) RegisterOperation(config *operationConfig) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -236,8 +230,8 @@ func (c *documentConfig) RegisterOperation(config *operationConfig) error {
 }
 
 // Render assembles the final OpenAPI document — the base document
-// overlaid with the override document options — and renders it in
-// the given format. _RENDER_FORMAT_AUTO resolves to the configured
+// overlaid with the override document options — and renders it in the
+// given format. _RENDER_FORMAT_AUTO resolves to the configured
 // renderFormat, YAML when unset.
 func (c *documentConfig) Render(format RenderFormat) ([]byte, error) {
 	c.mu.Lock()
@@ -253,8 +247,8 @@ func (c *documentConfig) Render(format RenderFormat) ([]byte, error) {
 		return nil, fmt.Errorf("unknown OpenAPI render format %q", format)
 	}
 
-	// Patch schemas shadow reflected schemas of the same name by
-	// design; log the shadows here, before the merge buries them.
+	// Patch schemas shadow reflected schemas of the same name by design; log the shadows here, before the merge buries
+	// them.
 	if c.base.Components != nil && c.base.Components.Schemas != nil {
 		for name, importPath := range c.patchedSchemas {
 			if _, ok := c.base.Components.Schemas.Get(name); ok {
@@ -263,16 +257,14 @@ func (c *documentConfig) Render(format RenderFormat) ([]byte, error) {
 		}
 	}
 
-	// MergeDocument returns a copy safe to touch; base survives for the
-	// serve-time Render. MergeComponents is the exception — its replace
-	// semantics are idempotent.
+	// MergeDocument returns a copy safe to touch; base survives for the serve-time Render. MergeComponents is the
+	// exception — its replace semantics are idempotent.
 	document := internal.MergeDocument(c.base, c.override)
 	if document.Info.Version == "" {
 		document.Info.Version = "1.0.0"
 	}
 
-	// Both renderers work on the hand-built model — no low-level
-	// document is attached.
+	// Both renderers work on the hand-built model — no low-level document is attached.
 	var rendered []byte
 	var err error
 	switch format {
@@ -285,9 +277,8 @@ func (c *documentConfig) Render(format RenderFormat) ([]byte, error) {
 		return nil, fmt.Errorf("render OpenAPI document: %w", err)
 	}
 
-	// Validate what is served, not the in-memory model: re-parse the
-	// rendered bytes and check them against the spec schema, so
-	// Initialize fails early on an invalid document.
+	// Validate what is served, not the in-memory model: re-parse the rendered bytes and check them against the spec
+	// schema, so Initialize fails early on an invalid document.
 	parsed, err := libopenapi.NewDocument(rendered)
 	if err != nil {
 		return nil, fmt.Errorf("re-parse rendered OpenAPI document: %w", err)
@@ -312,24 +303,24 @@ func (c *documentConfig) Render(format RenderFormat) ([]byte, error) {
 	return rendered, nil
 }
 
-// WithDocumentSelf sets the OpenAPI 3.2 $self URI used as the
-// document base URI.
+// WithDocumentSelf sets the OpenAPI 3.2 $self URI used as the document
+// base URI.
 func WithDocumentSelf(uri string) DocumentOption {
 	return func(c *documentConfig) {
 		c.override.Self = uri
 	}
 }
 
-// WithDocumentJsonSchemaDialect sets the default JSON Schema dialect
-// for Schema Objects in the document.
+// WithDocumentJsonSchemaDialect sets the default JSON Schema dialect for
+// Schema Objects in the document.
 func WithDocumentJsonSchemaDialect(uri string) DocumentOption {
 	return func(c *documentConfig) {
 		c.override.JsonSchemaDialect = uri
 	}
 }
 
-// WithDocumentVersion selects the output OpenAPI version. Versions
-// 3.1.x and 3.2.x are supported. The default is 3.2.0.
+// WithDocumentVersion selects the output OpenAPI version. Versions 3.1.x
+// and 3.2.x are supported. The default is 3.2.0.
 func WithDocumentVersion(version string) DocumentOption {
 	if !strings.HasPrefix(version, "3.1.") && !strings.HasPrefix(version, "3.2.") {
 		panic(fmt.Sprintf("unsupported OpenAPI output version %q: expected 3.1.x or 3.2.x", version))
@@ -374,9 +365,8 @@ func WithDocumentBase(data []byte) DocumentOption {
 	}
 }
 
-// WithDocumentComponents adds reusable OpenAPI components to the
-// generated document. Incompatible components with the same name are
-// rejected.
+// WithDocumentComponents adds reusable OpenAPI components to the generated
+// document. Incompatible components with the same name are rejected.
 func WithDocumentComponents(components *v3.Components) DocumentOption {
 	return func(c *documentConfig) {
 		if components == nil {
@@ -386,15 +376,14 @@ func WithDocumentComponents(components *v3.Components) DocumentOption {
 	}
 }
 
-// WithDocumentPatch merges the component schemas of a raw OpenAPI
-// document — typically one mizucue package's generated output —
-// into the assembled document. importPath is the patch's
-// provenance, carried into panic messages. Schemas are expected to
-// be qualified already (mizucue's default naming): the canonical
-// name is the schema's identity, so a name repeated across patches
-// dedupes silently — first occurrence wins. At render a patch
-// schema shadows the reflected schema of the same name — the CUE
-// document is the richer contract; the shadow is logged at debug
+// WithDocumentPatch merges the component schemas of a raw OpenAPI document
+// — typically one mizucue package's generated output — into the
+// assembled document. importPath is the patch's provenance, carried into
+// panic messages. Schemas are expected to be qualified already (mizucue's
+// default naming): the canonical name is the schema's identity, so a name
+// repeated across patches dedupes silently — first occurrence wins. At
+// render a patch schema shadows the reflected schema of the same name —
+// the CUE document is the richer contract; the shadow is logged at debug
 // level. Fields other than component schemas are ignored.
 func WithDocumentPatch(importPath string, raw []byte) DocumentOption {
 	document, err := libopenapi.NewDocument(raw)
@@ -457,8 +446,8 @@ func WithDocumentInfoVersion(version string) DocumentOption {
 	}
 }
 
-// WithDocumentInfo supplies a complete OpenAPI Info Object.
-// Initialize's title is retained when info does not specify one.
+// WithDocumentInfo supplies a complete OpenAPI Info Object. Initialize's
+// title is retained when info does not specify one.
 func WithDocumentInfo(info *base.Info) DocumentOption {
 	return func(c *documentConfig) {
 		if info == nil {
@@ -473,8 +462,8 @@ func WithDocumentInfo(info *base.Info) DocumentOption {
 	}
 }
 
-// WithDocumentTermsOfService provides a URL to the Terms of Service
-// for the API. Must be in the form of URI.
+// WithDocumentTermsOfService provides a URL to the Terms of Service for
+// the API. Must be in the form of URI.
 //
 // - https://spec.openapis.org/oas/v3.0.4.html#info-object
 func WithDocumentTermsOfService(url string) DocumentOption {
@@ -483,8 +472,7 @@ func WithDocumentTermsOfService(url string) DocumentOption {
 	}
 }
 
-// WithDocumentContact provides contact information for the exposed
-// API.
+// WithDocumentContact provides contact information for the exposed API.
 //
 // - https://spec.openapis.org/oas/v3.0.4.html#contact-object
 func WithDocumentContact(name string, url string, email string, extensions ...orderedmap.Map[string, any],
@@ -504,8 +492,8 @@ func WithDocumentContact(name string, url string, email string, extensions ...or
 	}
 }
 
-// WithDocumentLicense provides the license information for the
-// exposed API.
+// WithDocumentLicense provides the license information for the exposed
+// API.
 //
 // - https://spec.openapis.org/oas/v3.0.4.html#license-object
 func WithDocumentLicense(name string, url string, extensions ...orderedmap.Map[string, any]) DocumentOption {
@@ -546,9 +534,9 @@ func WithDocumentSecurityScheme(name string, scheme *v3.SecurityScheme) Document
 }
 
 // WithDocumentServers adds an array of Server Objects, which provide
-// connectivity information to a target server. If the servers field
-// is not provided, or is an empty array, the default value would be a
-// Server Object with a url value of /.
+// connectivity information to a target server. If the servers field is not
+// provided, or is an empty array, the default value would be a Server
+// Object with a url value of /.
 //
 // - https://spec.openapis.org/oas/v3.0.4.html#server-object
 func WithDocumentServer(
@@ -579,9 +567,9 @@ func WithDocumentServerObject(server *v3.Server) DocumentOption {
 	}
 }
 
-// WithDocumentSecurity adds a security requirement to the operation.
-// Each name MUST correspond to a security scheme which is declared in
-// the Security Schemes under the Components Object.
+// WithDocumentSecurity adds a security requirement to the operation. Each
+// name MUST correspond to a security scheme which is declared in the
+// Security Schemes under the Components Object.
 //
 // - https://spec.openapis.org/oas/v3.0.4.html#security-requirement-object
 func WithDocumentSecurity(requirement map[string][]string) DocumentOption {
@@ -636,8 +624,8 @@ func WithDocumentTagObject(tag *base.Tag) DocumentOption {
 	}
 }
 
-// WithDocumentExternalDocs provides a reference to an external
-// resource for extended documentation.
+// WithDocumentExternalDocs provides a reference to an external resource
+// for extended documentation.
 //
 // - https://spec.openapis.org/oas/v3.0.4.html#external-documentation-object
 func WithDocumentExternalDocs(url string, description string, extensions ...orderedmap.Map[string, any]) DocumentOption {

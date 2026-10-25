@@ -17,14 +17,14 @@ type Option func(*config)
 
 type config func(*handler) *handler
 
-// Initialize sets the default slog logger with a logx handler. If h
-// is nil, it uses the current default handler.
+// Initialize sets the default slog logger with a logx handler. If h is
+// nil, it uses the current default handler.
 func Initialize(h slog.Handler, opts ...Option) {
 	slog.SetDefault(slog.New(New(h, opts...)))
 }
 
-// New creates a new logx handler that wraps the provided
-// slog.Handler. If h is nil, it uses the current default handler.
+// New creates a new logx handler that wraps the provided slog.Handler. If
+// h is nil, it uses the current default handler.
 func New(h slog.Handler, opts ...Option) *handler {
 	if h == nil {
 		h = slog.NewTextHandler(os.Stdout, nil)
@@ -43,9 +43,9 @@ func New(h slog.Handler, opts ...Option) *handler {
 }
 
 // LogContext adds slog attributes to the context that will be
-// automatically included in log records when using context-aware
-// logging functions like slog.InfoContext, slog.ErrorContext,
-// slog.DebugContext, etc.
+// automatically included in log records when using context-aware logging
+// functions like slog.InfoContext, slog.ErrorContext, slog.DebugContext,
+// etc.
 //
 // Example:
 //
@@ -90,8 +90,8 @@ func WithLogLevel[T level](level T) Option {
 	}
 }
 
-// WithAttributes adds default attributes that will be included in all
-// log records.
+// WithAttributes adds default attributes that will be included in all log
+// records.
 func WithAttributes(attrs []slog.Attr) Option {
 	return func(m *config) {
 		old := *m

@@ -57,11 +57,10 @@ func init() {
 	PROTOCOLS_HTTP2 = protocols
 }
 
-// NewServer creates a new mizu HTTP server with the given service
-// name and options. The service name is used for logging and
-// debugging purposes. Default configuration includes 5s readiness
-// drain delay (k8s integration), graceful shutdown with 15s timeout
-// and 3s hard timeout.
+// NewServer creates a new mizu HTTP server with the given service name and
+// options. The service name is used for logging and debugging purposes.
+// Default configuration includes 5s readiness drain delay (k8s
+// integration), graceful shutdown with 15s timeout and 3s hard timeout.
 func NewServer(srvName string, opts ...Option) *Server {
 	config := new(config(func(s *Server) *Server {
 		s.config = new(_DEFAULT_SERVER_CONFIG)
@@ -91,8 +90,8 @@ func NewServer(srvName string, opts ...Option) *Server {
 }
 
 // WithReadinessDrainDelay sets the delay before starting graceful
-// shutdown. This allows load balancers and health checks time to
-// detect the server is shutting down.
+// shutdown. This allows load balancers and health checks time to detect
+// the server is shutting down.
 func WithReadinessDrainDelay(d time.Duration) Option {
 	if d < 0 {
 		d = 0
@@ -108,9 +107,9 @@ func WithReadinessDrainDelay(d time.Duration) Option {
 	}
 }
 
-// WithShutdownPeriod sets the timeout for graceful shutdown. The
-// server will wait this long for ongoing requests to complete before
-// forcing shutdown.
+// WithShutdownPeriod sets the timeout for graceful shutdown. The server
+// will wait this long for ongoing requests to complete before forcing
+// shutdown.
 func WithShutdownPeriod(d time.Duration) Option {
 	return func(m *config) {
 		old := *m
@@ -123,9 +122,9 @@ func WithShutdownPeriod(d time.Duration) Option {
 	}
 }
 
-// WithHardShutdownPeriod sets the timeout for hard shutdown after
-// graceful shutdown fails. This is the final wait time before the
-// server process terminates.
+// WithHardShutdownPeriod sets the timeout for hard shutdown after graceful
+// shutdown fails. This is the final wait time before the server process
+// terminates.
 func WithHardShutdownPeriod(d time.Duration) Option {
 	return func(m *config) {
 		old := *m
@@ -165,11 +164,11 @@ func WithCustomMux(mux Mux) Option {
 	}
 }
 
-// WithCustomHttpServer allows using a custom http.Server instead of
-// the default one. This gives full control over server configuration
-// like timeouts, TLS, etc. cleanupFns are called after the server
-// completes shutdown, it is commonly used to stop the in flight
-// requests (e.g. context.CancelFunc).
+// WithCustomHttpServer allows using a custom http.Server instead of the
+// default one. This gives full control over server configuration like
+// timeouts, TLS, etc. cleanupFns are called after the server completes
+// shutdown, it is commonly used to stop the in flight requests (e.g.
+// context.CancelFunc).
 func WithCustomHttpServer(server *http.Server, cleanupFns ...func()) Option {
 	return func(m *config) {
 		old := *m
@@ -183,10 +182,9 @@ func WithCustomHttpServer(server *http.Server, cleanupFns ...func()) Option {
 	}
 }
 
-// WithWizardHandleReadiness sets a custom readiness check handler.
-// The wizard function receives the server's shutdown state and should
-// return an HTTP handler that responds to readiness/health check
-// requests.
+// WithWizardHandleReadiness sets a custom readiness check handler. The
+// wizard function receives the server's shutdown state and should return
+// an HTTP handler that responds to readiness/health check requests.
 func WithWizardHandleReadiness(pattern string, wizard func(*atomic.Bool) http.HandlerFunc) Option {
 	return func(m *config) {
 		old := *m
@@ -200,10 +198,10 @@ func WithWizardHandleReadiness(pattern string, wizard func(*atomic.Bool) http.Ha
 	}
 }
 
-// WithProfilingHandlers enables Go's built-in pprof profiling
-// endpoints. This registers handlers at /debug/pprof/* for CPU,
-// memory, goroutine profiling, etc. Should only be enabled in
-// development environments, or with proper access control.
+// WithProfilingHandlers enables Go's built-in pprof profiling endpoints.
+// This registers handlers at /debug/pprof/* for CPU, memory, goroutine
+// profiling, etc. Should only be enabled in development environments, or
+// with proper access control.
 //
 // nolint: gosec // G710: Open redirect via taint analysis
 func WithProfilingHandlers() Option {
@@ -268,9 +266,9 @@ func (r *routes) add(method, pattern string, prefixes ...string) {
 	rr.add(method, pattern, prefixes[1:]...)
 }
 
-// WithDisplayRoutesOnStartup enables logging of all registered
-// routes when the server starts. This is useful for debugging
-// and helping developers to see available endpoints.
+// WithDisplayRoutesOnStartup enables logging of all registered routes when
+// the server starts. This is useful for debugging and helping developers
+// to see available endpoints.
 func WithRevealRoutes() Option {
 	var re func(*routes, int)
 	re = func(r *routes, depth int) {

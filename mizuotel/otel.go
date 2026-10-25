@@ -18,8 +18,7 @@ import (
 type Option func(*config)
 
 type config struct {
-	// Service attributes (spec 1.40.0)
-	// https://opentelemetry.io/docs/specs/semconv/registry/attributes/service/
+	// Service attributes (spec 1.40.0) https://opentelemetry.io/docs/specs/semconv/registry/attributes/service/
 	serviceName       string
 	serviceVersion    string
 	serviceNamespace  string
@@ -43,26 +42,25 @@ func WithServiceVersion(version string) Option {
 	return func(c *config) { c.serviceVersion = version }
 }
 
-// WithServiceNamespace sets the service namespace for the
-// OpenTelemetry resource.
+// WithServiceNamespace sets the service namespace for the OpenTelemetry
+// resource.
 func WithServiceNamespace(ns string) Option {
 	return func(c *config) { c.serviceNamespace = ns }
 }
 
-// WithServiceInstanceId sets the service instance id for the
-// OpenTelemetry resource.
+// WithServiceInstanceId sets the service instance id for the OpenTelemetry
+// resource.
 func WithServiceInstanceId(id string) Option {
 	return func(c *config) { c.serviceInstanceId = id }
 }
 
-// WithEnvironment sets the deployment environment for the
-// OpenTelemetry resource.
+// WithEnvironment sets the deployment environment for the OpenTelemetry
+// resource.
 func WithEnvironment(env string) Option {
 	return func(c *config) { c.environment = env }
 }
 
-// WithAttributes adds custom attributes to the OpenTelemetry
-// resource.
+// WithAttributes adds custom attributes to the OpenTelemetry resource.
 func WithAttributes(attrs ...attribute.KeyValue) Option {
 	return func(c *config) { c.attrs = append(c.attrs, attrs...) }
 }
@@ -73,21 +71,21 @@ func WithResource(res *resource.Resource) Option {
 	return func(c *config) { c.resource = res }
 }
 
-// WithTracerProvider sets a custom tracer provider instead of
-// creating a default one.
+// WithTracerProvider sets a custom tracer provider instead of creating a
+// default one.
 func WithTracerProvider(tp trace.TracerProvider) Option {
 	return func(c *config) { c.tracerProvider = tp }
 }
 
-// WithMeterProvider sets a custom meter provider instead of
-// creating a default one.
+// WithMeterProvider sets a custom meter provider instead of creating a
+// default one.
 func WithMeterProvider(mp metric.MeterProvider) Option {
 	return func(c *config) { c.meterProvider = mp }
 }
 
 // Initialize sets up OpenTelemetry with the given options. It creates
-// default tracer and meter providers with basic configuration, or
-// uses custom providers if specified in the options.
+// default tracer and meter providers with basic configuration, or uses
+// custom providers if specified in the options.
 func Initialize(opts ...Option) error {
 	config := &config{
 		serviceName:       "mizu-service",
@@ -155,9 +153,9 @@ func Initialize(opts ...Option) error {
 	return nil
 }
 
-// Shutdown gracefully shuts down the OpenTelemetry providers. It
-// attempts to shutdown both tracer and meter providers and returns
-// the first error encountered.
+// Shutdown gracefully shuts down the OpenTelemetry providers. It attempts
+// to shutdown both tracer and meter providers and returns the first error
+// encountered.
 func Shutdown(ctx context.Context) error {
 	var errs []error
 

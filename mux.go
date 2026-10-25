@@ -6,13 +6,13 @@ import (
 	"sync"
 )
 
-// Mux is considered a common engine for registering routes. Different
-// from framework like `chi`, Mux in `mizu` only preserve the base
-// functionalities of Mux, additional features like Group, Middleware
-// which may vary from implementation to implementation are moved to
-// Server level so that Mux can finally focus on the core routing
-// engine implementation that is of vital importance to the performance
-// of service built on `net/http`.
+// Mux is considered a common engine for registering routes. Different from
+// framework like `chi`, Mux in `mizu` only preserve the base
+// functionalities of Mux, additional features like Group, Middleware which
+// may vary from implementation to implementation are moved to Server level
+// so that Mux can finally focus on the core routing engine implementation
+// that is of vital importance to the performance of service built on
+// `net/http`.
 type Mux interface {
 	http.Handler
 
@@ -84,7 +84,8 @@ func (m *mux) Connect(pattern string, handler http.HandlerFunc) {
 	m.handle(http.MethodConnect, pattern, handler)
 }
 
-// handle registers the handler for the given pattern with prefix and middlewares from server
+// handle registers the handler for the given pattern with prefix and
+// middlewares from server
 func (m *mux) handle(method string, pattern string, handler http.Handler) {
 	m.mu.Lock()
 	defer m.mu.Unlock()

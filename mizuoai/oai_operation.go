@@ -24,16 +24,16 @@ type operationConfig struct {
 	components *v3.Components
 }
 
-// Ensure initializes the fields that enrichment and rendering write
-// into, so later code never sees nil.
+// Ensure initializes the fields that enrichment and rendering write into,
+// so later code never sees nil.
 func (c *operationConfig) Ensure() {
 	if c.override == nil {
 		c.override = &v3.Operation{}
 	}
 }
 
-// WithOperationTags adds tags to the operation, for logical grouping
-// of operations.
+// WithOperationTags adds tags to the operation, for logical grouping of
+// operations.
 //
 // - https://spec.openapis.org/oas/v3.0.4.html#operation-object
 func WithOperationTags(tags ...string) OperationOption {
@@ -51,9 +51,8 @@ func WithOperationSummary(summary string) OperationOption {
 	}
 }
 
-// WithOperationDescription provides a verbose explanation of the
-// operation behavior. CommonMark syntax MAY be used for rich text
-// representation.
+// WithOperationDescription provides a verbose explanation of the operation
+// behavior. CommonMark syntax MAY be used for rich text representation.
 //
 // - https://spec.openapis.org/oas/v3.0.4.html#operation-object
 func WithOperationDescription(description string) OperationOption {
@@ -62,8 +61,8 @@ func WithOperationDescription(description string) OperationOption {
 	}
 }
 
-// WithOperationExternalDocs provides a reference to an external
-// resource for extended documentation.
+// WithOperationExternalDocs provides a reference to an external resource
+// for extended documentation.
 //
 // - https://spec.openapis.org/oas/v3.0.4.html#external-documentation-object
 func WithOperationExternalDocs(url string, description string, extensions ...orderedmap.Map[string, any]) OperationOption {
@@ -80,10 +79,10 @@ func WithOperationExternalDocs(url string, description string, extensions ...ord
 	}
 }
 
-// WithOperationOperationId provides a unique string used to identify
-// the operation. Unique string used to identify the operation. The id
-// MUST be unique among all operations described in the API. The
-// operationId value is case-sensitive.
+// WithOperationOperationId provides a unique string used to identify the
+// operation. Unique string used to identify the operation. The id MUST be
+// unique among all operations described in the API. The operationId value
+// is case-sensitive.
 //
 // - https://spec.openapis.org/oas/v3.0.4.html#operation-object
 func WithOperationOperationId(operationId string) OperationOption {
@@ -93,13 +92,12 @@ func WithOperationOperationId(operationId string) OperationOption {
 }
 
 // WithOperationParameters adds parameters to the operation. A list of
-// parameters that are applicable for this operation. If a parameter
-// is already defined in the Path Item, the new definition will
-// override it but can never remove it. The list MUST NOT include
-// duplicated parameters. A unique parameter is defined by a
-// combination of a name and location. The list can use the Reference
-// Object to link to parameters that are defined in the OpenAPI
-// Object’s.
+// parameters that are applicable for this operation. If a parameter is
+// already defined in the Path Item, the new definition will override it
+// but can never remove it. The list MUST NOT include duplicated
+// parameters. A unique parameter is defined by a combination of a name and
+// location. The list can use the Reference Object to link to parameters
+// that are defined in the OpenAPI Object’s.
 //
 // - https://spec.openapis.org/oas/v3.0.4.html#path-item-object
 func WithOperationParameters(parameters ...*v3.Parameter) OperationOption {
@@ -108,8 +106,8 @@ func WithOperationParameters(parameters ...*v3.Parameter) OperationOption {
 	}
 }
 
-// WithOperation uses a complete OpenAPI operation. Typed reflection
-// is skipped, making the supplied operation authoritative.
+// WithOperation uses a complete OpenAPI operation. Typed reflection is
+// skipped, making the supplied operation authoritative.
 func WithOperationBase(operation *v3.Operation) OperationOption {
 	return func(c *operationConfig) {
 		if operation == nil {
@@ -119,27 +117,23 @@ func WithOperationBase(operation *v3.Operation) OperationOption {
 	}
 }
 
-// WithOperationPatch merges a raw OpenAPI operation fragment —
-// typically the output of mizucue's Schema.Operation — over the
-// reflected operation. The fragment carries what reflection cannot
-// infer per operation: request body media types, response tables.
-// It parses at option construction and panics on malformed input.
-// Local refs ("#/components/...") resolve against the final document
-// at render time; construction indexes empty placeholders for them.
-// Options apply in order: fields set by later options win over the
-// patch.
+// WithOperationPatch merges a raw OpenAPI operation fragment — typically
+// the output of mizucue's Schema.Operation — over the reflected
+// operation. The fragment carries what reflection cannot infer per
+// operation: request body media types, response tables. It parses at
+// option construction and panics on malformed input. Local refs
+// ("#/components/...") resolve against the final document at render time;
+// construction indexes empty placeholders for them. Options apply in
+// order: fields set by later options win over the patch.
 func WithOperationPatch(raw []byte) OperationOption {
-	// Parse the standalone fragment by wrapping it in a minimal
-	// document, so libopenapi's full pipeline handles the nested
+	// Parse the standalone fragment by wrapping it in a minimal document, so libopenapi's full pipeline handles the nested
 	// structures.
 	var fragment map[string]any
 	if err := json.Unmarshal(raw, &fragment); err != nil {
 		panic(fmt.Sprintf("parse OpenAPI operation patch: %v", err))
 	}
-	// The fragment's local refs target the final document's
-	// components, unknown here: index an empty placeholder per ref so
-	// building the shell resolves. Proxies keep their $ref string
-	// through merge and render, so placeholders never leak.
+	// The fragment's local refs target the final document's components, unknown here: index an empty placeholder per ref
+	// so building the shell resolves. Proxies keep their $ref string through merge and render, so placeholders never leak.
 	refs := map[string]map[string]any{}
 	var collect func(value any)
 	collect = func(value any) {
@@ -239,10 +233,10 @@ func WithOperationResponse(code int, response *v3.Response) OperationOption {
 }
 
 // WithOperationCallback adds a callback to the operation. A possible
-// out-of band callbacks related to the parent operation. The key is
-// a unique identifier for the Callback Object. Value is a Callback
-// Object that describes a request that may be initiated by the API
-// provider and the expected responses.
+// out-of band callbacks related to the parent operation. The key is a
+// unique identifier for the Callback Object. Value is a Callback Object
+// that describes a request that may be initiated by the API provider and
+// the expected responses.
 //
 // - https://spec.openapis.org/oas/v3.0.4.html#operation-object
 func WithOperationCallback(key string, value *v3.Callback) OperationOption {
@@ -267,9 +261,9 @@ func WithOperationDeprecated() OperationOption {
 	}
 }
 
-// WithOperationSecurity adds security requirements to the operation.
-// Each name MUST correspond to a security scheme which is declared in
-// the Security Schemes under the Components Object.
+// WithOperationSecurity adds security requirements to the operation. Each
+// name MUST correspond to a security scheme which is declared in the
+// Security Schemes under the Components Object.
 //
 // - https://spec.openapis.org/oas/v3.0.4.html#security-requirement-object
 func WithOperationSecurity(requirement map[string][]string) OperationOption {
@@ -289,9 +283,9 @@ func WithOperationSecurity(requirement map[string][]string) OperationOption {
 }
 
 // WithOperationServer adds an Server Objects to the operation. An
-// alternative servers array to service this operation. If a servers
-// array is specified at the Path Item Object or OpenAPI Object level,
-// it will be overridden by this value.
+// alternative servers array to service this operation. If a servers array
+// is specified at the Path Item Object or OpenAPI Object level, it will be
+// overridden by this value.
 //
 // - https://spec.openapis.org/oas/v3.0.4.html#server-object
 func WithOperationServer(url string, desc string, variables map[string]*v3.ServerVariable,

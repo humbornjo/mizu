@@ -72,8 +72,7 @@ func (d *formDecoder) Decode(v any) error {
 	}
 	rv := reflect.ValueOf(v).Elem()
 
-	// Assert form as `*httpbody.HttpBody`
-	// _, ok := form.(*httpbody.HttpBody)
+	// Assert form as `*httpbody.HttpBody` _, ok := form.(*httpbody.HttpBody)
 	form := rv.FieldByName("Form")
 	form.Set(reflect.New(form.Type().Elem()))
 

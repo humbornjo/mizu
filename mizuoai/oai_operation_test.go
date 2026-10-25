@@ -43,8 +43,7 @@ func TestMizuOai_WithOperationPatch(t *testing.T) {
 	assert.Contains(t, document, "OK")
 }
 
-// Options apply in order: fields set by a later option win over the
-// patch.
+// Options apply in order: fields set by a later option win over the patch.
 func TestMizuOai_WithOperationPatchOrder(t *testing.T) {
 	srv := mizu.NewServer("test")
 	err := mizuoai.Initialize(srv, "test")
@@ -68,10 +67,10 @@ func TestMizuOai_WithOperationPatchParsePanics(t *testing.T) {
 	})
 }
 
-// A fragment's local refs target the final document's components,
-// unknown at option construction: placeholders let the shell build,
-// and the rendered document keeps the refs once a document patch
-// supplies the components.
+// A fragment's local refs target the final document's components, unknown
+// at option construction: placeholders let the shell build, and the
+// rendered document keeps the refs once a document patch supplies the
+// components.
 func TestMizuOai_WithOperationPatchRefs(t *testing.T) {
 	const patch = `{
 		"requestBody": {"content": {"multipart/form-data": {"schema": {"$ref": "#/components/schemas/Patched"}}}},

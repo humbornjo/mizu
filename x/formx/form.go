@@ -21,8 +21,8 @@ import (
 
 var ErrFileTooLarge = errors.New("file too large")
 
-// FileReader wraps an io.ReadCloser with size limiting, SHA-256
-// checksum calculation, and MIME type detection.
+// FileReader wraps an io.ReadCloser with size limiting, SHA-256 checksum
+// calculation, and MIME type detection.
 type FileReader struct {
 	readBytes  int64
 	limitBytes int64
@@ -38,17 +38,16 @@ type FileReader struct {
 // FileReaderOption configures a FileReader.
 type FileReaderOption func(*FileReader)
 
-// WithFileLimitBytes sets the maximum number of bytes that can be
-// read from the file. Files larger than this limit return
-// ErrFileTooLarge.
+// WithFileLimitBytes sets the maximum number of bytes that can be read
+// from the file. Files larger than this limit return ErrFileTooLarge.
 func WithFileLimitBytes(limit int64) FileReaderOption {
 	return func(r *FileReader) {
 		r.limitBytes = limit
 	}
 }
 
-// NewFileReader creates a streaming file reader that calculates a
-// SHA-256 checksum and detects the MIME type from the first 512 bytes.
+// NewFileReader creates a streaming file reader that calculates a SHA-256
+// checksum and detects the MIME type from the first 512 bytes.
 func NewFileReader(rx io.ReadCloser, opts ...FileReaderOption) *FileReader {
 	hash := sha256.New()
 	reader := &FileReader{
@@ -73,8 +72,8 @@ func NewFileReader(rx io.ReadCloser, opts ...FileReaderOption) *FileReader {
 	return reader
 }
 
-// Checksum returns the SHA-256 checksum of the data read so far as a
-// hex string.
+// Checksum returns the SHA-256 checksum of the data read so far as a hex
+// string.
 func (r *FileReader) Checksum() string {
 	return hex.EncodeToString(r.hash.Sum(nil))
 }
@@ -116,14 +115,13 @@ func (r *FileReader) Close() error {
 	return r.closer.Close()
 }
 
-// FormReader streams multipart form parts and locates a configured
-// file part.
+// FormReader streams multipart form parts and locates a configured file
+// part.
 type FormReader interface {
 	// NextPart returns the next multipart form part.
 	NextPart() (*multipart.Part, error)
 
-	// File advances to the configured file field. The returned purge
-	// function consumes the remaining parts.
+	// File advances to the configured file field. The returned purge function consumes the remaining parts.
 	File() (*multipart.Part, func() error, error)
 
 	// Close releases resources owned by the reader.
@@ -143,24 +141,22 @@ type formReader struct {
 // FormReaderOption configures a FormReader.
 type FormReaderOption func(*formReader)
 
-// WithFormFieldLimitBytes sets the maximum number of bytes read for
-// each declared non-file field. The exceeding bytes are discarded.
+// WithFormFieldLimitBytes sets the maximum number of bytes read for each
+// declared non-file field. The exceeding bytes are discarded.
 func WithFormFieldLimitBytes(limit int64) FormReaderOption {
 	return func(r *formReader) {
 		r.bufferSize = limit
 	}
 }
 
-// NewFormReader creates a new FormReader for processing multipart
-// form data from an HTTP request. The fileField parameter specifies
-// which form field contains the file data, while other declared
-// fields are mapped to message, which must be a non-nil pointer to a
-// struct.
+// NewFormReader creates a new FormReader for processing multipart form
+// data from an HTTP request. The fileField parameter specifies which form
+// field contains the file data, while other declared fields are mapped to
+// message, which must be a non-nil pointer to a struct.
 //
 // WARN: If message is not nil, every part except the file field is
 // consumed and mapped best-effort — unreadable or unconvertible parts
-// leave the field untouched. To handle parts manually, pass a nil
-// message.
+// leave the field untouched. To handle parts manually, pass a nil message.
 func NewFormReader[T any](
 	fileField string, request *http.Request, message *T, opts ...FormReaderOption,
 ) (FormReader, error) {
@@ -218,10 +214,9 @@ func NewFormReader[T any](
 	return rx, nil
 }
 
-// NextPart returns the next multipart form part. It automatically
-// handles declared non-file fields by mapping them to the message.
-// The file field and undeclared parts are returned as-is for manual
-// processing.
+// NextPart returns the next multipart form part. It automatically handles
+// declared non-file fields by mapping them to the message. The file field
+// and undeclared parts are returned as-is for manual processing.
 func (r *formReader) NextPart() (*multipart.Part, error) {
 	part, err := r.inner.NextPart()
 	if err != nil {
@@ -235,9 +230,9 @@ func (r *formReader) NextPart() (*multipart.Part, error) {
 	return part, nil
 }
 
-// File returns the file part in the form. Fields after the file part
-// can be accessed with NextPart. This function internally calls
-// NextPart until the file part is found.
+// File returns the file part in the form. Fields after the file part can
+// be accessed with NextPart. This function internally calls NextPart until
+// the file part is found.
 func (r *formReader) File() (*multipart.Part, func() error, error) {
 	var fpart *multipart.Part
 	var err error
@@ -296,9 +291,9 @@ func (r *formReader) trySetMessage(part *multipart.Part) {
 	_ = part.Close()
 }
 
-// formFieldName resolves a struct field's form name: the form tag
-// wins, then the json tag, then the Go field name. "-" in either tag
-// ignores the field.
+// formFieldName resolves a struct field's form name: the form tag wins,
+// then the json tag, then the Go field name. "-" in either tag ignores the
+// field.
 func formFieldName(field reflect.StructField) (string, bool) {
 	if raw, ok := field.Tag.Lookup("form"); ok {
 		name, _, _ := strings.Cut(raw, ",")
