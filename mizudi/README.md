@@ -7,7 +7,7 @@ A powerful Go framework that combines automatic configuration loading with depen
 ## Installation
 
 ```bash
-go get github.com/humbornjo/mizu/mizudi@v0.3.0
+go get github.com/humbornjo/mizu/mizudi@v0.3.2
 ```
 
 ## Philosophy

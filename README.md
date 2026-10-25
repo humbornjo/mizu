@@ -20,15 +20,15 @@ Mizu provides middleware composition, lifecycle hooks, and observability feature
 ## Installation
 
 ```bash
-go get github.com/humbornjo/mizu@v0.3.0
+go get github.com/humbornjo/mizu@v0.3.2
 
 # Other Modules
-go get github.com/humbornjo/mizu/mizumw@v0.3.0
-go get github.com/humbornjo/mizu/mizudi@v0.3.0
-go get github.com/humbornjo/mizu/mizuoai@v0.3.0
-go get github.com/humbornjo/mizu/mizucue@v0.3.0
-go get github.com/humbornjo/mizu/mizuotel@v0.3.0
-go get github.com/humbornjo/mizu/mizuconnect@v0.3.0
+go get github.com/humbornjo/mizu/mizumw@v0.3.2
+go get github.com/humbornjo/mizu/mizudi@v0.3.2
+go get github.com/humbornjo/mizu/mizuoai@v0.3.2
+go get github.com/humbornjo/mizu/mizucue@v0.3.2
+go get github.com/humbornjo/mizu/mizuotel@v0.3.2
+go get github.com/humbornjo/mizu/mizuconnect@v0.3.2
 ```
 
 ## Quick Start
