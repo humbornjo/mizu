@@ -6,8 +6,7 @@ import (
 	"fmt"
 	"io/fs"
 	"iter"
-	"os"
-	"path/filepath"
+	"path"
 	"slices"
 	"strings"
 
@@ -52,33 +51,10 @@ type Module interface {
 // and one directory per package, imports resolving through the declared
 // module path.
 //
-// The loader's recursive wildcard cannot walk a virtual filesystem, so
-// fsys is mirrored into an overlay on a scratch host directory; package
-// discovery, module metadata, and CUE file selection stay with the loader.
+// The loader reads fsys directly; package discovery, module metadata, and
+// CUE file selection stay with the loader.
 func LoadModule(fsys fs.FS) (Module, error) {
-	root, err := os.MkdirTemp("", "mizucue-*")
-	if err != nil {
-		return nil, fmt.Errorf("load CUE module: %w", err)
-	}
-	defer func() { _ = os.RemoveAll(root) }()
-
-	overlay := map[string]load.Source{}
-	err = fs.WalkDir(fsys, ".", func(name string, entry fs.DirEntry, err error) error {
-		if err != nil || entry.IsDir() {
-			return err
-		}
-		data, err := fs.ReadFile(fsys, name)
-		if err != nil {
-			return err
-		}
-		overlay[filepath.Join(root, filepath.FromSlash(name))] = load.FromBytes(data)
-		return nil
-	})
-	if err != nil {
-		return nil, fmt.Errorf("load CUE module: %w", err)
-	}
-
-	instances := load.Instances([]string{"./..."}, &load.Config{Dir: root, Overlay: overlay})
+	instances := load.Instances([]string{"./..."}, &load.Config{FS: fsys})
 	if len(instances) == 0 {
 		return nil, fmt.Errorf("load CUE module: no packages found")
 	}
@@ -228,12 +204,12 @@ func (m *module) QualifiedNameFunc(current *build.Instance) func(cue.Value, cue.
 		}
 		return b.String()
 	}
-	return func(val cue.Value, path cue.Path) string {
+	return func(val cue.Value, cuepath cue.Path) string {
 		source := current
-		if def := val.LookupPath(path); def.Exists() {
+		if def := val.LookupPath(cuepath); def.Exists() {
 			if filename := def.Pos().Filename(); filename != "" {
 				for _, instance := range m.instances {
-					if filepath.Dir(filename) == instance.Dir {
+					if path.Dir(filename) == instance.Dir {
 						source = instance
 						break
 					}
@@ -242,8 +218,8 @@ func (m *module) QualifiedNameFunc(current *build.Instance) func(cue.Value, cue.
 		}
 		importPath, _, _ := strings.Cut(source.ImportPath, "@")
 
-		labels := make([]string, 0, len(path.Selectors()))
-		for _, sel := range path.Selectors() {
+		labels := make([]string, 0, len(cuepath.Selectors()))
+		for _, sel := range cuepath.Selectors() {
 			labels = append(labels, selectorLabel(sel))
 		}
 		return canonicalName(importPath + "." + strings.Join(labels, "."))
