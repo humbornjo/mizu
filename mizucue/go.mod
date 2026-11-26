@@ -1,6 +1,6 @@
 module github.com/humbornjo/mizu/mizucue
 
-go 1.27.0
+go 1.26.0
 
 require (
 	cuelang.org/go v0.17.1

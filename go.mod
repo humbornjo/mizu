@@ -1,6 +1,6 @@
 module github.com/humbornjo/mizu
 
-go 1.27.0
+go 1.26.0
 
 require github.com/stretchr/testify v1.11.1
 
