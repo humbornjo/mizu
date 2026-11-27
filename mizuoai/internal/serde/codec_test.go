@@ -60,6 +60,76 @@ func TestInternal_CodecDecode(t *testing.T) {
 	}
 }
 
+func TestInternal_CodecDecodeQuerySlices(t *testing.T) {
+	type input struct {
+		Query struct {
+			Roles []string `json:"roles[]"`
+			Ids   []int    `json:"ids"`
+		} `json:"query"`
+	}
+
+	tests := []struct {
+		name      string
+		target    string
+		wantRoles []string
+		wantIds   []int
+		wantErr   bool
+	}{
+		{
+			name:      "repeated strings",
+			target:    "/?roles[]=owner&roles[]=membership_admin",
+			wantRoles: []string{"owner", "membership_admin"},
+		},
+		{
+			name:      "single string",
+			target:    "/?roles[]=owner",
+			wantRoles: []string{"owner"},
+		},
+		{
+			name:    "repeated integers",
+			target:  "/?ids=1&ids=2",
+			wantIds: []int{1, 2},
+		},
+		{
+			name:      "JSON array",
+			target:    "/?roles[]=" + url.QueryEscape(`["owner","membership_admin"]`),
+			wantRoles: []string{"owner", "membership_admin"},
+		},
+		{
+			name:    "malformed JSON array",
+			target:  "/?ids=[1,2",
+			wantErr: true,
+		},
+	}
+
+	c, err := NewCodec[input, any]()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodGet, tt.target, nil)
+			_, rx := c.Split(httptest.NewRecorder(), req)
+			got, err := rx.Xread()
+			if tt.wantErr {
+				if err == nil {
+					t.Fatal("expected error")
+				}
+				return
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !reflect.DeepEqual(got.Query.Roles, tt.wantRoles) {
+				t.Fatalf("got roles %v, want %v", got.Query.Roles, tt.wantRoles)
+			}
+			if !reflect.DeepEqual(got.Query.Ids, tt.wantIds) {
+				t.Fatalf("got ids %v, want %v", got.Query.Ids, tt.wantIds)
+			}
+		})
+	}
+}
+
 func TestInternal_NewCodec(t *testing.T) {
 	type badQuery struct {
 		Query int `json:"query"`

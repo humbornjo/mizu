@@ -237,23 +237,23 @@ func (c codec[I, O]) DecodeFormFunc(numField int) func(*http.Request, *I) error 
 }
 
 func (c codec[I, O]) DecodeParamsFunc(numField int, tt TagType) func(r *http.Request, val *I) error {
-	retrieve := func(rx *http.Request, name string) (string, bool) {
+	retrieve := func(rx *http.Request, name string) ([]string, bool) {
 		switch tt {
 		case TAG_PATH:
-			return rx.PathValue(name), true
+			return []string{rx.PathValue(name)}, true
 		case TAG_QUERY:
 			values, ok := rx.URL.Query()[name]
 			if !ok || len(values) == 0 {
-				return "", false
+				return nil, false
 			}
-			return values[0], true
+			return values, true
 		case TAG_HEADER:
 			// Replace all underline with hyphens for Canonical purposes
 			values := rx.Header.Values(strings.ReplaceAll(name, "_", "-"))
 			if len(values) == 0 {
-				return "", false
+				return nil, false
 			}
-			return values[0], true
+			return values, true
 		default:
 			panic("unreachable")
 		}
@@ -273,12 +273,12 @@ func (c codec[I, O]) DecodeParamsFunc(numField int, tt TagType) func(r *http.Req
 		}
 
 		for num, name := range fieldlet.Fields() {
-			value, present := retrieve(r, name)
+			values, present := retrieve(r, name)
 			if !present {
 				continue
 			}
 			f := st.Field(num)
-			if e := SetFieldValue(f, value); e != nil {
+			if e := setFieldValues(f, values); e != nil {
 				if err == nil {
 					err = fmt.Errorf("failed to decode %s: %w", name, e)
 				} else {
@@ -288,6 +288,40 @@ func (c codec[I, O]) DecodeParamsFunc(numField int, tt TagType) func(r *http.Req
 		}
 		return err
 	}
+}
+
+func setFieldValues(field reflect.Value, surfaces []string) error {
+	typ := field.Type()
+	for typ.Kind() == reflect.Pointer {
+		typ = typ.Elem()
+	}
+	if typ.Kind() != reflect.Slice || typ.Elem().Kind() == reflect.Uint8 {
+		return SetFieldValue(field, surfaces[0])
+	}
+
+	// Preserve support for JSON-encoded arrays while accepting repeated form
+	// values such as ?roles[]=owner&roles[]=membership_admin.
+	if len(surfaces) == 1 {
+		surface := strings.TrimSpace(surfaces[0])
+		if strings.HasPrefix(surface, "[") || surface == "null" {
+			return SetFieldValue(field, surfaces[0])
+		}
+	}
+
+	for field.Kind() == reflect.Pointer {
+		if field.IsNil() {
+			field.Set(reflect.New(field.Type().Elem()))
+		}
+		field = field.Elem()
+	}
+	value := reflect.MakeSlice(field.Type(), len(surfaces), len(surfaces))
+	for i, surface := range surfaces {
+		if err := SetFieldValue(value.Index(i), surface); err != nil {
+			return fmt.Errorf("cannot decode element %d: %w", i, err)
+		}
+	}
+	field.Set(value)
+	return nil
 }
 
 // SetFieldValue sets a value to a reflect.Value based on its kind
