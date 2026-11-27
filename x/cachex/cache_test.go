@@ -344,3 +344,131 @@ func TestCache_Sweep(t *testing.T) {
 	assert.NotContains(t, c.m, "expired", "sweep must evict unread expired entries")
 	assert.Contains(t, c.m, "immortal", "sweep must spare deadline-free entries")
 }
+
+func TestCachex_TTLEvictsExpiredWithoutSweep(t *testing.T) {
+	tests := []struct {
+		name      string
+		action    func(c *TTL[string, int])
+		wantCount int
+		wantKeys  []string
+	}{
+		{
+			name: "unrelated get purges expired entries",
+			action: func(c *TTL[string, int]) {
+				_, ok := c.Get("unrelated")
+				assert.False(t, ok)
+			},
+			wantCount: 0,
+		},
+		{
+			name: "set purges expired entries",
+			action: func(c *TTL[string, int]) {
+				c.Set("fresh", 99, time.Now().Add(time.Minute))
+			},
+			wantCount: 1,
+			wantKeys:  []string{"fresh"},
+		},
+		{
+			name: "already expired set does not retain entry",
+			action: func(c *TTL[string, int]) {
+				c.Set("dead", 1, time.Now().Add(-time.Second))
+			},
+			wantCount: 0,
+		},
+		{
+			name: "immortal entry survives opportunistic eviction",
+			action: func(c *TTL[string, int]) {
+				c.Set("immortal", 42, time.Time{})
+				_, ok := c.Get("unrelated")
+				assert.False(t, ok)
+			},
+			wantCount: 1,
+			wantKeys:  []string{"immortal"},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			c := NewTTL[string, int](15 * time.Millisecond)
+			for i := range 16 {
+				c.Set(fmt.Sprintf("k-%d", i), i)
+			}
+			time.Sleep(40 * time.Millisecond)
+
+			tc.action(c)
+
+			assert.Len(t, c.m, tc.wantCount)
+			assert.Equal(t, tc.wantCount, c.lru.Len())
+			for _, k := range tc.wantKeys {
+				assert.Contains(t, c.m, k)
+			}
+		})
+	}
+}
+
+func TestCachex_TTLBoundedMaxEntries(t *testing.T) {
+	t.Run("lru eviction on custom cap", func(t *testing.T) {
+		c := &TTL[string, int]{maxEntries: 3}
+		c.Set("a", 1)
+		c.Set("b", 2)
+		c.Set("c", 3)
+
+		// Touch "a" so "b" becomes least recently used.
+		v, ok := c.Get("a")
+		require.True(t, ok)
+		assert.Equal(t, 1, v)
+
+		c.Set("d", 4)
+
+		assert.Len(t, c.m, 3)
+		assert.Equal(t, 3, c.lru.Len())
+		assert.NotContains(t, c.m, "b", "least recently used entry must be evicted")
+		assert.Contains(t, c.m, "a")
+		assert.Contains(t, c.m, "c")
+		assert.Contains(t, c.m, "d")
+	})
+
+	t.Run("expired entries reclaimed before evicting live entries", func(t *testing.T) {
+		c := &TTL[string, int]{ttl: time.Minute, maxEntries: 3}
+		past := time.Now().Add(-time.Second)
+		c.Set("live-1", 1)
+		c.Set("live-2", 2)
+		c.Set("exp", 3, time.Now().Add(15*time.Millisecond))
+		time.Sleep(40 * time.Millisecond)
+
+		// Insert a new key while "exp" is expired; live entries must survive.
+		c.Set("live-3", 4)
+		c.Set("dead", 5, past)
+
+		assert.Len(t, c.m, 3)
+		assert.NotContains(t, c.m, "exp")
+		assert.Contains(t, c.m, "live-1")
+		assert.Contains(t, c.m, "live-2")
+		assert.Contains(t, c.m, "live-3")
+	})
+
+	tests := []struct {
+		name  string
+		cache func() *TTL[int, int]
+	}{
+		{
+			name:  "default cap on NewTTL",
+			cache: func() *TTL[int, int] { return NewTTL[int, int](0) },
+		},
+		{
+			name:  "default cap on zero-value TTL",
+			cache: func() *TTL[int, int] { return &TTL[int, int]{} },
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			c := tc.cache()
+			for i := range _DEFAULT_MAX_ENTRIES + 64 {
+				c.Set(i, i)
+			}
+			assert.Len(t, c.m, _DEFAULT_MAX_ENTRIES)
+			assert.Equal(t, _DEFAULT_MAX_ENTRIES, c.lru.Len())
+		})
+	}
+}
