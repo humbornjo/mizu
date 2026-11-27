@@ -4,10 +4,13 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
 	"slices"
 	"strings"
+	"syscall"
 	"testing"
 	"testing/fstest"
+	"time"
 
 	"cuelang.org/go/cue"
 	"cuelang.org/go/encoding/openapi"
@@ -212,4 +215,79 @@ func TestModule_OpenAPIsPackageFailure(t *testing.T) {
 		}
 	}()
 	module.MustOpenAPIs(nil)
+}
+
+func TestMizucue_LoadModuleRejectsSymlink(t *testing.T) {
+	outsideDir := t.TempDir()
+	outsidePath := filepath.Join(outsideDir, "external.cue")
+	if err := os.WriteFile(outsidePath, []byte("package app\n#OutsideMarker: {secret: string}\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	moduleDir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(moduleDir, "cue.mod"), 0o750); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(moduleDir, "cue.mod", "module.cue"), []byte(_TEST_MODULE_CUE), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	appDir := filepath.Join(moduleDir, "app")
+	if err := os.MkdirAll(appDir, 0o750); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(appDir, "schema.cue"), []byte("package app\n#Local: {name: string}\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	relTarget, err := filepath.Rel(appDir, outsidePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(relTarget, filepath.Join(appDir, "external.cue")); err != nil {
+		t.Fatal(err)
+	}
+
+	mod, err := mizucue.LoadModule(os.DirFS(moduleDir))
+	if err == nil || !strings.Contains(err.Error(), "symlink") {
+		t.Fatalf("LoadModule() = (%v, %v), want symlink error", mod, err)
+	}
+}
+
+func TestMizucue_LoadModuleRejectsFIFO(t *testing.T) {
+	moduleDir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(moduleDir, "cue.mod"), 0o750); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(moduleDir, "cue.mod", "module.cue"), []byte(_TEST_MODULE_CUE), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	appDir := filepath.Join(moduleDir, "app")
+	if err := os.MkdirAll(appDir, 0o750); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(appDir, "schema.cue"), []byte("package app\n#Local: {name: string}\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	fifoPath := filepath.Join(appDir, "pipe.cue")
+	if err := syscall.Mkfifo(fifoPath, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	type result struct {
+		mod mizucue.Module
+		err error
+	}
+	done := make(chan result, 1)
+	go func() {
+		mod, err := mizucue.LoadModule(os.DirFS(moduleDir))
+		done <- result{mod: mod, err: err}
+	}()
+
+	select {
+	case res := <-done:
+		if res.err == nil || !strings.Contains(res.err.Error(), "non-regular file") {
+			t.Fatalf("LoadModule() = (%v, %v), want non-regular file error", res.mod, res.err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("LoadModule() blocked on FIFO")
+	}
 }

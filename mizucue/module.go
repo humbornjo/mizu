@@ -67,6 +67,19 @@ func LoadModule(fsys fs.FS) (Module, error) {
 		if err != nil || entry.IsDir() {
 			return err
 		}
+		if entry.Type()&fs.ModeSymlink != 0 {
+			return fmt.Errorf("symlink %s is not allowed", name)
+		}
+		if !entry.Type().IsRegular() {
+			return fmt.Errorf("non-regular file %s (%s)", name, entry.Type())
+		}
+		info, err := entry.Info()
+		if err != nil {
+			return err
+		}
+		if !info.Mode().IsRegular() {
+			return fmt.Errorf("non-regular file %s (%s)", name, info.Mode().Type())
+		}
 		data, err := fs.ReadFile(fsys, name)
 		if err != nil {
 			return err
