@@ -43,6 +43,11 @@ func embed(w http.ResponseWriter, delegator io.Writer, enc Encoder, rules rules)
 }
 
 func (w *wrappedWriter) Flush() {
+	if !w.doneHeader {
+		addVaryAcceptEncoding(w.Header())
+		w.doneHeader = true
+	}
+
 	if flusher, ok := w.writer().(http.Flusher); ok {
 		flusher.Flush()
 	}
@@ -82,6 +87,8 @@ func (w *wrappedWriter) WriteHeader(code int) {
 	w.doneHeader = true
 	defer w.ResponseWriter.WriteHeader(code)
 
+	addVaryAcceptEncoding(w.Header())
+
 	if w.Header().Get("Content-Encoding") != "" {
 		return
 	}
@@ -91,8 +98,18 @@ func (w *wrappedWriter) WriteHeader(code int) {
 	}
 
 	w.Header().Set("Content-Encoding", w.encoding)
-	w.Header().Add("Vary", "Accept-Encoding")
 	w.Header().Del("Content-Length")
+}
+
+func addVaryAcceptEncoding(h http.Header) {
+	for _, v := range h.Values("Vary") {
+		for part := range strings.SplitSeq(v, ",") {
+			if strings.EqualFold(strings.TrimSpace(part), "Accept-Encoding") {
+				return
+			}
+		}
+	}
+	h.Add("Vary", "Accept-Encoding")
 }
 
 func (w *wrappedWriter) Hijack() (net.Conn, *bufio.ReadWriter, error) {

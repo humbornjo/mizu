@@ -166,6 +166,8 @@ func New(opts ...Option) func(http.Handler) http.Handler {
 				return
 			}
 
+			addVaryAcceptEncoding(w.Header())
+
 			// Select the appropriate encoder according to the Accept-Encoding header
 			acceptedHeader := r.Header.Get("Accept-Encoding")
 			accepted := strings.Split(strings.ToLower(acceptedHeader), ",")
