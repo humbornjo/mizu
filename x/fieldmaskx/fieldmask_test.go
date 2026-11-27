@@ -1,6 +1,7 @@
 package fieldmaskx_test
 
 import (
+	"encoding/json"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -474,4 +475,344 @@ func TestFieldMaskx_FieldMaskErrors(t *testing.T) {
 		require.ErrorContains(t, mask.Overwrite(nil, &target), "source: value is nil")
 		assert.Equal(t, want, target)
 	})
+}
+
+type fieldMaskDottedNested struct {
+	Inner string `json:"inner.key"`
+}
+
+type fieldMaskDottedResponse struct {
+	Public string                `json:"public"`
+	Secret string                `json:"secret.value"`
+	Group  string                `json:"secret"`
+	Nested fieldMaskDottedNested `json:"nested.obj"`
+}
+
+func TestFieldMaskx_DottedJSONTag(t *testing.T) {
+	tests := []struct {
+		name      string
+		allowed   []string
+		requested []string
+		wantPaths []string
+		op        string
+		wantOut   fieldMaskDottedResponse
+		wantJSON  map[string]any
+	}{
+		{
+			name:      "prune dotted tag clears secret",
+			allowed:   []string{"secret.value"},
+			requested: []string{"secret.value"},
+			wantPaths: []string{"secret.value"},
+			op:        "prune",
+			wantOut: fieldMaskDottedResponse{
+				Public: "pub",
+				Group:  "grp",
+				Nested: fieldMaskDottedNested{Inner: "in"},
+			},
+			wantJSON: map[string]any{
+				"public":       "pub",
+				"secret.value": "",
+				"secret":       "grp",
+				"nested.obj":   map[string]any{"inner.key": "in"},
+			},
+		},
+		{
+			name:      "filter public clears dotted tag",
+			allowed:   []string{"public"},
+			requested: []string{"public"},
+			wantPaths: []string{"public"},
+			op:        "filter",
+			wantOut: fieldMaskDottedResponse{
+				Public: "pub",
+			},
+			wantJSON: map[string]any{
+				"public":       "pub",
+				"secret.value": "",
+				"secret":       "",
+				"nested.obj":   map[string]any{"inner.key": ""},
+			},
+		},
+		{
+			name:      "filter dotted tag keeps only dotted field",
+			allowed:   []string{"secret.value"},
+			requested: []string{"secret.value"},
+			wantPaths: []string{"secret.value"},
+			op:        "filter",
+			wantOut: fieldMaskDottedResponse{
+				Secret: "sec",
+			},
+			wantJSON: map[string]any{
+				"public":       "",
+				"secret.value": "sec",
+				"secret":       "",
+				"nested.obj":   map[string]any{"inner.key": ""},
+			},
+		},
+		{
+			name:      "sibling secret does not match secret.value",
+			allowed:   []string{"secret"},
+			requested: []string{"secret.value"},
+			wantPaths: []string{},
+			op:        "prune",
+			wantOut: fieldMaskDottedResponse{
+				Public: "pub",
+				Secret: "sec",
+				Group:  "grp",
+				Nested: fieldMaskDottedNested{Inner: "in"},
+			},
+			wantJSON: map[string]any{
+				"public":       "pub",
+				"secret.value": "sec",
+				"secret":       "grp",
+				"nested.obj":   map[string]any{"inner.key": "in"},
+			},
+		},
+		{
+			name:      "nested dotted tag prune",
+			allowed:   []string{"nested.obj.inner.key"},
+			requested: []string{"nested.obj.inner.key"},
+			wantPaths: []string{"nested.obj.inner.key"},
+			op:        "prune",
+			wantOut: fieldMaskDottedResponse{
+				Public: "pub",
+				Secret: "sec",
+				Group:  "grp",
+			},
+			wantJSON: map[string]any{
+				"public":       "pub",
+				"secret.value": "sec",
+				"secret":       "grp",
+				"nested.obj":   map[string]any{"inner.key": ""},
+			},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			mask := fieldmaskx.Intersect[fieldMaskDottedResponse](tc.allowed, tc.requested)
+			assert.Equal(t, tc.wantPaths, mask.Paths())
+
+			val := fieldMaskDottedResponse{
+				Public: "pub",
+				Secret: "sec",
+				Group:  "grp",
+				Nested: fieldMaskDottedNested{Inner: "in"},
+			}
+			switch tc.op {
+			case "prune":
+				require.NoError(t, mask.Prune(&val))
+			case "filter":
+				require.NoError(t, mask.Filter(&val))
+			default:
+				t.Fatalf("unexpected op %q", tc.op)
+			}
+			assert.Equal(t, tc.wantOut, val)
+
+			raw, err := json.Marshal(val)
+			require.NoError(t, err)
+			var got map[string]any
+			require.NoError(t, json.Unmarshal(raw, &got))
+			assert.Equal(t, tc.wantJSON, got)
+		})
+	}
+}
+
+type unexportedEmbedded struct {
+	Secret string `json:"secret"`
+}
+
+type unexportedScalar int
+
+type fieldMaskUnexportedEmbeddedResponse struct {
+	unexportedEmbedded
+	unexportedScalar
+	Public string `json:"public"`
+}
+
+type fieldMaskUnexportedTaggedEmbedded struct {
+	unexportedEmbedded `json:"ignored"`
+	Public             string `json:"public"`
+}
+
+func TestFieldMaskx_UnexportedAnonymousField(t *testing.T) {
+	tests := []struct {
+		name      string
+		paths     []string
+		wantPaths []string
+		op        string
+		wantOut   fieldMaskUnexportedEmbeddedResponse
+	}{
+		{
+			name:      "filter public clears promoted secret",
+			paths:     []string{"public"},
+			wantPaths: []string{"public"},
+			op:        "filter",
+			wantOut: fieldMaskUnexportedEmbeddedResponse{
+				unexportedScalar: 7,
+				Public:           "pub",
+			},
+		},
+		{
+			name:      "prune secret clears promoted secret",
+			paths:     []string{"secret"},
+			wantPaths: []string{"secret"},
+			op:        "prune",
+			wantOut: fieldMaskUnexportedEmbeddedResponse{
+				unexportedScalar: 7,
+				Public:           "pub",
+			},
+		},
+		{
+			name:      "filter secret keeps promoted secret and clears public",
+			paths:     []string{"secret"},
+			wantPaths: []string{"secret"},
+			op:        "filter",
+			wantOut: fieldMaskUnexportedEmbeddedResponse{
+				unexportedEmbedded: unexportedEmbedded{Secret: "top-secret"},
+				unexportedScalar:   7,
+			},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			mask := fieldmaskx.Intersect[fieldMaskUnexportedEmbeddedResponse](tc.paths, tc.paths)
+			assert.Equal(t, tc.wantPaths, mask.Paths())
+
+			val := fieldMaskUnexportedEmbeddedResponse{
+				unexportedEmbedded: unexportedEmbedded{Secret: "top-secret"},
+				unexportedScalar:   7,
+				Public:             "pub",
+			}
+			switch tc.op {
+			case "prune":
+				require.NoError(t, mask.Prune(&val))
+			case "filter":
+				require.NoError(t, mask.Filter(&val))
+			default:
+				t.Fatalf("unexpected op %q", tc.op)
+			}
+			assert.Equal(t, tc.wantOut, val)
+
+			raw, err := json.Marshal(val)
+			require.NoError(t, err)
+			var got map[string]any
+			require.NoError(t, json.Unmarshal(raw, &got))
+			assert.Equal(t, tc.wantOut.Secret, got["secret"])
+			assert.Equal(t, tc.wantOut.Public, got["public"])
+		})
+	}
+
+	t.Run("tagged unexported anonymous struct is not JSON-visible", func(t *testing.T) {
+		mask := fieldmaskx.Intersect[fieldMaskUnexportedTaggedEmbedded](
+			[]string{"ignored", "secret", "public"},
+			[]string{"ignored", "secret", "public"},
+		)
+		assert.Equal(t, []string{"public"}, mask.Paths())
+	})
+}
+
+type fieldMaskJSONUnmarshalerPayload struct {
+	Public string `json:"public"`
+	Secret string `json:"secret"`
+}
+
+func (p *fieldMaskJSONUnmarshalerPayload) UnmarshalJSON(data []byte) error {
+	type alias fieldMaskJSONUnmarshalerPayload
+	return json.Unmarshal(data, (*alias)(p))
+}
+
+type fieldMaskTextUnmarshalerPayload struct {
+	Public string `json:"public"`
+	Secret string `json:"secret"`
+}
+
+func (p *fieldMaskTextUnmarshalerPayload) UnmarshalText(text []byte) error {
+	p.Public = string(text)
+	return nil
+}
+
+type fieldMaskUnmarshalOnlyEnvelope struct {
+	JSONPayload fieldMaskJSONUnmarshalerPayload `json:"jsonPayload"`
+	TextPayload fieldMaskTextUnmarshalerPayload `json:"textPayload"`
+}
+
+func TestFieldMaskx_UnmarshalOnlyStruct(t *testing.T) {
+	tests := []struct {
+		name      string
+		paths     []string
+		wantPaths []string
+		op        string
+		wantOut   fieldMaskUnmarshalOnlyEnvelope
+	}{
+		{
+			name:      "prune secret inside json.Unmarshaler-only struct",
+			paths:     []string{"jsonPayload.secret"},
+			wantPaths: []string{"jsonPayload.secret"},
+			op:        "prune",
+			wantOut: fieldMaskUnmarshalOnlyEnvelope{
+				JSONPayload: fieldMaskJSONUnmarshalerPayload{Public: "jpub"},
+				TextPayload: fieldMaskTextUnmarshalerPayload{Public: "tpub", Secret: "tsec"},
+			},
+		},
+		{
+			name:      "prune secret inside encoding.TextUnmarshaler-only struct",
+			paths:     []string{"textPayload.secret"},
+			wantPaths: []string{"textPayload.secret"},
+			op:        "prune",
+			wantOut: fieldMaskUnmarshalOnlyEnvelope{
+				JSONPayload: fieldMaskJSONUnmarshalerPayload{Public: "jpub", Secret: "jsec"},
+				TextPayload: fieldMaskTextUnmarshalerPayload{Public: "tpub"},
+			},
+		},
+		{
+			name:      "filter public inside both unmarshaler-only structs",
+			paths:     []string{"jsonPayload.public", "textPayload.public"},
+			wantPaths: []string{"jsonPayload.public", "textPayload.public"},
+			op:        "filter",
+			wantOut: fieldMaskUnmarshalOnlyEnvelope{
+				JSONPayload: fieldMaskJSONUnmarshalerPayload{Public: "jpub"},
+				TextPayload: fieldMaskTextUnmarshalerPayload{Public: "tpub"},
+			},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			mask := fieldmaskx.Intersect[fieldMaskUnmarshalOnlyEnvelope](tc.paths, tc.paths)
+			assert.Equal(t, tc.wantPaths, mask.Paths())
+
+			val := fieldMaskUnmarshalOnlyEnvelope{
+				JSONPayload: fieldMaskJSONUnmarshalerPayload{Public: "jpub", Secret: "jsec"},
+				TextPayload: fieldMaskTextUnmarshalerPayload{Public: "tpub", Secret: "tsec"},
+			}
+			switch tc.op {
+			case "prune":
+				require.NoError(t, mask.Prune(&val))
+			case "filter":
+				require.NoError(t, mask.Filter(&val))
+			default:
+				t.Fatalf("unexpected op %q", tc.op)
+			}
+			assert.Equal(t, tc.wantOut, val)
+
+			raw, err := json.Marshal(val)
+			require.NoError(t, err)
+			var got struct {
+				JSONPayload struct {
+					Public string `json:"public"`
+					Secret string `json:"secret"`
+				} `json:"jsonPayload"`
+				TextPayload struct {
+					Public string `json:"public"`
+					Secret string `json:"secret"`
+				} `json:"textPayload"`
+			}
+			require.NoError(t, json.Unmarshal(raw, &got))
+			assert.Equal(t, tc.wantOut.JSONPayload.Public, got.JSONPayload.Public)
+			assert.Equal(t, tc.wantOut.JSONPayload.Secret, got.JSONPayload.Secret)
+			assert.Equal(t, tc.wantOut.TextPayload.Public, got.TextPayload.Public)
+			assert.Equal(t, tc.wantOut.TextPayload.Secret, got.TextPayload.Secret)
+		})
+	}
 }

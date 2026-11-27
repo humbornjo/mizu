@@ -12,10 +12,8 @@ import (
 )
 
 var (
-	_JSON_MARSHALER_TYPE   = reflect.TypeFor[json.Marshaler]()
-	_JSON_UNMARSHALER_TYPE = reflect.TypeFor[json.Unmarshaler]()
-	_TEXT_MARSHALER_TYPE   = reflect.TypeFor[encoding.TextMarshaler]()
-	_TEXT_UNMARSHALER_TYPE = reflect.TypeFor[encoding.TextUnmarshaler]()
+	_JSON_MARSHALER_TYPE = reflect.TypeFor[json.Marshaler]()
+	_TEXT_MARSHALER_TYPE = reflect.TypeFor[encoding.TextMarshaler]()
 )
 
 // FieldMask is an immutable set of JSON field paths bound to T. Construct
@@ -53,11 +51,11 @@ func Intersect[T any](allowed, requested []string) *FieldMask[T] {
 		return mask
 	}
 
-	allowed = validPaths(typ, allowed)
-	requested = validPaths(typ, requested)
-	paths := make([]string, 0)
-	for _, allow := range allowed {
-		for _, want := range requested {
+	allowedPaths := validPaths(typ, allowed)
+	requestedPaths := validPaths(typ, requested)
+	var paths [][]string
+	for _, allow := range allowedPaths {
+		for _, want := range requestedPaths {
 			switch {
 			case hasPathPrefix(allow, want):
 				paths = append(paths, allow)
@@ -66,9 +64,11 @@ func Intersect[T any](allowed, requested []string) *FieldMask[T] {
 			}
 		}
 	}
-	mask.paths = normalizePaths(paths)
-	for _, path := range mask.paths {
-		mask.root.add(strings.Split(path, "."))
+	paths = normalizePaths(paths)
+	mask.paths = make([]string, len(paths))
+	for i, segments := range paths {
+		mask.paths[i] = strings.Join(segments, ".")
+		mask.root.add(segments)
 	}
 	return mask
 }
@@ -148,67 +148,75 @@ func (n *node) add(parts []string) {
 	n.children = nil
 }
 
-func validPaths(typ reflect.Type, paths []string) []string {
-	valid := make([]string, 0, len(paths))
+func validPaths(typ reflect.Type, paths []string) [][]string {
+	valid := make([][]string, 0, len(paths))
 	for _, path := range paths {
-		if validPath(typ, path) {
-			valid = append(valid, path)
+		if segments, ok := resolvePath(typ, path); ok {
+			valid = append(valid, segments)
 		}
 	}
 	return normalizePaths(valid)
 }
 
-// validPath reports whether path walks typ through existing JSON fields.
-// Struct fields and string map keys consume one dot-separated part; slices
-// and arrays consume none, so a mask applies to every element. Types with
-// custom marshaling are leaves and reject any path that tries to descend
-// into them.
-func validPath(typ reflect.Type, path string) bool {
+// resolvePath walks typ through existing JSON fields and returns the
+// resolved path segments. Struct fields and string map keys consume one
+// segment; slices and arrays consume none, so a mask applies to every
+// element. Types with custom marshaling are leaves and reject any path
+// that tries to descend into them.
+func resolvePath(typ reflect.Type, path string) ([]string, bool) {
 	if path == "" {
-		return false
+		return nil, false
 	}
-	parts := strings.Split(path, ".")
-	if slices.Contains(parts, "") {
-		return false
+	for typ.Kind() == reflect.Pointer {
+		typ = typ.Elem()
 	}
-
-	part := 0
-	for part < len(parts) {
-		for typ.Kind() == reflect.Pointer {
-			typ = typ.Elem()
-		}
-		if isTerminal(typ) {
-			return false
-		}
-		switch typ.Kind() {
-		case reflect.Struct:
-			fields := typeFields(typ)
-			i := slices.IndexFunc(fields, func(f field) bool { return f.name == parts[part] })
-			if i < 0 {
-				return false
+	if isTerminal(typ) {
+		return nil, false
+	}
+	switch typ.Kind() {
+	case reflect.Struct:
+		fields := typeFields(typ)
+		for _, f := range fields {
+			if f.name == path {
+				return []string{f.name}, true
 			}
-			typ = fields[i].typ
-			part++
-		case reflect.Array, reflect.Slice:
-			typ = typ.Elem()
-		case reflect.Map:
-			if typ.Key().Kind() != reflect.String {
-				return false
-			}
-			typ = typ.Elem()
-			part++
-		default:
-			return false
 		}
+		for _, f := range fields {
+			if rest, ok := strings.CutPrefix(path, f.name+"."); ok {
+				if tail, ok := resolvePath(f.typ, rest); ok {
+					return append([]string{f.name}, tail...), true
+				}
+			}
+		}
+		return nil, false
+	case reflect.Array, reflect.Slice:
+		return resolvePath(typ.Elem(), path)
+	case reflect.Map:
+		if typ.Key().Kind() != reflect.String {
+			return nil, false
+		}
+		key, rest, hasDot := strings.Cut(path, ".")
+		if key == "" {
+			return nil, false
+		}
+		if !hasDot {
+			return []string{key}, true
+		}
+		tail, ok := resolvePath(typ.Elem(), rest)
+		if !ok {
+			return nil, false
+		}
+		return append([]string{key}, tail...), true
+	default:
+		return nil, false
 	}
-	return true
 }
 
 // normalizePaths sorts paths and drops duplicates and any path that
 // extends an earlier one, leaving a set with no prefix pairs.
-func normalizePaths(paths []string) []string {
+func normalizePaths(paths [][]string) [][]string {
 	paths = slices.Clone(paths)
-	slices.Sort(paths)
+	slices.SortFunc(paths, slices.Compare)
 	kept := paths[:0]
 	for _, path := range paths {
 		if len(kept) > 0 && hasPathPrefix(path, kept[len(kept)-1]) {
@@ -219,9 +227,8 @@ func normalizePaths(paths []string) []string {
 	return kept
 }
 
-func hasPathPrefix(path, prefix string) bool {
-	return strings.HasPrefix(path, prefix) &&
-		(len(path) == len(prefix) || path[len(prefix)] == '.')
+func hasPathPrefix(path, prefix []string) bool {
+	return len(path) >= len(prefix) && slices.Equal(path[:len(prefix)], prefix)
 }
 
 func isStruct(typ reflect.Type) bool {
@@ -240,9 +247,7 @@ func isTerminal(typ reflect.Type) bool {
 	}
 	for _, candidate := range types {
 		if candidate.Implements(_JSON_MARSHALER_TYPE) ||
-			candidate.Implements(_JSON_UNMARSHALER_TYPE) ||
-			candidate.Implements(_TEXT_MARSHALER_TYPE) ||
-			candidate.Implements(_TEXT_UNMARSHALER_TYPE) {
+			candidate.Implements(_TEXT_MARSHALER_TYPE) {
 			return true
 		}
 	}
@@ -261,7 +266,11 @@ func typeFields(typ reflect.Type) []field {
 	walk = func(typ reflect.Type, index []int) {
 		for i := range typ.NumField() {
 			f := typ.Field(i)
-			if !f.IsExported() {
+			ft := f.Type
+			if ft.Name() == "" && ft.Kind() == reflect.Pointer {
+				ft = ft.Elem()
+			}
+			if !f.IsExported() && (!f.Anonymous || ft.Kind() != reflect.Struct) {
 				continue
 			}
 			tag := f.Tag.Get("json")
@@ -274,16 +283,15 @@ func typeFields(typ reflect.Type) []field {
 			}
 			index := append(slices.Clone(index), i)
 
-			ft := f.Type
-			if ft.Name() == "" && ft.Kind() == reflect.Pointer {
-				ft = ft.Elem()
-			}
 			if name == "" && f.Anonymous && ft.Kind() == reflect.Struct {
 				if !ancestors[ft] {
 					ancestors[ft] = true
 					walk(ft, index)
 					delete(ancestors, ft)
 				}
+				continue
+			}
+			if !f.IsExported() {
 				continue
 			}
 
@@ -354,7 +362,7 @@ func valueByIndex(value reflect.Value, index []int, allocate bool) (reflect.Valu
 	for _, i := range index {
 		for value.Kind() == reflect.Pointer {
 			if value.IsNil() {
-				if !allocate {
+				if !allocate || !value.CanSet() {
 					return reflect.Value{}, false
 				}
 				value.Set(reflect.New(value.Type().Elem()))
