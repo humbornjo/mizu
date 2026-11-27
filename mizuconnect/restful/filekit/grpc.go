@@ -62,6 +62,8 @@ func (m *formMarshaler) NewEncoder(w io.Writer) runtime.Encoder {
 	return m.inner.NewEncoder(w)
 }
 
+const _MAX_CONSECUTIVE_EMPTY_READS = 100
+
 type formDecoder struct {
 	r io.Reader
 }
@@ -79,14 +81,18 @@ func (d *formDecoder) Decode(v any) error {
 	buf := bufferPool.Get()
 	defer bufferPool.Put(buf)
 
-	n, err := d.r.Read(buf[:])
-	if err != nil && !errors.Is(err, io.EOF) {
-		return err
+	for range _MAX_CONSECUTIVE_EMPTY_READS {
+		n, err := d.r.Read(buf[:])
+		if err != nil && !errors.Is(err, io.EOF) {
+			return err
+		}
+		if n > 0 {
+			form.Elem().FieldByName("Data").SetBytes(buf[:n])
+			return nil
+		}
+		if errors.Is(err, io.EOF) {
+			return io.EOF
+		}
 	}
-	if n == 0 {
-		return io.EOF
-	}
-
-	form.Elem().FieldByName("Data").SetBytes(buf[:n])
-	return nil
+	return io.ErrNoProgress
 }
