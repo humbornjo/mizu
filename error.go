@@ -17,7 +17,7 @@ import (
 // Handlers and middlewares should return errors that can be cast to an
 // [*Error] (using the standard library's [errors.As]). If the returned
 // error can't be cast to an [*Error], [ResponseError] will use
-// [http.StatusInternalServerError] and the returned error's message.
+// [http.StatusInternalServerError] and a generic message.
 type Error struct {
 	code    int
 	err     error
@@ -103,11 +103,12 @@ func (e *Error) MarshalJSON() ([]byte, error) {
 
 // ResponseError writes err as a JSON error response. An [*Error] found
 // with errors.As supplies the status code and details; any other error is
-// written as 500 Internal Server Error with the error's message.
+// written as 500 Internal Server Error with a generic message so internal
+// error details are not disclosed.
 func ResponseError(tx http.ResponseWriter, err error) error {
 	mErr, ok := errors.AsType[*Error](err)
 	if !ok {
-		mErr = NewError(http.StatusInternalServerError, err)
+		mErr = NewError(http.StatusInternalServerError, errors.New(http.StatusText(http.StatusInternalServerError)))
 	}
 	tx.Header().Set("Content-Type", "application/json")
 	tx.WriteHeader(mErr.code)

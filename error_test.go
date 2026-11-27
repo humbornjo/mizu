@@ -42,8 +42,45 @@ func TestMizu_ResponseError(t *testing.T) {
 }
 
 func TestMizu_ResponseError_PlainErrorDefaultsTo500(t *testing.T) {
+	tests := []struct {
+		name string
+		err  error
+	}{
+		{
+			name: "plain error",
+			err:  errors.New("boom"),
+		},
+		{
+			name: "wrapped untyped error",
+			err:  fmt.Errorf("query failed: %w", errors.New("sql: /var/lib/db/secret.key")),
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			recorder := httptest.NewRecorder()
+			require.NoError(t, mizu.ResponseError(recorder, tc.err))
+
+			response := recorder.Result()
+			defer response.Body.Close()
+			require.Equal(t, http.StatusInternalServerError, response.StatusCode)
+			require.Equal(t, "application/json", response.Header.Get("Content-Type"))
+
+			var body errorWire
+			require.NoError(t, json.NewDecoder(response.Body).Decode(&body))
+			require.Equal(t, errorWire{
+				Code:    http.StatusInternalServerError,
+				Message: http.StatusText(http.StatusInternalServerError),
+			}, body)
+			require.NotContains(t, recorder.Body.String(), tc.err.Error())
+		})
+	}
+}
+
+func TestMizu_ResponseError_Typed500PreservesMessage(t *testing.T) {
 	recorder := httptest.NewRecorder()
-	require.NoError(t, mizu.ResponseError(recorder, errors.New("boom")))
+	merr := mizu.NewError(http.StatusInternalServerError, errors.New("safe service message"))
+	require.NoError(t, mizu.ResponseError(recorder, merr))
 
 	response := recorder.Result()
 	defer response.Body.Close()
@@ -51,7 +88,10 @@ func TestMizu_ResponseError_PlainErrorDefaultsTo500(t *testing.T) {
 
 	var body errorWire
 	require.NoError(t, json.NewDecoder(response.Body).Decode(&body))
-	require.Equal(t, errorWire{Code: http.StatusInternalServerError, Message: "boom"}, body)
+	require.Equal(t, errorWire{
+		Code:    http.StatusInternalServerError,
+		Message: "safe service message",
+	}, body)
 }
 
 func TestMizu_ResponseError_WrappedError(t *testing.T) {
