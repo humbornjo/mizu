@@ -58,16 +58,17 @@ func New(opts ...Option) func(http.Handler) http.Handler {
 					panic(rcv)
 				}
 
-				defer config.tx.Close() // nolint: errcheck
 				debugStack := debug.Stack()
 				if config.maxBytes > 0 {
 					debugStack = debugStack[:config.maxBytes]
 				}
-				out, err := parse(debugStack, rcv)
-				if err == nil {
-					_, _ = config.tx.Write(out)
-				} else {
-					_, _ = config.tx.Write(debugStack)
+				if config.tx != nil {
+					out, err := parse(debugStack, rcv)
+					if err == nil {
+						_, _ = config.tx.Write(out)
+					} else {
+						_, _ = config.tx.Write(debugStack)
+					}
 				}
 
 				if r.Header.Get("Connection") != "Upgrade" {
