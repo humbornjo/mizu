@@ -262,6 +262,10 @@ func NewScope(srv *mizu.Server, opts ...Option) *Scope {
 //	impl := &GreetServiceImpl{}
 //	scope.Register(impl, greetv1connect.NewGreetServiceHandler)
 func (s *Scope) Register(impl any, newFunc any, opts ...connect.HandlerOption) {
+	s.register(impl, newFunc, nil, opts...)
+}
+
+func (s *Scope) register(impl any, newFunc any, svcOpts []vanguard.ServiceOption, opts ...connect.HandlerOption) {
 	opts = append(opts, s.config.connectOpts...)
 
 	pattern, handler := invoke(impl, newFunc, opts...)
@@ -273,7 +277,7 @@ func (s *Scope) Register(impl any, newFunc any, opts ...connect.HandlerOption) {
 
 	// Register vanguard service
 	if s.config.enableCrpcVanguard {
-		vanService := vanguard.NewService(pattern, handler)
+		vanService := vanguard.NewService(pattern, handler, svcOpts...)
 		s.vanguardServices = append(s.vanguardServices, vanService)
 	}
 
@@ -305,23 +309,7 @@ func (s *Scope) UseVanguard(svcOpts ...vanguard.ServiceOption) *relayVanguardSco
 // Register registers a Connect RPC service with the relay scope. Which
 // will apply vanguard service options to the registered service.
 func (s relayVanguardScope) Register(impl any, newFunc any, opts ...connect.HandlerOption) {
-	opts = append(opts, s.inner.config.connectOpts...)
-
-	pattern, handler := invoke(impl, newFunc, opts...)
-	fullyQualifiedServiceName, _ := detect(pattern)
-
-	mizu.Immediate(s.inner.srv, _CTXKEY_SERVICE_NAMES, func(v *[]string) {
-		*v = append(*v, fullyQualifiedServiceName)
-	})
-
-	// Register vanguard service
-	if s.inner.config.enableCrpcVanguard {
-		vanService := vanguard.NewService(pattern, handler, s.svcOpts...)
-		s.inner.vanguardServices = append(s.inner.vanguardServices, vanService)
-	}
-
-	// Register service
-	s.inner.srv.Handle(pattern, handler)
+	s.inner.register(impl, newFunc, s.svcOpts, opts...)
 }
 
 type relayGatewayScope struct {
