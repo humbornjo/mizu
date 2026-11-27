@@ -166,14 +166,25 @@ func (i *interceptor) WrapUnary(next connect.UnaryFunc) connect.UnaryFunc {
 			return resp, nil
 		}
 
-		_, err, _ = i.Do(fmt.Sprintf("%T:%v", key, key), func() (any, error) {
-			resp, err = next(ctx, ar)
-			if err != nil {
-				return resp, err
+		var val any
+		val, err, _ = i.Do(fmt.Sprintf("%T:%v", key, key), func() (any, error) {
+			r, err := next(ctx, ar)
+			if r != nil {
+				if v := reflect.ValueOf(r); v.Kind() != reflect.Ptr || !v.IsNil() {
+					// Materialize lazy header/trailer maps before sharing r across callers.
+					_ = r.Header()
+					_ = r.Trailer()
+				}
 			}
-			i.set(key, resp, expiry)
-			return resp, nil
+			if err != nil {
+				return r, err
+			}
+			i.set(key, r, expiry)
+			return r, nil
 		})
+		if val != nil {
+			resp = val.(connect.AnyResponse)
+		}
 		if err != nil {
 			return clone(resp), err
 		}
@@ -183,12 +194,25 @@ func (i *interceptor) WrapUnary(next connect.UnaryFunc) connect.UnaryFunc {
 
 // set stores resp under key against a jittered deadline.
 func (i *interceptor) set(key any, resp connect.AnyResponse, expiry time.Duration) {
+	if resp != nil {
+		if v := reflect.ValueOf(resp); v.Kind() != reflect.Ptr || !v.IsNil() {
+			_ = resp.Header()
+			_ = resp.Trailer()
+		}
+	}
 	i.cache.Set(key, resp, time.Now().Add(i.jitterFunc(expiry)))
 }
 
 func clone(response connect.AnyResponse) connect.AnyResponse {
-	st := reflect.ValueOf(response).Elem()
-	if st.IsZero() {
+	if response == nil {
+		return nil
+	}
+	val := reflect.ValueOf(response)
+	if val.Kind() == reflect.Ptr && val.IsNil() {
+		return response
+	}
+	st := val.Elem()
+	if !st.IsValid() || st.IsZero() {
 		return response
 	}
 
