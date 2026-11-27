@@ -113,7 +113,10 @@ func WithFormFieldLimitBytes[T HttpForm](limit int64) FormReaderOption[T] {
 func NewFormReader[T HttpForm](fileField string, stream StreamForm[T], msg proto.Message, opts ...FormReaderOption[T],
 ) (FormReader, error) {
 	if ok := stream.Receive(); !ok {
-		return nil, stream.Err()
+		if err := stream.Err(); err != nil {
+			return nil, err
+		}
+		return nil, io.EOF
 	}
 
 	if msg != nil {
@@ -161,10 +164,15 @@ func NewFormReader[T HttpForm](fileField string, stream StreamForm[T], msg proto
 		opt(rx)
 	}
 
-	if _, ok := fieldPools[rx.bufferSize]; !ok {
+	fieldMutex.RLock()
+	_, ok := fieldPools[rx.bufferSize]
+	fieldMutex.RUnlock()
+	if !ok {
 		fieldMutex.Lock()
-		defer fieldMutex.Unlock()
-		fieldPools[rx.bufferSize] = newpool(func() []byte { return make([]byte, rx.bufferSize) })
+		if _, ok := fieldPools[rx.bufferSize]; !ok {
+			fieldPools[rx.bufferSize] = newpool(func() []byte { return make([]byte, rx.bufferSize) })
+		}
+		fieldMutex.Unlock()
 	}
 
 	return rx, nil
@@ -266,9 +274,11 @@ func (r *formReader[T]) trySetMessage(msg proto.Message, rx *multipart.Part) {
 	}
 
 	fieldMutex.RLock()
-	buffer := fieldPools[r.bufferSize].Get()
+	pool := fieldPools[r.bufferSize]
 	fieldMutex.RUnlock()
-	defer fieldPools[r.bufferSize].Put(buffer)
+
+	buffer := pool.Get()
+	defer pool.Put(buffer)
 	n, err := rx.Read(buffer)
 	if err != nil {
 		if !errors.Is(err, io.EOF) {

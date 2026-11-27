@@ -8,6 +8,7 @@ import (
 	"io"
 	"mime/multipart"
 	"net/http"
+	"sync"
 	"testing"
 
 	"connectrpc.com/connect"
@@ -726,4 +727,76 @@ func TestFilekit_Read_FileReader(t *testing.T) {
 			})
 		}
 	})
+}
+
+func TestFilekit_NewFormReader_EmptyStream(t *testing.T) {
+	t.Run("zero-message stream returns io.EOF", func(t *testing.T) {
+		stream := NewMockStreamForm()
+		reader, err := filekit.NewFormReader("upload", stream, nil)
+		assert.Nil(t, reader)
+		require.ErrorIs(t, err, io.EOF)
+	})
+
+	t.Run("stream error is propagated", func(t *testing.T) {
+		wantErr := errors.New("stream failure")
+		stream := NewMockStreamForm()
+		stream.SetReceiveError(wantErr)
+
+		reader, err := filekit.NewFormReader("upload", stream, nil)
+		assert.Nil(t, reader)
+		require.ErrorIs(t, err, wantErr)
+	})
+}
+
+func TestFilekit_FormReader_ConcurrentFieldPools(t *testing.T) {
+	const workers = 32
+	const iterations = 4
+
+	var wg sync.WaitGroup
+	start := make(chan struct{})
+
+	for w := range workers {
+		wg.Add(1)
+		go func(workerId int) {
+			defer wg.Done()
+			<-start
+
+			for iter := range iterations {
+				body := &bytes.Buffer{}
+				writer := multipart.NewWriter(body)
+
+				field, err := writer.CreateFormField("content_type")
+				require.NoError(t, err)
+				_, err = field.Write([]byte("text/plain"))
+				require.NoError(t, err)
+
+				file, err := writer.CreateFormFile("upload", "test.txt")
+				require.NoError(t, err)
+				_, err = file.Write([]byte("payload"))
+				require.NoError(t, err)
+
+				require.NoError(t, writer.Close())
+
+				stream := NewMockStreamForm(NewFormFrame(writer.FormDataContentType(), body.Bytes()))
+				limit := int64(256 + workerId*iterations + iter)
+				msg := &httpbody.HttpBody{}
+
+				reader, err := filekit.NewFormReader(
+					"upload",
+					stream,
+					msg,
+					filekit.WithFormFieldLimitBytes[MockFormFrame](limit),
+				)
+				require.NoError(t, err)
+
+				_, _, err = reader.File()
+				require.NoError(t, err)
+				reader.Close()
+				assert.Equal(t, "text/plain", msg.GetContentType())
+			}
+		}(w)
+	}
+
+	close(start)
+	wg.Wait()
 }
