@@ -27,7 +27,12 @@ const (
 	TAG_HEADER TagType = "header"
 	TAG_BODY   TagType = "body"
 	TAG_FORM   TagType = "form"
+
+	// MAX_STREAM_BYTES bounds request body and multipart part buffering.
+	MAX_STREAM_BYTES int64 = 10 << 20
 )
+
+var ERR_STREAM_TOO_LARGE = errors.New("stream exceeds maximum size")
 
 func (t TagType) String() string {
 	return string(t)
@@ -410,14 +415,14 @@ func SetStreamFieldValue(field reflect.Value, stream io.ReadCloser) error {
 		if field.Type().Elem().Kind() != reflect.Uint8 {
 			return fmt.Errorf("unsupported stream slice type %s", field.Type())
 		}
-		raw, err := io.ReadAll(stream)
+		raw, err := readStreamBytes(stream, MAX_STREAM_BYTES)
 		if err != nil {
 			return err
 		}
 		field.SetBytes(raw)
 		return nil
 	case reflect.Struct:
-		decoder := jsontext.NewDecoder(stream)
+		decoder := jsontext.NewDecoder(io.LimitReader(stream, MAX_STREAM_BYTES+1))
 		object := reflect.New(field.Type()).Interface()
 		if err := jsonv2.UnmarshalDecode(decoder, &object); err != nil {
 			return err
@@ -425,10 +430,21 @@ func SetStreamFieldValue(field reflect.Value, stream io.ReadCloser) error {
 		field.Set(reflect.ValueOf(object).Elem())
 		return nil
 	default:
-		raw, err := io.ReadAll(stream)
-		if err != nil && errors.Is(err, io.EOF) {
+		raw, err := readStreamBytes(stream, MAX_STREAM_BYTES)
+		if err != nil {
 			return err
 		}
 		return SetFieldValue(field, string(raw))
 	}
+}
+
+func readStreamBytes(stream io.Reader, limit int64) ([]byte, error) {
+	raw, err := io.ReadAll(io.LimitReader(stream, limit+1))
+	if err != nil {
+		return nil, err
+	}
+	if int64(len(raw)) > limit {
+		return nil, fmt.Errorf("%w: %d bytes", ERR_STREAM_TOO_LARGE, limit)
+	}
+	return raw, nil
 }

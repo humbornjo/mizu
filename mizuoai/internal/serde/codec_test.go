@@ -2,6 +2,8 @@ package serde
 
 import (
 	"bytes"
+	"errors"
+	"io"
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
@@ -256,6 +258,226 @@ func TestInternal_SetFieldValue(t *testing.T) {
 			}
 			if got := target.Interface(); !reflect.DeepEqual(got, tt.want) {
 				t.Fatalf("got %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+type errStreamReader struct {
+	data []byte
+	err  error
+	read bool
+}
+
+func (r *errStreamReader) Read(p []byte) (int, error) {
+	if r.read {
+		return 0, r.err
+	}
+	r.read = true
+	n := copy(p, r.data)
+	return n, r.err
+}
+
+func (r *errStreamReader) Close() error {
+	return nil
+}
+
+func TestSerde_SetStreamFieldValueScalarReadError(t *testing.T) {
+	tests := []struct {
+		name    string
+		stream  io.ReadCloser
+		target  any
+		want    any
+		wantErr error
+	}{
+		{
+			name:    "int prefix with unexpected EOF",
+			stream:  &errStreamReader{data: []byte("12"), err: io.ErrUnexpectedEOF},
+			target:  0,
+			want:    0,
+			wantErr: io.ErrUnexpectedEOF,
+		},
+		{
+			name:    "string prefix with unexpected EOF",
+			stream:  &errStreamReader{data: []byte("12"), err: io.ErrUnexpectedEOF},
+			target:  "",
+			want:    "",
+			wantErr: io.ErrUnexpectedEOF,
+		},
+		{
+			name:   "int with clean EOF",
+			stream: io.NopCloser(strings.NewReader("12")),
+			target: 0,
+			want:   12,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			field := reflect.New(reflect.TypeOf(tt.target)).Elem()
+			err := SetStreamFieldValue(field, tt.stream)
+			if tt.wantErr != nil {
+				if !errors.Is(err, tt.wantErr) {
+					t.Fatalf("got err %v, want %v", err, tt.wantErr)
+				}
+				if got := field.Interface(); !reflect.DeepEqual(got, tt.want) {
+					t.Fatalf("partial value accepted: got %v, want %v", got, tt.want)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got := field.Interface(); !reflect.DeepEqual(got, tt.want) {
+				t.Fatalf("got %v, want %v", got, tt.want)
+			}
+		})
+	}
+
+	t.Run("codec decode scalar body error", func(t *testing.T) {
+		type input struct {
+			Body int `json:"body"`
+		}
+		c, err := NewCodec[input, any]()
+		if err != nil {
+			t.Fatal(err)
+		}
+		req := httptest.NewRequest(http.MethodPost, "/", nil)
+		req.Body = &errStreamReader{data: []byte("12"), err: io.ErrUnexpectedEOF}
+		var in input
+		if err := c.Decode(req, &in); !errors.Is(err, io.ErrUnexpectedEOF) {
+			t.Fatalf("got err %v, want %v", err, io.ErrUnexpectedEOF)
+		}
+		if in.Body != 0 {
+			t.Fatalf("partial body accepted: got %d, want 0", in.Body)
+		}
+	})
+}
+
+func TestSerde_SetStreamFieldValueMaxBytes(t *testing.T) {
+	type bytesBodyInput struct {
+		Body []byte `json:"body"`
+	}
+	type stringBodyInput struct {
+		Body string `json:"body"`
+	}
+	type formInput struct {
+		Form struct {
+			Payload []byte `json:"payload"`
+		} `json:"form"`
+	}
+
+	bytesCodec, err := NewCodec[bytesBodyInput, any]()
+	if err != nil {
+		t.Fatal(err)
+	}
+	stringCodec, err := NewCodec[stringBodyInput, any]()
+	if err != nil {
+		t.Fatal(err)
+	}
+	formCodec, err := NewCodec[formInput, any]()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	newMultipartReq := func(size int64) *http.Request {
+		var buf bytes.Buffer
+		w := multipart.NewWriter(&buf)
+		part, err := w.CreateFormFile("payload", "blob.bin")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := part.Write(bytes.Repeat([]byte("a"), int(size))); err != nil {
+			t.Fatal(err)
+		}
+		if err := w.Close(); err != nil {
+			t.Fatal(err)
+		}
+		req := httptest.NewRequest(http.MethodPost, "/", &buf)
+		req.Header.Set("Content-Type", w.FormDataContentType())
+		return req
+	}
+
+	tests := []struct {
+		name    string
+		decode  func() (int, error)
+		wantLen int
+		wantErr error
+	}{
+		{
+			name: "bytes body 1 MiB",
+			decode: func() (int, error) {
+				req := httptest.NewRequest(http.MethodPost, "/", bytes.NewReader(bytes.Repeat([]byte("a"), 1<<20)))
+				var in bytesBodyInput
+				err := bytesCodec.Decode(req, &in)
+				return len(in.Body), err
+			},
+			wantLen: 1 << 20,
+		},
+		{
+			name: "bytes body at exact limit",
+			decode: func() (int, error) {
+				req := httptest.NewRequest(http.MethodPost, "/", io.LimitReader(bytes.NewReader(bytes.Repeat([]byte("a"), int(MAX_STREAM_BYTES))), MAX_STREAM_BYTES))
+				var in bytesBodyInput
+				err := bytesCodec.Decode(req, &in)
+				return len(in.Body), err
+			},
+			wantLen: int(MAX_STREAM_BYTES),
+		},
+		{
+			name: "bytes body exceeds limit",
+			decode: func() (int, error) {
+				req := httptest.NewRequest(http.MethodPost, "/", bytes.NewReader(bytes.Repeat([]byte("a"), int(MAX_STREAM_BYTES+1))))
+				var in bytesBodyInput
+				err := bytesCodec.Decode(req, &in)
+				return len(in.Body), err
+			},
+			wantErr: ERR_STREAM_TOO_LARGE,
+		},
+		{
+			name: "scalar string body exceeds limit",
+			decode: func() (int, error) {
+				req := httptest.NewRequest(http.MethodPost, "/", bytes.NewReader(bytes.Repeat([]byte("a"), int(MAX_STREAM_BYTES+1))))
+				var in stringBodyInput
+				err := stringCodec.Decode(req, &in)
+				return len(in.Body), err
+			},
+			wantErr: ERR_STREAM_TOO_LARGE,
+		},
+		{
+			name: "multipart part 1 MiB",
+			decode: func() (int, error) {
+				var in formInput
+				err := formCodec.Decode(newMultipartReq(1<<20), &in)
+				return len(in.Form.Payload), err
+			},
+			wantLen: 1 << 20,
+		},
+		{
+			name: "multipart part exceeds limit",
+			decode: func() (int, error) {
+				var in formInput
+				err := formCodec.Decode(newMultipartReq(MAX_STREAM_BYTES+1), &in)
+				return len(in.Form.Payload), err
+			},
+			wantErr: ERR_STREAM_TOO_LARGE,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			gotLen, err := tt.decode()
+			if tt.wantErr != nil {
+				if !errors.Is(err, tt.wantErr) {
+					t.Fatalf("got err %v, want %v", err, tt.wantErr)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			if gotLen != tt.wantLen {
+				t.Fatalf("got len %d, want %d", gotLen, tt.wantLen)
 			}
 		})
 	}
