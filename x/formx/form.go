@@ -32,6 +32,7 @@ type FileReader struct {
 	inner       io.Reader
 	closer      io.Closer
 	sniffSize   int
+	sniffErr    error
 	mimeSniffer [512]byte
 }
 
@@ -64,8 +65,14 @@ func NewFileReader(rx io.ReadCloser, opts ...FileReaderOption) *FileReader {
 		reader.limitBytes = math.MaxInt64
 	}
 
-	n, _ := reader.inner.Read(reader.mimeSniffer[:])
-	if reader.sniffSize = n; n > 0 {
+	n, err := reader.inner.Read(reader.mimeSniffer[:])
+	reader.sniffSize = n
+	if err != nil && !errors.Is(err, io.EOF) {
+		reader.sniffErr = err
+		reader.inner = bytes.NewReader(reader.mimeSniffer[:n])
+		return reader
+	}
+	if n > 0 {
 		reader.inner = io.MultiReader(bytes.NewReader(reader.mimeSniffer[:n]), reader.inner)
 	}
 
@@ -91,6 +98,9 @@ func (r *FileReader) Read(p []byte) (int, error) {
 	if r.readBytes > r.limitBytes {
 		r.large = true
 		return nbyte, fmt.Errorf("%w: %d > %d", ErrFileTooLarge, r.readBytes, r.limitBytes)
+	}
+	if errors.Is(err, io.EOF) && r.sniffErr != nil {
+		return nbyte, r.sniffErr
 	}
 	return nbyte, err
 }
@@ -277,8 +287,8 @@ func (r *formReader) trySetMessage(part *multipart.Part) {
 		return
 	}
 
-	n, err := part.Read(r.buffer)
-	if err != nil && !errors.Is(err, io.EOF) {
+	n, err := io.ReadFull(part, r.buffer)
+	if err != nil && !errors.Is(err, io.EOF) && !errors.Is(err, io.ErrUnexpectedEOF) {
 		return
 	}
 	_, _ = io.Copy(io.Discard, part)

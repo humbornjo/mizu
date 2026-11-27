@@ -456,4 +456,163 @@ func TestFormx_FileReaderLimit(t *testing.T) {
 	assert.True(t, errors.Is(err, formx.ErrFileTooLarge))
 }
 
+type readStep struct {
+	data []byte
+	err  error
+}
+
+type scriptedReadCloser struct {
+	steps []readStep
+	index int
+}
+
+func (r *scriptedReadCloser) Read(p []byte) (int, error) {
+	if r.index >= len(r.steps) {
+		return 0, io.EOF
+	}
+	step := r.steps[r.index]
+	r.index++
+	n := copy(p, step.data)
+	return n, step.err
+}
+
+func (r *scriptedReadCloser) Close() error {
+	return nil
+}
+
+func TestFormx_FileReaderInitialReadError(t *testing.T) {
+	errTransport := errors.New("transport read failed")
+
+	testCases := []struct {
+		name     string
+		steps    []readStep
+		wantData string
+		wantErr  error
+		sticky   bool
+	}{
+		{
+			name: "initial error followed by EOF",
+			steps: []readStep{
+				{data: []byte("prefix-"), err: errTransport},
+				{err: io.EOF},
+			},
+			wantData: "prefix-",
+			wantErr:  errTransport,
+			sticky:   true,
+		},
+		{
+			name: "zero-byte error followed by EOF",
+			steps: []readStep{
+				{err: errTransport},
+				{err: io.EOF},
+			},
+			wantData: "",
+			wantErr:  errTransport,
+			sticky:   true,
+		},
+		{
+			name: "normal n and EOF control",
+			steps: []readStep{
+				{data: []byte("prefix-"), err: io.EOF},
+				{err: io.EOF},
+			},
+			wantData: "prefix-",
+			wantErr:  nil,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			reader := formx.NewFileReader(&scriptedReadCloser{steps: tc.steps})
+			actual, err := io.ReadAll(reader)
+			if tc.wantErr != nil {
+				assert.ErrorIs(t, err, tc.wantErr)
+			} else {
+				require.NoError(t, err)
+			}
+			assert.Equal(t, tc.wantData, string(actual))
+			assert.Equal(t, int64(len(tc.wantData)), reader.ReadSize())
+
+			sum := sha256.Sum256([]byte(tc.wantData))
+			assert.Equal(t, hex.EncodeToString(sum[:]), reader.Checksum())
+
+			if tc.sticky {
+				n, err := reader.Read(make([]byte, 8))
+				assert.Zero(t, n)
+				assert.ErrorIs(t, err, tc.wantErr)
+			}
+		})
+	}
+}
+
+type chunkedReader struct {
+	inner    io.Reader
+	maxBytes int
+}
+
+func (r *chunkedReader) Read(p []byte) (int, error) {
+	if len(p) > r.maxBytes {
+		p = p[:r.maxBytes]
+	}
+	return r.inner.Read(p)
+}
+
+func TestFormx_FormReaderShortReadScalar(t *testing.T) {
+	type fields struct {
+		Count int
+		Name  string `form:"name"`
+	}
+
+	testCases := []struct {
+		name      string
+		parts     []formPart
+		maxBytes  int
+		wantCount int
+		wantName  string
+	}{
+		{
+			name: "one-byte reader decodes Count 10",
+			parts: []formPart{
+				{name: "Count", data: []byte("10")},
+				{name: "file", filename: "dummy.txt", data: []byte("ok")},
+			},
+			maxBytes:  1,
+			wantCount: 10,
+		},
+		{
+			name: "two-byte reader decodes multiple fields",
+			parts: []formPart{
+				{name: "Count", data: []byte("10")},
+				{name: "name", data: []byte("alice")},
+				{name: "file", filename: "dummy.txt", data: []byte("ok")},
+			},
+			maxBytes:  2,
+			wantCount: 10,
+			wantName:  "alice",
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			req, body, _ := newMultipartRequest(t, tc.parts...)
+			req.Body = &trackingReadCloser{
+				Reader: &chunkedReader{inner: body.Reader, maxBytes: tc.maxBytes},
+			}
+
+			var message fields
+			form, err := formx.NewFormReader(
+				"file", req, &message, formx.WithFormFieldLimitBytes(64),
+			)
+			require.NoError(t, err)
+			defer form.Close()
+
+			_, purge, err := form.File()
+			require.NoError(t, err)
+			require.NoError(t, purge())
+			assert.Equal(t, tc.wantCount, message.Count)
+			assert.Equal(t, tc.wantName, message.Name)
+		})
+	}
+}
+
 var _ io.ReadCloser = (*formx.FileReader)(nil)
