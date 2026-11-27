@@ -58,10 +58,21 @@ func LogContext(ctx context.Context, attrs ...slog.Attr) context.Context {
 
 	value := ctx.Value(_CTXKEY)
 	if value == nil {
-		return context.WithValue(ctx, _CTXKEY, attrs)
+		if len(attrs) == 0 {
+			return ctx
+		}
+		copied := make([]slog.Attr, len(attrs))
+		copy(copied, attrs)
+		return context.WithValue(ctx, _CTXKEY, copied)
+	}
+	if len(attrs) == 0 {
+		return ctx
 	}
 	ctxAttrs, _ := value.([]slog.Attr)
-	return context.WithValue(ctx, _CTXKEY, append(ctxAttrs, attrs...))
+	merged := make([]slog.Attr, len(ctxAttrs)+len(attrs))
+	copy(merged, ctxAttrs)
+	copy(merged[len(ctxAttrs):], attrs)
+	return context.WithValue(ctx, _CTXKEY, merged)
 }
 
 type level interface {
@@ -97,7 +108,13 @@ func WithAttributes(attrs []slog.Attr) Option {
 		old := *m
 		new := func(h *handler) *handler {
 			h = old(h)
-			h.attrs = append(h.attrs, attrs...)
+			if len(attrs) == 0 {
+				return h
+			}
+			merged := make([]slog.Attr, len(h.attrs)+len(attrs))
+			copy(merged, h.attrs)
+			copy(merged[len(h.attrs):], attrs)
+			h.attrs = merged
 			return h
 		}
 		*m = new
@@ -127,7 +144,13 @@ func (h *handler) Handle(ctx context.Context, r slog.Record) error {
 }
 
 func (h *handler) WithAttrs(attrs []slog.Attr) slog.Handler {
-	return &handler{Handler: h.Handler, level: h.level, attrs: append(h.attrs, attrs...)}
+	if len(attrs) == 0 {
+		return &handler{Handler: h.Handler, level: h.level, attrs: h.attrs}
+	}
+	merged := make([]slog.Attr, len(h.attrs)+len(attrs))
+	copy(merged, h.attrs)
+	copy(merged[len(h.attrs):], attrs)
+	return &handler{Handler: h.Handler, level: h.level, attrs: merged}
 }
 
 func (h *handler) WithGroup(name string) slog.Handler {
